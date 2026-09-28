@@ -79,6 +79,7 @@ public class Surface implements Parcelable {
     private static native int nativeGetHeight(long nativeObject);
 
     private static native long nativeGetNextFrameNumber(long nativeObject);
+    private static native void nativeSetPvrStatus(long nativeObject, int status);
     private static native int nativeSetScalingMode(long nativeObject, int scalingMode);
     private static native int nativeForceScopedDisconnect(long nativeObject);
     private static native int nativeAttachAndQueueBufferWithColorSpace(long nativeObject,
@@ -687,6 +688,18 @@ public class Surface implements Parcelable {
             if (err != 0) {
                 throw new IllegalArgumentException("Invalid scaling mode: " + scalingMode);
             }
+        }
+    }
+
+    /**
+     * Pass a PICO VR status value to the producer without changing its interpretation.
+     * Requires the PICO QUERY transport and a producer implementing query 10000.
+     * @hide
+     */
+    public void setPvrStatus(int status) {
+        synchronized (mLock) {
+            checkNotReleasedLocked();
+            nativeSetPvrStatus(mNativeObject, status);
         }
     }
 

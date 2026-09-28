@@ -433,6 +433,16 @@ static jlong nativeGetNextFrameNumber(JNIEnv *env, jclass clazz, jlong nativeObj
     return surface->getNextFrameNumber();
 }
 
+static void nativeSetPvrStatus(JNIEnv*, jclass, jlong nativeObject, jint status) {
+    Surface* surface = reinterpret_cast<Surface*>(nativeObject);
+    sp<IGraphicBufferProducer> producer = surface->getIGraphicBufferProducer();
+    // PICO 5.13.7 uses query 10000 as an input operation. Its JNI entry has
+    // signature (JI)V and ignores the returned status and output value.
+    constexpr int kPicoQuerySetPvrStatus = 10000;
+    int value = status;
+    producer->query(kPicoQuerySetPvrStatus, &value);
+}
+
 static jint nativeSetScalingMode(JNIEnv *env, jclass clazz, jlong nativeObject, jint scalingMode) {
     Surface* surface = reinterpret_cast<Surface*>(nativeObject);
     return surface->setScalingMode(scalingMode);
@@ -548,6 +558,7 @@ static const JNINativeMethod gSurfaceMethods[] = {
     {"nativeGetWidth", "(J)I", (void*)nativeGetWidth },
     {"nativeGetHeight", "(J)I", (void*)nativeGetHeight },
     {"nativeGetNextFrameNumber", "(J)J", (void*)nativeGetNextFrameNumber },
+    {"nativeSetPvrStatus", "(JI)V", (void*)nativeSetPvrStatus },
     {"nativeSetScalingMode", "(JI)I", (void*)nativeSetScalingMode },
     {"nativeForceScopedDisconnect", "(J)I", (void*)nativeForceScopedDisconnect},
     {"nativeAttachAndQueueBufferWithColorSpace", "(JLandroid/graphics/GraphicBuffer;I)I",
