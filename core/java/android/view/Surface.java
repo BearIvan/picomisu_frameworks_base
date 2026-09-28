@@ -696,6 +696,7 @@ public class Surface implements Parcelable {
      * Requires the PICO QUERY transport and a producer implementing query 10000.
      * @hide
      */
+    @UnsupportedAppUsage
     public void setPvrStatus(int status) {
         synchronized (mLock) {
             checkNotReleasedLocked();
