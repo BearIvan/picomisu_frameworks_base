@@ -979,6 +979,8 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
      */
     public WindowLayout windowLayout;
 
+    private IExtActivityInfo mExt = new ExtActivityInfoImpl(this);
+
     public ActivityInfo() {
     }
 
@@ -1006,6 +1008,15 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         colorMode = orig.colorMode;
         maxAspectRatio = orig.maxAspectRatio;
         minAspectRatio = orig.minAspectRatio;
+        mExt.copyFrom(orig);
+    }
+
+    /**
+     * Returns the PICO VR and 2D-panel extension.
+     * @hide
+     */
+    public IExtActivityInfo getExt() {
+        return mExt;
     }
 
     /**
@@ -1231,6 +1242,8 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         dest.writeInt(colorMode);
         dest.writeFloat(maxAspectRatio);
         dest.writeFloat(minAspectRatio);
+        // The factory passes ActivityInfo.flags here; the extension ignores the value.
+        mExt.writeToParcel(dest, flags);
     }
 
     /**
@@ -1352,6 +1365,7 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         colorMode = source.readInt();
         maxAspectRatio = source.readFloat();
         minAspectRatio = source.readFloat();
+        mExt.readFromParcel(source);
     }
 
     /**

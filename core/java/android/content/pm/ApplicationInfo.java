@@ -1316,6 +1316,8 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
 
     private int mHiddenApiPolicy = HIDDEN_API_ENFORCEMENT_DEFAULT;
 
+    private IExtApplicationInfo mExt = new ExtApplicationInfoImpl(this);
+
     public void dump(Printer pw, String prefix) {
         dump(pw, prefix, DUMP_FLAG_ALL);
     }
@@ -1615,6 +1617,15 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         mHiddenApiPolicy = orig.mHiddenApiPolicy;
         hiddenUntilInstalled = orig.hiddenUntilInstalled;
         zygotePreloadName = orig.zygotePreloadName;
+        mExt.copyFrom(orig);
+    }
+
+    /**
+     * Returns the PICO VR application extension.
+     * @hide
+     */
+    public IExtApplicationInfo getExt() {
+        return mExt;
     }
 
     public String toString() {
@@ -1696,6 +1707,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeInt(mHiddenApiPolicy);
         dest.writeInt(hiddenUntilInstalled ? 1 : 0);
         dest.writeString(zygotePreloadName);
+        mExt.writeToParcel(dest);
     }
 
     public static final @android.annotation.NonNull Parcelable.Creator<ApplicationInfo> CREATOR
@@ -1774,6 +1786,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         mHiddenApiPolicy = source.readInt();
         hiddenUntilInstalled = source.readInt() != 0;
         zygotePreloadName = source.readString();
+        mExt.readFromParcel(source);
     }
 
     /**
