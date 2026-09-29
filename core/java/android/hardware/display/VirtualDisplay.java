@@ -43,6 +43,9 @@ public final class VirtualDisplay {
         mDisplay = display;
         mToken = token;
         mSurface = surface;
+        if (surface != null) {
+            surface.registerFreezeSelf();
+        }
     }
 
     /**
@@ -75,6 +78,9 @@ public final class VirtualDisplay {
         if (mSurface != surface) {
             mGlobal.setVirtualDisplaySurface(mToken, surface);
             mSurface = surface;
+            if (surface != null) {
+                surface.registerFreezeSelf();
+            }
         }
     }
 

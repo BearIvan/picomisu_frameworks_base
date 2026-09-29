@@ -32,6 +32,7 @@
 #include <binder/Parcel.h>
 
 #include <gui/Surface.h>
+#include "PicoSurfaceFreeze.h"
 #include <gui/view/Surface.h>
 #include <gui/SurfaceControl.h>
 #include <gui/GLConsumer.h>
@@ -559,6 +560,7 @@ static const JNINativeMethod gSurfaceMethods[] = {
     {"nativeGetHeight", "(J)I", (void*)nativeGetHeight },
     {"nativeGetNextFrameNumber", "(J)J", (void*)nativeGetNextFrameNumber },
     {"nativeSetPvrStatus", "(JI)V", (void*)nativeSetPvrStatus },
+    {"nativeFreezeSelfListening", "(J)V", (void*)picomisu::surfaceFreezeSelfListening },
     {"nativeSetScalingMode", "(JI)I", (void*)nativeSetScalingMode },
     {"nativeForceScopedDisconnect", "(J)I", (void*)nativeForceScopedDisconnect},
     {"nativeAttachAndQueueBufferWithColorSpace", "(JLandroid/graphics/GraphicBuffer;I)I",

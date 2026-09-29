@@ -80,6 +80,7 @@ public class Surface implements Parcelable {
 
     private static native long nativeGetNextFrameNumber(long nativeObject);
     private static native void nativeSetPvrStatus(long nativeObject, int status);
+    private static native void nativeFreezeSelfListening(long nativeObject);
     private static native int nativeSetScalingMode(long nativeObject, int scalingMode);
     private static native int nativeForceScopedDisconnect(long nativeObject);
     private static native int nativeAttachAndQueueBufferWithColorSpace(long nativeObject,
@@ -701,6 +702,18 @@ public class Surface implements Parcelable {
         synchronized (mLock) {
             checkNotReleasedLocked();
             nativeSetPvrStatus(mNativeObject, status);
+        }
+    }
+
+    /**
+     * Listen for process unfreeze events on a local graphics producer.
+     * A released Surface or a Surface without a producer is ignored.
+     * @hide
+     */
+    @UnsupportedAppUsage
+    public void registerFreezeSelf() {
+        synchronized (mLock) {
+            nativeFreezeSelfListening(mNativeObject);
         }
     }
 
