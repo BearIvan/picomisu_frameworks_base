@@ -475,6 +475,7 @@ public final class ViewRootImpl implements ViewParent,
     // Surface can never be reassigned or cleared (use Surface.clear()).
     @UnsupportedAppUsage
     public final Surface mSurface = new Surface();
+    private final IExtViewRootImpl mExt = new ExtViewRootImplImpl(this);
     private final SurfaceControl mSurfaceControl = new SurfaceControl();
 
     /**
@@ -1036,6 +1037,14 @@ public final class ViewRootImpl implements ViewParent,
 
     public CharSequence getTitle() {
         return mWindowAttributes.getTitle();
+    }
+
+    /**
+     * Returns the PICO view-root extension.
+     * @hide
+     */
+    public IExtViewRootImpl getExt() {
+        return mExt;
     }
 
     /**
@@ -3832,7 +3841,13 @@ public final class ViewRootImpl implements ViewParent,
             final int right = dirty.right;
             final int bottom = dirty.bottom;
 
-            canvas = mSurface.lockCanvas(dirty);
+            // A PICO VR activity window draws into the Surface VR canvas without
+            // dequeuing a buffer; the policy is evaluated again for the matching unlock.
+            if (mExt.isSkipDrawVrActivity()) {
+                canvas = mSurface.getExt().lockCanvasFor2DVr();
+            } else {
+                canvas = mSurface.lockCanvas(dirty);
+            }
 
             // TODO: Do this in native
             canvas.setDensity(mDensity);
@@ -3890,7 +3905,11 @@ public final class ViewRootImpl implements ViewParent,
             drawAccessibilityFocusedDrawableIfNeeded(canvas);
         } finally {
             try {
-                surface.unlockCanvasAndPost(canvas);
+                if (mExt.isSkipDrawVrActivity()) {
+                    surface.getExt().unlockCanvasAndPostFor2DVr(canvas);
+                } else {
+                    surface.unlockCanvasAndPost(canvas);
+                }
             } catch (IllegalArgumentException e) {
                 Log.e(mTag, "Could not unlock surface", e);
                 mLayoutRequested = true;    // ask wm for a new surface next time.
