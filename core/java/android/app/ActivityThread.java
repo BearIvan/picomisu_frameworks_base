@@ -391,6 +391,7 @@ public final class ActivityThread extends ClientTransactionHandler {
 
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
     private final ResourcesManager mResourcesManager;
+    private final IExtActivityThread mExt = new ExtActivityThreadImpl(this);
 
     // Registry of remote cancellation transports pending a reply with reply handles.
     @GuardedBy("this")
@@ -2345,6 +2346,14 @@ public final class ActivityThread extends ClientTransactionHandler {
     @UnsupportedAppUsage
     ActivityThread() {
         mResourcesManager = ResourcesManager.getInstance();
+    }
+
+    /**
+     * Returns the PICO activity-thread extension.
+     * @hide
+     */
+    public IExtActivityThread getExt() {
+        return mExt;
     }
 
     @UnsupportedAppUsage
