@@ -12,9 +12,16 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.view.Surface;
 import android.view.SurfaceControl;
+import android.view.View;
+import android.view.ViewRootImpl;
+import android.view.ExtViewRootImplImpl;
+import android.view.accessibility.AccessibilityManager;
+import android.graphics.Rect;
+import android.app.ActivityThread;
 import android.os.Binder;
 import java.lang.reflect.Field;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 /** Executes the real boot-classpath callers; display and freeze services are local fixtures. */
@@ -28,6 +35,118 @@ public final class FrameworkRuntimeProbe {
     private static native boolean recover(int fixture);
     private static native void clearFixtures();
     private static native int nativeDisplayFlags(long transaction, android.os.IBinder token);
+
+    /** Number of "vr-policy" lines compared with the factory framework. */
+    private static final int VR_POLICY_LINES = 60;
+
+    /** Records the canvas passed to View.draw; allocated without running View constructors. */
+    static final class RecordingView extends View {
+        int draws;
+        int width;
+        int height;
+
+        RecordingView() {
+            super(null);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            draws++;
+            width = canvas.getWidth();
+            height = canvas.getHeight();
+            canvas.drawColor(Color.BLUE);
+        }
+    }
+
+    /** A software-drawn view root for the given policy inputs, backed by {@code surface}. */
+    private static ViewRootImpl drawingRoot(ActivityThread thread, Surface surface, String title,
+            int displayId, int vrFlag, RecordingView view) throws Exception {
+        ViewRootImpl root = VrPolicyFixture.root(new VrPolicyFixture.LocalContext(), title, displayId);
+        VrPolicyFixture.set(root, ViewRootImpl.class, "mSurface", surface);
+        VrPolicyFixture.set(root, ViewRootImpl.class, "mExt", new ExtViewRootImplImpl(root));
+        VrPolicyFixture.set(root, ViewRootImpl.class, "mView", view);
+        VrPolicyFixture.set(root, ViewRootImpl.class, "mTag", "VrPolicyFixture");
+        Object attach = VrPolicyFixture.allocate(Class.forName("android.view.View$AttachInfo"));
+        VrPolicyFixture.set(attach, attach.getClass(), "mTmpInvalRect", new Rect());
+        VrPolicyFixture.set(root, ViewRootImpl.class, "mAttachInfo", attach);
+        VrPolicyFixture.activities(thread, VrPolicyFixture.record(root, vrFlag, true, true));
+        return root;
+    }
+
+    private static boolean drawSoftware(ViewRootImpl root, Surface surface, Rect dirty)
+            throws Exception {
+        Method method = ViewRootImpl.class.getDeclaredMethod("drawSoftware", Surface.class,
+                Class.forName("android.view.View$AttachInfo"), int.class, int.class, boolean.class,
+                Rect.class, Rect.class);
+        method.setAccessible(true);
+        return (Boolean) method.invoke(root, surface,
+                VrPolicyFixture.get(root, ViewRootImpl.class, "mAttachInfo"), 0, 0, false, dirty, null);
+    }
+
+    /** ViewRootImpl.drawSoftware selects the VR canvas only for windows the policy skips. */
+    private static void drawSoftwareRouting() throws Exception {
+        Surface surface = newSurface(3);
+        AccessibilityManager accessibility = VrPolicyFixture.allocate(AccessibilityManager.class);
+        VrPolicyFixture.set(accessibility, AccessibilityManager.class, "mLock", new Object());
+        VrPolicyFixture.set(null, AccessibilityManager.class, "sInstance", accessibility);
+        Field current = ActivityThread.class.getDeclaredField("sCurrentActivityThread");
+        current.setAccessible(true);
+        Object previous = current.get(null);
+        ActivityThread thread = VrPolicyFixture.newActivityThread();
+        current.set(null, thread);
+        try {
+            int references = surfaceReferences(surface);
+            long operations = producerOperations(3);
+            VrPolicyFixture.sSetting = "1";
+            RecordingView skipped = VrPolicyFixture.allocate(RecordingView.class);
+            ViewRootImpl root = drawingRoot(thread, surface, "org.picomisu/.Main", 0, 1, skipped);
+            Rect dirty = new Rect(0, 0, 4, 4);
+            boolean drawn = drawSoftware(root, surface, dirty);
+            Object ext = surface.getExt();
+            Field locked = ext.getClass().getDeclaredField("mLockedObject");
+            locked.setAccessible(true);
+            check(drawn && skipped.draws == 1 && skipped.width == 1 && skipped.height == 1
+                    && dirty.isEmpty() && locked.getLong(ext) == 0
+                    && !(Boolean) VrPolicyFixture.get(root, ViewRootImpl.class, "mLayoutRequested")
+                    && surfaceReferences(surface) == references
+                    && producerOperations(3) == operations,
+                    "draw-software-vr-skip-routes-to-vr-canvas");
+            boolean repeated = true;
+            for (int cycle = 0; cycle < 5; ++cycle) {
+                repeated &= drawSoftware(root, surface, new Rect(0, 0, 2, 2));
+            }
+            check(repeated && skipped.draws == 6 && locked.getLong(ext) == 0
+                    && surfaceReferences(surface) == references
+                    && producerOperations(3) == operations,
+                    "draw-software-vr-skip-repeated-without-queue");
+            // Other windows take Surface.lockCanvas. The fixture producer is already connected
+            // for CPU access by another client, so that lock fails with IllegalArgumentException.
+            Object[][] regular = {
+                {"0", "org.picomisu/.Main", 0, 1},
+                {"1", "com.android.permissioncontroller/.Grant", 0, 1},
+                {"1", "org.picomisu/.Main", 1, 1},
+                {"1", "org.picomisu/.Main", 0, 3},
+                {"1", "org.picomisu/.Main", 0, 0},
+            };
+            boolean normal = true;
+            for (Object[] item : regular) {
+                VrPolicyFixture.sSetting = (String) item[0];
+                RecordingView view = VrPolicyFixture.allocate(RecordingView.class);
+                ViewRootImpl window = drawingRoot(thread, surface, (String) item[1],
+                        (Integer) item[2], (Integer) item[3], view);
+                normal &= !drawSoftware(window, surface, new Rect(0, 0, 4, 4)) && view.draws == 0
+                        && (Boolean) VrPolicyFixture.get(window, ViewRootImpl.class, "mLayoutRequested")
+                        && locked.getLong(ext) == 0 && surfaceReferences(surface) == references;
+            }
+            check(normal, "draw-software-regular-windows-use-lock-canvas");
+        } finally {
+            VrPolicyFixture.activities(thread);
+            VrPolicyFixture.sSetting = null;
+            current.set(null, previous);
+            VrPolicyFixture.set(null, AccessibilityManager.class, "sInstance", null);
+            surface.release();
+        }
+    }
 
     private static void check(boolean result, String label) {
         if (!result) throw new AssertionError(label);
@@ -168,6 +287,8 @@ public final class FrameworkRuntimeProbe {
         check(direct.isValid() && !initial.isValid() && locked.getLong(extension) == 0
                 && canvas.getWidth() == 0 && producerOperations(0) == operations,
                 "vr-canvas-retains-original-surface-on-transfer");
+        check(VrPolicyFixture.run(System.out) == VR_POLICY_LINES, "vr-policy-shared-scenarios");
+        drawSoftwareRouting();
         direct.release();
         initial.release();
         replacement.release();
