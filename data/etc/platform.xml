@@ -148,6 +148,11 @@
     <assign-permission name="android.permission.UPDATE_APP_OPS_STATS" uid="media" />
     <assign-permission name="android.permission.GET_PROCESS_STATE_AND_OOM_SCORE" uid="media" />
     <assign-permission name="android.permission.INTERNET" uid="media" />
+    <!-- Pico: fw_feature[7236905] assigning record permission to media for miracast {@ -->
+    <assign-permission name="android.permission.RECORD_AUDIO" uid="media" />
+    <assign-permission name="android.permission.CAPTURE_AUDIO_OUTPUT" uid="media" />
+    <assign-permission name="android.permission.CAPTURE_AUDIO_HOTWORD" uid="media" />
+    <!-- @} -->
 
     <assign-permission name="android.permission.INTERNET" uid="shell" />
 

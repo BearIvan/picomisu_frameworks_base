@@ -1920,6 +1920,10 @@
         android:description="@string/permdesc_modifyAudioSettings"
         android:protectionLevel="normal" />
 
+    <!-- @hide Allows a PICO application to keep playing media in the background. -->
+    <permission android:name="com.picovr.permission.BACKGROUND_PLAYBACK"
+        android:protectionLevel="normal|instant" />
+
     <!-- ================================== -->
     <!-- Permissions for accessing hardware -->
     <!-- ================================== -->
@@ -5063,5 +5067,42 @@
         </service>
 
 </application>
+
+    <!-- PICO OS 5.13.7 permissions. -->
+    <!-- @hide Allows an application to observe activity lifecycle events (hidden-API whitelist). -->
+    <permission android:name="com.smartisanos.permission.observe.activity.lifecycle"
+        android:protectionLevel="signature|privileged" />
+    <!-- @hide Allows an application to observe application start events (hidden-API whitelist). -->
+    <permission android:name="com.smartisanos.permission.observe.app.startevent"
+        android:protectionLevel="signature|privileged" />
+    <!-- @hide -->
+    <permission-group android:name="com.picovr.permission-group.EYE_TRACKING"
+        android:label="@string/eye_tracking_permission_name"
+        android:description="@string/eye_tracking_permission_describe" />
+    <!-- @hide Allows an application to read gaze direction and eye movement. -->
+    <permission android:name="com.picovr.permission.EYE_TRACKING"
+        android:permissionGroup="com.picovr.permission-group.EYE_TRACKING"
+        android:label="@string/eye_tracking_permission_name"
+        android:description="@string/eye_tracking_permission_describe"
+        android:protectionLevel="dangerous" />
+    <!-- @hide -->
+    <permission-group android:name="com.picovr.permission-group.FACE_TRACKING"
+        android:label="@string/face_tracking_permission_name"
+        android:description="@string/face_tracking_permission_describe" />
+    <!-- @hide Allows an application to read facial expressions. -->
+    <permission android:name="com.picovr.permission.FACE_TRACKING"
+        android:permissionGroup="com.picovr.permission-group.FACE_TRACKING"
+        android:label="@string/face_tracking_permission_name"
+        android:description="@string/face_tracking_permission_describe"
+        android:protectionLevel="dangerous" />
+    <!-- @hide -->
+    <permission android:name="com.picovr.permission.SEND_BROADCAST"
+        android:protectionLevel="signatureOrSystem" />
+    <!-- @hide -->
+    <permission android:name="com.picovr.permission.RECEIVE_BROADCAST"
+        android:protectionLevel="signatureOrSystem" />
+    <!-- @hide Allows an application to receive PICO power scene changes (hidden-API whitelist). -->
+    <permission android:name="com.picovr.permission.POWER_SCENE_CHANGE"
+        android:protectionLevel="normal" />
 
 </manifest>
