@@ -539,6 +539,8 @@ public class PackageParser {
 
     private static final String TAG = "PackageParser";
 
+    private final IExtPackageParser mExt = new ExtPackageParserImpl(this);
+
     @UnsupportedAppUsage
     public PackageParser() {
         mMetrics = new DisplayMetrics();
@@ -1015,7 +1017,7 @@ public class PackageParser {
             throws PackageParserException {
         Package parsed = useCaches ? getCachedResult(packageFile, flags) : null;
         if (parsed != null) {
-            return parsed;
+            return mExt.parseVrFlags(parsed);
         }
 
         long parseTime = LOG_PARSE_TIMINGS ? SystemClock.uptimeMillis() : 0;
@@ -1024,6 +1026,7 @@ public class PackageParser {
         } else {
             parsed = parseMonolithicPackage(packageFile, flags);
         }
+        parsed = mExt.parseVrFlags(parsed);
 
         long cacheTime = LOG_PARSE_TIMINGS ? SystemClock.uptimeMillis() : 0;
         cacheResult(packageFile, flags, parsed);
