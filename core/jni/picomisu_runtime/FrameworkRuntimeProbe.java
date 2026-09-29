@@ -8,6 +8,9 @@ import android.hardware.display.IVirtualDisplayCallback;
 import android.hardware.display.VirtualDisplay;
 import android.view.Display;
 import android.view.Surface;
+import android.view.SurfaceControl;
+import android.os.Binder;
+import java.lang.reflect.Field;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Proxy;
 
@@ -19,6 +22,7 @@ public final class FrameworkRuntimeProbe {
     private static native int registrations();
     private static native boolean recover(int fixture);
     private static native void clearFixtures();
+    private static native int nativeDisplayFlags(long transaction, android.os.IBinder token);
 
     private static void check(boolean result, String label) {
         if (!result) throw new AssertionError(label);
@@ -31,6 +35,36 @@ public final class FrameworkRuntimeProbe {
         System.out.println("runtime-boot-classpath " + System.getProperty("java.boot.class.path"));
         System.load(args[0]);
         check(preflight(), "source-runtime-and-local-service");
+        SurfaceControl.Transaction transaction = new SurfaceControl.Transaction();
+        Binder token = new Binder();
+        Field nativeObject = SurfaceControl.Transaction.class.getDeclaredField("mNativeObject");
+        nativeObject.setAccessible(true);
+        long handle = nativeObject.getLong(transaction);
+        boolean flagsOk = true;
+        for (int flags : new int[] {0, 0x100000, -1, 0xa555aaaa}) {
+            flagsOk &= transaction.setDisplayFlags(token, flags) == transaction;
+            flagsOk &= nativeDisplayFlags(handle, token) == flags;
+        }
+        check(flagsOk, "surface-control-display-flags-jni-values");
+        Field globalTransaction = SurfaceControl.class.getDeclaredField("sGlobalTransaction");
+        globalTransaction.setAccessible(true);
+        boolean staticOk;
+        synchronized (SurfaceControl.class) {
+            Object previous = globalTransaction.get(null);
+            globalTransaction.set(null, transaction);
+            try {
+                SurfaceControl.setDisplayFlags(token, 0x100000);
+                staticOk = nativeDisplayFlags(handle, token) == 0x100000;
+            } finally {
+                globalTransaction.set(null, previous);
+            }
+        }
+        check(staticOk, "surface-control-display-flags-static-wrapper");
+        boolean nullRejected = false;
+        try { transaction.setDisplayFlags(null, 0); }
+        catch (IllegalArgumentException expected) { nullRejected = true; }
+        check(nullRejected, "surface-control-display-flags-null-token-validation");
+        transaction.close();
         Surface empty = new Surface();
         empty.registerFreezeSelf();
         empty.release();

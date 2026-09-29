@@ -147,6 +147,7 @@ public final class SurfaceControl implements Parcelable {
             IBinder displayToken, int orientation,
             int l, int t, int r, int b,
             int L, int T, int R, int B);
+    private static native void nativeSetDisplayFlags(long transactionObj, IBinder displayToken, int flags);
     private static native void nativeSetDisplaySize(long transactionObj, IBinder displayToken,
             int width, int height);
     private static native SurfaceControl.PhysicalDisplayInfo[] nativeGetDisplayConfigs(
@@ -1765,6 +1766,14 @@ public final class SurfaceControl implements Parcelable {
     /**
      * @hide
      */
+    @UnsupportedAppUsage
+    public static void setDisplayFlags(IBinder displayToken, int flags) {
+        synchronized (SurfaceControl.class) {
+            sGlobalTransaction.setDisplayFlags(displayToken, flags);
+        }
+    }
+
+    /** @hide */
     public static void setDisplaySize(IBinder displayToken, int width, int height) {
         synchronized (SurfaceControl.class) {
             sGlobalTransaction.setDisplaySize(displayToken, width, height);
@@ -2566,6 +2575,16 @@ public final class SurfaceControl implements Parcelable {
         /**
          * @hide
          */
+        @UnsupportedAppUsage
+        public Transaction setDisplayFlags(IBinder displayToken, int flags) {
+            if (displayToken == null) {
+                throw new IllegalArgumentException("displayToken must not be null");
+            }
+            nativeSetDisplayFlags(mNativeObject, displayToken, flags);
+            return this;
+        }
+
+        /** @hide */
         public Transaction setDisplaySize(IBinder displayToken, int width, int height) {
             if (displayToken == null) {
                 throw new IllegalArgumentException("displayToken must not be null");

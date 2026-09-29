@@ -11,6 +11,9 @@
 #include <gui/BufferQueueProducer.h>
 #include <gui/IConsumerListener.h>
 #include <gui/Surface.h>
+#include <gui/LayerState.h>
+#include <gui/SurfaceComposerClient.h>
+#include "../android_util_Binder.h"
 #include <system/window.h>
 #include <dlfcn.h>
 #include <cstdio>
@@ -144,3 +147,13 @@ Java_org_picomisu_runtime_FrameworkRuntimeProbe_recover(JNIEnv*, jclass, jint in
 }
 extern "C" JNIEXPORT void JNICALL
 Java_org_picomisu_runtime_FrameworkRuntimeProbe_clearFixtures(JNIEnv*, jclass) { fixtures.clear(); }
+
+DisplayState& picoRuntimeDisplayState(void*, const sp<IBinder>&)
+        asm("_ZN7android21SurfaceComposerClient11Transaction15getDisplayStateERKNS_2spINS_7IBinderEEE");
+extern "C" JNIEXPORT jint JNICALL
+Java_org_picomisu_runtime_FrameworkRuntimeProbe_nativeDisplayFlags(
+        JNIEnv* env, jclass, jlong transaction, jobject tokenObject) {
+    if (!transaction) return 0;
+    sp<IBinder> token = ibinderForJavaObject(env, tokenObject);
+    return static_cast<jint>(picoRuntimeDisplayState(reinterpret_cast<void*>(transaction), token).flags);
+}
