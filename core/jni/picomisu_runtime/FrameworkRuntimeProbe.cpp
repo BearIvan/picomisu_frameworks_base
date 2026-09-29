@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Loaded before AndroidRuntime. All service-manager lookups stay inside this process.
 #include <jni.h>
+#include <atomic>
 #include <utils/StrongPointer.h>
 #include <android_runtime/android_view_Surface.h>
 #include <binder/FreezeManager.h>
@@ -50,9 +51,25 @@ sp<GraphicBuffer> buffer() {
     b->format = HAL_PIXEL_FORMAT_RGBA_8888;
     return b;
 }
+class CountingProducer : public BufferQueueProducer {
+public:
+    explicit CountingProducer(const sp<BufferQueueCore>& core) : BufferQueueProducer(core) {}
+    std::atomic<int> operations{0};
+    status_t queueBuffer(int slot, const QueueBufferInput& input, QueueBufferOutput* output) override {
+        operations.fetch_add(1, std::memory_order_relaxed);
+        return BufferQueueProducer::queueBuffer(slot, input, output);
+    }
+    status_t dequeueBuffer(int* slot, sp<Fence>* fence, uint32_t width, uint32_t height,
+                          PixelFormat format, uint64_t usage, uint64_t* age,
+                          FrameEventHistoryDelta* timestamps) override {
+        operations.fetch_add(1, std::memory_order_relaxed);
+        return BufferQueueProducer::dequeueBuffer(slot, fence, width, height, format, usage,
+                                                  age, timestamps);
+    }
+};
 struct Fixture {
     sp<BufferQueueCore> core = new BufferQueueCore;
-    sp<BufferQueueProducer> producer = new BufferQueueProducer(core);
+    sp<CountingProducer> producer = new CountingProducer(core);
     sp<BufferQueueConsumer> consumer = new BufferQueueConsumer(core);
     IGraphicBufferProducer::QueueBufferOutput output;
     int acquired = -1;
@@ -147,6 +164,18 @@ Java_org_picomisu_runtime_FrameworkRuntimeProbe_recover(JNIEnv*, jclass, jint in
 }
 extern "C" JNIEXPORT void JNICALL
 Java_org_picomisu_runtime_FrameworkRuntimeProbe_clearFixtures(JNIEnv*, jclass) { fixtures.clear(); }
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_picomisu_runtime_FrameworkRuntimeProbe_surfaceReferences(
+        JNIEnv* env, jclass, jobject object) {
+    sp<Surface> surface = android_view_Surface_getSurface(env, object);
+    return surface ? surface->getStrongCount() : 0;
+}
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_picomisu_runtime_FrameworkRuntimeProbe_producerOperations(JNIEnv*, jclass, jint index) {
+    if (index < 0 || size_t(index) >= fixtures.size()) return -1;
+    return fixtures[index]->producer->operations.load(std::memory_order_relaxed);
+}
 
 DisplayState& picoRuntimeDisplayState(void*, const sp<IBinder>&)
         asm("_ZN7android21SurfaceComposerClient11Transaction15getDisplayStateERKNS_2spINS_7IBinderEEE");

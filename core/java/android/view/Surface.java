@@ -122,6 +122,7 @@ public class Surface implements Parcelable {
     private long mLockedObject;
     private int mGenerationId; // incremented each time mNativeObject changes
     private final Canvas mCanvas = new CompatibleCanvas();
+    private final IExtSurface mExt = new ExtSurfaceImpl(this, mCanvas);
 
     // A matrix to scale the matrix set by application. This is set to null for
     // non compatibility mode.
@@ -659,6 +660,15 @@ public class Surface implements Parcelable {
                 mHwuiContext.updateSurface();
             }
         }
+    }
+
+    /**
+     * Returns the PICO software-canvas extension.
+     * @hide
+     */
+    @UnsupportedAppUsage
+    public IExtSurface getExt() {
+        return mExt;
     }
 
     private void checkNotReleasedLocked() {

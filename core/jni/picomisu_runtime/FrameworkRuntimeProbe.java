@@ -7,6 +7,9 @@ import android.hardware.display.IDisplayManager;
 import android.hardware.display.IVirtualDisplayCallback;
 import android.hardware.display.VirtualDisplay;
 import android.view.Display;
+import android.view.IExtSurface;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.view.Surface;
 import android.view.SurfaceControl;
 import android.os.Binder;
@@ -18,6 +21,8 @@ import java.lang.reflect.Proxy;
 public final class FrameworkRuntimeProbe {
     private static int passed;
     private static native boolean preflight();
+    private static native int surfaceReferences(Surface surface);
+    private static native long producerOperations(int fixture);
     private static native Surface newSurface(int fixture);
     private static native int registrations();
     private static native boolean recover(int fixture);
@@ -115,6 +120,54 @@ public final class FrameworkRuntimeProbe {
         check(display.getSurface() == null && setCalls[0] == 2 && stateCalls[0] == 2
                 && !lastState[0] && registrations() == 1,
                 "virtual-display-null-surface-detaches");
+        IExtSurface emptyExt = empty.getExt();
+        boolean emptyLockRejected = false, emptyUnlockRejected = false;
+        try { emptyExt.lockCanvasFor2DVr(); }
+        catch (IllegalStateException expected) { emptyLockRejected = true; }
+        try { emptyExt.unlockCanvasAndPostFor2DVr(new Canvas()); }
+        catch (IllegalStateException expected) { emptyUnlockRejected = true; }
+        check(emptyLockRejected && emptyUnlockRejected, "vr-canvas-released-surface-validation");
+        IExtSurface extension = direct.getExt();
+        check(extension == direct.getExt() && extension instanceof com.pico.util.IExtBase,
+                "vr-canvas-extension-identity");
+        int references = surfaceReferences(direct);
+        long operations = producerOperations(0);
+        Canvas canvas = extension.lockCanvasFor2DVr();
+        canvas.drawColor(Color.GREEN);
+        check(canvas.getWidth() == 1 && canvas.getHeight() == 1 && canvas.isOpaque()
+                && surfaceReferences(direct) == references + 1 && producerOperations(0) == operations,
+                "vr-canvas-native-pixel-and-retained-surface");
+        boolean doubleLockRejected = false, wrongCanvasRejected = false;
+        try { extension.lockCanvasFor2DVr(); }
+        catch (IllegalArgumentException expected) { doubleLockRejected = true; }
+        try { extension.unlockCanvasAndPostFor2DVr(new Canvas()); }
+        catch (IllegalArgumentException expected) { wrongCanvasRejected = true; }
+        check(doubleLockRejected && wrongCanvasRejected
+                && surfaceReferences(direct) == references + 1,
+                "vr-canvas-lock-and-identity-errors-preserve-reference");
+        extension.unlockCanvasAndPostFor2DVr(canvas);
+        boolean unlockedRejected = false;
+        try { extension.unlockCanvasAndPostFor2DVr(canvas); }
+        catch (IllegalStateException expected) { unlockedRejected = true; }
+        check(unlockedRejected && canvas.getWidth() == 0 && canvas.getHeight() == 0
+                && surfaceReferences(direct) == references && producerOperations(0) == operations,
+                "vr-canvas-unlock-detaches-without-queue");
+        boolean cycles = true;
+        for (int cycle = 0; cycle < 10; ++cycle) {
+            Canvas again = extension.lockCanvasFor2DVr();
+            cycles &= again == canvas && again.getWidth() == 1;
+            extension.unlockCanvasAndPostFor2DVr(again);
+            cycles &= surfaceReferences(direct) == references;
+        }
+        check(cycles && producerOperations(0) == operations, "vr-canvas-repeated-lifetime");
+        extension.lockCanvasFor2DVr();
+        direct.transferFrom(initial);
+        extension.unlockCanvasAndPostFor2DVr(canvas);
+        Field locked = extension.getClass().getDeclaredField("mLockedObject");
+        locked.setAccessible(true);
+        check(direct.isValid() && !initial.isValid() && locked.getLong(extension) == 0
+                && canvas.getWidth() == 0 && producerOperations(0) == operations,
+                "vr-canvas-retains-original-surface-on-transfer");
         direct.release();
         initial.release();
         replacement.release();
