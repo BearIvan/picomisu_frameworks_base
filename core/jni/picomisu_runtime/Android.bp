@@ -1,0 +1,22 @@
+// Copyright 2026 Picomisu contributors
+// SPDX-License-Identifier: Apache-2.0
+java_library {
+    name: "picomisu-framework-runtime-probe",
+    srcs: ["FrameworkRuntimeProbe.java"],
+    libs: ["framework"],
+    // Produce DEX for the explicit runner without adding a JAR to the system image.
+    installable: false,
+    compile_dex: true,
+    dex_preopt: { enabled: false },
+}
+
+cc_test_library {
+    name: "libpicomisu_framework_runtime_probe",
+    srcs: ["FrameworkRuntimeProbe.cpp"],
+    compile_multilib: "both",
+    gtest: false,
+    relative_install_path: "picomisu_framework_runtime_probe",
+    header_libs: ["jni_headers"],
+    shared_libs: ["libandroid_runtime", "libgui", "libbinder", "libui", "libutils", "liblog", "libdl"],
+    cflags: ["-Wall", "-Werror"],
+}
