@@ -15,6 +15,9 @@
 #include <dlfcn.h>
 #include <cstdio>
 #include <memory>
+#include <fstream>
+#include <set>
+#include <string>
 #include <mutex>
 #include <unistd.h>
 #include <vector>
@@ -102,6 +105,20 @@ Java_org_picomisu_runtime_FrameworkRuntimeProbe_preflight(JNIEnv*, jclass) {
         if (handle) dlclose(handle);
         if (!ok) return JNI_FALSE;
     }
+    std::ifstream maps("/proc/self/maps");
+    std::set<std::string> images, libraries;
+    std::string line;
+    while (std::getline(maps, line)) {
+        auto start = line.find('/');
+        if (start == std::string::npos) continue;
+        std::string path = line.substr(start);
+        if (path.size() > 3 && path.compare(path.size() - 3, 3, ".so") == 0) libraries.insert(path);
+        if (path.find("/boot") != std::string::npos && path.size() > 4 &&
+                (path.compare(path.size() - 4, 4, ".art") == 0 ||
+                 path.compare(path.size() - 4, 4, ".oat") == 0)) images.insert(path);
+    }
+    for (const auto& path : images) std::printf("runtime-image %s\n", path.c_str());
+    for (const auto& path : libraries) std::printf("runtime-mapped-library %s\n", path.c_str());
     std::fflush(stdout);
     auto selected = FreezeManager::getInstance()->getService();
     return selected && IInterface::asBinder(selected) == fakeManager->service &&
