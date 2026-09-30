@@ -959,6 +959,10 @@ public final class SystemServer {
                     new KeyAttestationApplicationIdProviderService(context));
             traceEnd();
 
+            traceBeginAndSlog("StartPicoTransferServer");
+            com.android.server.pico.TransferServer.publish();
+            traceEnd();
+
             traceBeginAndSlog("StartKeyChainSystemService");
             mSystemServiceManager.startService(KeyChainSystemService.class);
             traceEnd();

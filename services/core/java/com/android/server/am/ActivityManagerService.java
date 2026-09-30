@@ -7652,7 +7652,11 @@ public class ActivityManagerService extends IActivityManager.Stub
                 final List<ApplicationInfo> apps = AppGlobals.getPackageManager()
                         .getPersistentApplications(STOCK_PM_FLAGS | matchFlags).getList();
                 for (ApplicationInfo app : apps) {
-                    if (!"android".equals(app.packageName)) {
+                    // PICO: persistent apps on the provisioning deny list of this product/edition
+                    // (e.g. the ToB services on consumer headsets) are not started.
+                    if (!"android".equals(app.packageName)
+                            && !android.pico.utils.PicoSystemConfig.getInstance()
+                                    .notAllowedStartPersistentApp(app.packageName)) {
                         addAppLocked(app, null, false, null /* ABI override */);
                     }
                 }
