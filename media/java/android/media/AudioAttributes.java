@@ -388,12 +388,37 @@ public final class AudioAttributes implements Parcelable {
      */
     public static final int FLAG_NO_SYSTEM_CAPTURE = 0x1 << 12;
 
+    /**
+     * @hide
+     * Flag indicating the audio content has already been spatialized
+     */
+    public static final int FLAG_CONTENT_SPATIALIZED = 0x1 << 14;
+
+    /**
+     * @hide
+     * Flag indicating the audio content is to never be spatialized
+     */
+    public static final int FLAG_NEVER_SPATIALIZE = 0x1 << 15;
+
+    /**
+     * @hide
+     * PICO OS: flag indicating the audio content is to always be spatialized
+     */
+    public static final int FLAG_ALWAYS_SPATIALIZE = 0x1 << 24;
+
+    /**
+     * @hide
+     * PICO OS: flag indicating the audio content is ambisonic
+     */
+    public static final int FLAG_SPATIALIZE_AMBISONIC = 0x1 << 25;
+
     // Note that even though FLAG_MUTE_HAPTIC is stored as a flag bit, it is not here since
     // it is known as a boolean value outside of AudioAttributes.
     private static final int FLAG_ALL = FLAG_AUDIBILITY_ENFORCED | FLAG_SECURE | FLAG_SCO
             | FLAG_BEACON | FLAG_HW_AV_SYNC | FLAG_HW_HOTWORD | FLAG_BYPASS_INTERRUPTION_POLICY
             | FLAG_BYPASS_MUTE | FLAG_LOW_LATENCY | FLAG_DEEP_BUFFER | FLAG_NO_MEDIA_PROJECTION
-            | FLAG_NO_SYSTEM_CAPTURE;
+            | FLAG_NO_SYSTEM_CAPTURE | FLAG_CONTENT_SPATIALIZED | FLAG_NEVER_SPATIALIZE
+            | FLAG_ALWAYS_SPATIALIZE | FLAG_SPATIALIZE_AMBISONIC;
     private final static int FLAG_ALL_PUBLIC = FLAG_AUDIBILITY_ENFORCED |
             FLAG_HW_AV_SYNC | FLAG_LOW_LATENCY;
 
@@ -552,6 +577,97 @@ public final class AudioAttributes implements Parcelable {
         return ALLOW_CAPTURE_BY_ALL;
     }
 
+    /**
+     * @hide
+     * Return true if the audio content associated with these attributes has already been
+     * spatialized, that is it has already been processed to offer a binaural or transaural
+     * immersive audio experience.
+     * @return {@code true} if the content has been processed
+     */
+    public boolean isContentSpatialized() {
+        return (mFlags & FLAG_CONTENT_SPATIALIZED) != 0;
+    }
+
+    /** @hide */
+    @IntDef(flag = false, value = {
+            SPATIALIZATION_BEHAVIOR_AUTO,
+            SPATIALIZATION_BEHAVIOR_NEVER,
+            SPATIALIZATION_BEHAVIOR_ALWAYS,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface SpatializationBehavior {};
+
+    /**
+     * @hide
+     * Constant indicating the audio content associated with these attributes will follow the
+     * default platform behavior with regards to which content will be spatialized or not.
+     * @see #getSpatializationBehavior()
+     * @see Spatializer
+     */
+    public static final int SPATIALIZATION_BEHAVIOR_AUTO = 0;
+
+    /**
+     * @hide
+     * Constant indicating the audio content associated with these attributes should never
+     * be spatialized.
+     * @see #getSpatializationBehavior()
+     * @see Spatializer
+     */
+    public static final int SPATIALIZATION_BEHAVIOR_NEVER = 1;
+
+    /**
+     * @hide
+     * PICO OS: constant indicating the audio content associated with these attributes should
+     * always be spatialized.
+     * @see #getSpatializationBehavior()
+     */
+    public static final int SPATIALIZATION_BEHAVIOR_ALWAYS = 100;
+
+    /**
+     * @hide
+     * Return the behavior affecting whether spatialization will be used.
+     * @return the spatialization behavior
+     */
+    public @SpatializationBehavior int getSpatializationBehavior() {
+        if ((mFlags & FLAG_NEVER_SPATIALIZE) != 0) {
+            return SPATIALIZATION_BEHAVIOR_NEVER;
+        }
+        if ((mFlags & FLAG_ALWAYS_SPATIALIZE) != 0) {
+            return SPATIALIZATION_BEHAVIOR_ALWAYS;
+        }
+        return SPATIALIZATION_BEHAVIOR_AUTO;
+    }
+
+    /** @hide */
+    @IntDef(flag = false, value = {
+            SPATIALIZATION_TYPE_AUDIO_CHANNELS,
+            SPATIALIZATION_TYPE_AMBISONIC,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface SpatialAudioType {};
+
+    /**
+     * @hide
+     * PICO OS: the audio content is made of audio channels.
+     */
+    public static final int SPATIALIZATION_TYPE_AUDIO_CHANNELS = 0;
+
+    /**
+     * @hide
+     * PICO OS: the audio content is ambisonic.
+     */
+    public static final int SPATIALIZATION_TYPE_AMBISONIC = 1;
+
+    /**
+     * @hide
+     * PICO OS: return the type of the audio content to spatialize.
+     * @return the spatialization type
+     */
+    public @SpatialAudioType int getSpatializationType() {
+        return ((mFlags & FLAG_SPATIALIZE_AMBISONIC) == FLAG_SPATIALIZE_AMBISONIC)
+                ? SPATIALIZATION_TYPE_AMBISONIC : SPATIALIZATION_TYPE_AUDIO_CHANNELS;
+    }
+
 
     /**
      * Builder class for {@link AudioAttributes} objects.
@@ -580,6 +696,9 @@ public final class AudioAttributes implements Parcelable {
         private boolean mMuteHapticChannels = true;
         private HashSet<String> mTags = new HashSet<String>();
         private Bundle mBundle;
+        private boolean mIsContentSpatialized = false;
+        private int mSpatializationBehavior = SPATIALIZATION_BEHAVIOR_AUTO;
+        private int mSpatializationType = SPATIALIZATION_TYPE_AUDIO_CHANNELS;
 
         /**
          * Constructs a new Builder with the defaults.
@@ -619,6 +738,17 @@ public final class AudioAttributes implements Parcelable {
             aa.mFlags = mFlags;
             if (mMuteHapticChannels) {
                 aa.mFlags |= FLAG_MUTE_HAPTIC;
+            }
+            if (mIsContentSpatialized) {
+                aa.mFlags |= FLAG_CONTENT_SPATIALIZED;
+            }
+            if (mSpatializationBehavior == SPATIALIZATION_BEHAVIOR_NEVER) {
+                aa.mFlags |= FLAG_NEVER_SPATIALIZE;
+            } else if (mSpatializationBehavior == SPATIALIZATION_BEHAVIOR_ALWAYS) {
+                aa.mFlags |= FLAG_ALWAYS_SPATIALIZE;
+            }
+            if (mSpatializationType == SPATIALIZATION_TYPE_AMBISONIC) {
+                aa.mFlags |= FLAG_SPATIALIZE_AMBISONIC;
             }
             aa.mTags = (HashSet<String>) mTags.clone();
             aa.mFormattedTags = TextUtils.join(";", mTags);
@@ -826,6 +956,9 @@ public final class AudioAttributes implements Parcelable {
                     mContentType = attributes.mContentType;
                     mFlags = attributes.mFlags;
                     mMuteHapticChannels = attributes.areHapticChannelsMuted();
+                    mIsContentSpatialized = attributes.isContentSpatialized();
+                    mSpatializationBehavior = attributes.getSpatializationBehavior();
+                    mSpatializationType = attributes.getSpatializationType();
                     mTags = attributes.mTags;
                     mBundle = attributes.mBundle;
                     mSource = attributes.mSource;
@@ -940,6 +1073,56 @@ public final class AudioAttributes implements Parcelable {
          */
         public @NonNull Builder setHapticChannelsMuted(boolean muted) {
             mMuteHapticChannels = muted;
+            return this;
+        }
+
+        /**
+         * @hide
+         * Specifies whether the content has already been processed for spatialization.
+         * If it has, setting this to true will prevent issues such as double-processing.
+         * @param isSpatialized
+         * @return the same Builder instance
+         */
+        public @NonNull Builder setIsContentSpatialized(boolean isSpatialized) {
+            mIsContentSpatialized = isSpatialized;
+            return this;
+        }
+
+        /**
+         * @hide
+         * Sets the behavior affecting whether spatialization will be used.
+         * @param sb the spatialization behavior
+         * @return the same Builder instance
+         *
+         */
+        public @NonNull Builder setSpatializationBehavior(@SpatializationBehavior int sb) {
+            switch (sb) {
+                case SPATIALIZATION_BEHAVIOR_NEVER:
+                case SPATIALIZATION_BEHAVIOR_AUTO:
+                case SPATIALIZATION_BEHAVIOR_ALWAYS:
+                    break;
+                default:
+                    throw new IllegalArgumentException("Invalid spatialization behavior " + sb);
+            }
+            mSpatializationBehavior = sb;
+            return this;
+        }
+
+        /**
+         * @hide
+         * PICO OS: sets the type of the audio content to spatialize.
+         * @param type the spatialization type
+         * @return the same Builder instance
+         */
+        public @NonNull Builder setSpatializationType(@SpatialAudioType int type) {
+            switch (type) {
+                case SPATIALIZATION_TYPE_AUDIO_CHANNELS:
+                case SPATIALIZATION_TYPE_AMBISONIC:
+                    break;
+                default:
+                    throw new IllegalArgumentException("Invalid spatialization type " + type);
+            }
+            mSpatializationType = type;
             return this;
         }
     };

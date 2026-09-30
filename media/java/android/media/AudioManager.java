@@ -737,7 +737,7 @@ public class AudioManager {
     }
 
     @UnsupportedAppUsage
-    private static IAudioService getService()
+    static IAudioService getService()
     {
         if (sService != null) {
             return sService;
@@ -4328,6 +4328,36 @@ public class AudioManager {
          } catch (RemoteException e) {
              throw e.rethrowFromSystemServer();
          }
+    }
+
+    //====================================================================
+    // Immersive audio
+
+    /**
+     * Return a handle to the optional platform's {@link Spatializer}
+     * @return the {@code Spatializer} instance.
+     * @see Spatializer#getImmersiveAudioLevel() to check for the level of support of the effect
+     *   on the platform
+     * {@hide}
+     */
+    public @NonNull Spatializer getSpatializer() {
+        return new Spatializer(this);
+    }
+
+    /**
+     * PICO OS: silences or restores the audio captured by the recording clients of a package.
+     * @param packageName the package whose recordings are affected
+     * @param silenced true to silence the captured audio, false to restore it
+     * @return the AudioSystem status of the operation
+     * {@hide}
+     */
+    public int setRecordSilenced(String packageName, boolean silenced) {
+        final IAudioService service = getService();
+        try {
+            return service.setRecordSilenced(packageName, silenced);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
     }
 
     /** {@hide} */

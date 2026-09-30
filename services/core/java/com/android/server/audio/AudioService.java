@@ -63,6 +63,7 @@ import android.hardware.hdmi.HdmiPlaybackClient;
 import android.hardware.hdmi.HdmiTvClient;
 import android.hardware.usb.UsbManager;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceAttributes;
 import android.media.AudioFocusInfo;
 import android.media.AudioFocusRequest;
 import android.media.AudioFormat;
@@ -79,6 +80,11 @@ import android.media.IAudioService;
 import android.media.IPlaybackConfigDispatcher;
 import android.media.IRecordingConfigDispatcher;
 import android.media.IRingtonePlayer;
+import android.media.ISpatializerCallback;
+import android.media.ISpatializerHeadToSoundStagePoseCallback;
+import android.media.ISpatializerHeadTrackerAvailableCallback;
+import android.media.ISpatializerHeadTrackingModeCallback;
+import android.media.ISpatializerOutputCallback;
 import android.media.IVolumeController;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
@@ -87,6 +93,7 @@ import android.media.MediaPlayer.OnCompletionListener;
 import android.media.MediaPlayer.OnErrorListener;
 import android.media.PlayerBase;
 import android.media.SoundPool;
+import android.media.Spatializer;
 import android.media.VolumePolicy;
 import android.media.audiofx.AudioEffect;
 import android.media.audiopolicy.AudioMix;
@@ -278,6 +285,8 @@ public class AudioService extends IAudioService.Stub
     private static final int MSG_OBSERVE_DEVICES_FOR_ALL_STREAMS = 27;
     private static final int MSG_HDMI_VOLUME_CHECK = 28;
     private static final int MSG_PLAYBACK_CONFIG_CHANGE = 29;
+    private static final int MSG_INIT_SPATIALIZER = 30;
+    private static final int MSG_PERSIST_SPATIAL_AUDIO_DEVICE_SETTINGS = 31;
     // start of messages handled under wakelock
     //   these messages can only be queued, i.e. sent with queueMsgUnderWakeLock(),
     //   and not with sendMsg(..., ..., SENDMSG_QUEUE, ...)
@@ -773,6 +782,8 @@ public class AudioService extends IAudioService.Stub
 
         mDeviceBroker = new AudioDeviceBroker(mContext, this);
 
+        mSpatializerHelper = new SpatializerHelper(this);
+
         // must be called before readPersistedSettings() which needs a valid mStreamVolumeAlias[]
         // array initialized by updateStreamVolumeAlias()
         updateStreamVolumeAlias(false /*updateVolumes*/, TAG);
@@ -819,6 +830,8 @@ public class AudioService extends IAudioService.Stub
             RotationHelper.init(mContext, mAudioHandler);
         }
 
+        mHasSpatializerEffect = SystemProperties.getBoolean("ro.audio.spatializer_enabled", false);
+
         intentFilter.addAction(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION);
         intentFilter.addAction(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
 
@@ -845,6 +858,9 @@ public class AudioService extends IAudioService.Stub
                 mPrescaleAbsoluteVolume[i] = preScale[i];
             }
         }
+
+        queueMsgUnderWakeLock(mAudioHandler, MSG_INIT_SPATIALIZER,
+                0 /*arg1*/, 0 /*arg2*/, null /*obj*/, 0 /*delay*/);
     }
 
     public void systemReady() {
@@ -1064,6 +1080,8 @@ public class AudioService extends IAudioService.Stub
                 }
             }
         }
+
+        mSpatializerHelper.reset(/* featureEnabled */ mHasSpatializerEffect);
 
         onIndicateSystemReady();
         // indicate the end of reconfiguration phase to audio HAL
@@ -5549,6 +5567,15 @@ public class AudioService extends IAudioService.Stub
                     onAccessoryPlugMediaUnmute(msg.arg1);
                     break;
 
+                case MSG_INIT_SPATIALIZER:
+                    onInitSpatializer();
+                    mAudioEventWakeLock.release();
+                    break;
+
+                case MSG_PERSIST_SPATIAL_AUDIO_DEVICE_SETTINGS:
+                    onPersistSpatialAudioDeviceSettings();
+                    break;
+
                 case MSG_PERSIST_MUSIC_ACTIVE_MS:
                     final int musicActiveMs = msg.arg1;
                     Settings.Secure.putIntForUser(mContentResolver,
@@ -6426,6 +6453,7 @@ public class AudioService extends IAudioService.Stub
     static final int LOG_NB_EVENTS_FORCE_USE = 20;
     static final int LOG_NB_EVENTS_VOLUME = 40;
     static final int LOG_NB_EVENTS_DYN_POLICY = 10;
+    static final int LOG_NB_EVENTS_SPATIAL = 30;
 
     final private AudioEventLogger mModeLogger = new AudioEventLogger(LOG_NB_EVENTS_PHONE_STATE,
             "phone state (logged after successfull call to AudioSystem.setPhoneState(int))");
@@ -6442,6 +6470,9 @@ public class AudioService extends IAudioService.Stub
 
     static final AudioEventLogger sVolumeLogger = new AudioEventLogger(LOG_NB_EVENTS_VOLUME,
             "volume changes (logged when command received by AudioService)");
+
+    static final AudioEventLogger sSpatialLogger = new AudioEventLogger(LOG_NB_EVENTS_SPATIAL,
+            "spatial audio");
 
     final private AudioEventLogger mDynPolicyLogger = new AudioEventLogger(LOG_NB_EVENTS_DYN_POLICY,
             "dynamic policy events (logged when command received by AudioService)");
@@ -6538,6 +6569,12 @@ public class AudioService extends IAudioService.Stub
         sForceUseLogger.dump(pw);
         pw.println("\n");
         sVolumeLogger.dump(pw);
+
+        pw.println("\n");
+        pw.println("mHasSpatializerEffect:" + mHasSpatializerEffect + " (effect present)");
+        pw.println("isSpatializerEnabled:" + isSpatializerEnabled() + " (routing dependent)");
+        mSpatializerHelper.dump(pw);
+        sSpatialLogger.dump(pw);
     }
 
     private static String safeMediaVolumeStateToString(int state) {
@@ -7369,6 +7406,287 @@ public class AudioService extends IAudioService.Stub
         int capturePolicy = mPlaybackMonitor.getAllowedCapturePolicy(callingUid);
         Binder.restoreCallingIdentity(identity);
         return capturePolicy;
+    }
+
+    //==========================================================================================
+    private final @NonNull SpatializerHelper mSpatializerHelper;
+    /**
+     * Initialized from property ro.audio.spatializer_enabled
+     * Should only be 1 when the device ships with a Spatializer effect
+     */
+    private final boolean mHasSpatializerEffect;
+    /**
+     * Default value for the spatial audio feature
+     */
+    private static final boolean SPATIAL_AUDIO_ENABLED_DEFAULT = true;
+
+    private void enforceModifyDefaultAudioEffectsPermission() {
+        if (mContext.checkCallingOrSelfPermission(
+                android.Manifest.permission.MODIFY_DEFAULT_AUDIO_EFFECTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            throw new SecurityException("Missing MODIFY_DEFAULT_AUDIO_EFFECTS permission");
+        }
+    }
+
+    /**
+     * Returns the immersive audio level that the platform is capable of
+     * @see Spatializer#getImmersiveAudioLevel()
+     */
+    public int getSpatializerImmersiveAudioLevel() {
+        return mSpatializerHelper.getCapableImmersiveAudioLevel();
+    }
+
+    /** @see Spatializer#isEnabled() */
+    public boolean isSpatializerEnabled() {
+        return mSpatializerHelper.isEnabled();
+    }
+
+    /** @see Spatializer#isAvailable() */
+    public boolean isSpatializerAvailable() {
+        return mSpatializerHelper.isAvailable();
+    }
+
+    /** @see Spatializer#isAvailableForDevice(AudioDeviceAttributes) */
+    public boolean isSpatializerAvailableForDevice(@NonNull AudioDeviceAttributes device)  {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.isAvailableForDevice(Objects.requireNonNull(device));
+    }
+
+    /** @see Spatializer#hasHeadTracker(AudioDeviceAttributes) */
+    public boolean hasHeadTracker(@NonNull AudioDeviceAttributes device) {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.hasHeadTracker(Objects.requireNonNull(device));
+    }
+
+    /** @see Spatializer#setHeadTrackerEnabled(boolean, AudioDeviceAttributes) */
+    public void setHeadTrackerEnabled(boolean enabled, @NonNull AudioDeviceAttributes device) {
+        enforceModifyDefaultAudioEffectsPermission();
+        mSpatializerHelper.setHeadTrackerEnabled(enabled, Objects.requireNonNull(device));
+    }
+
+    /** @see Spatializer#isHeadTrackerEnabled(AudioDeviceAttributes) */
+    public boolean isHeadTrackerEnabled(@NonNull AudioDeviceAttributes device) {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.isHeadTrackerEnabled(Objects.requireNonNull(device));
+    }
+
+    /** @see Spatializer#isHeadTrackerAvailable() */
+    public boolean isHeadTrackerAvailable() {
+        return mSpatializerHelper.isHeadTrackerAvailable();
+    }
+
+    /** @see Spatializer#setSpatializerEnabled(boolean) */
+    public void setSpatializerEnabled(boolean enabled) {
+        enforceModifyDefaultAudioEffectsPermission();
+        mSpatializerHelper.setFeatureEnabled(enabled);
+    }
+
+    /** @see Spatializer#canBeSpatialized() */
+    public boolean canBeSpatialized(
+            @NonNull AudioAttributes attributes, @NonNull AudioFormat format) {
+        Objects.requireNonNull(attributes);
+        Objects.requireNonNull(format);
+        return mSpatializerHelper.canBeSpatialized(attributes, format);
+    }
+
+    /** @see Spatializer.SpatializerInfoDispatcherStub */
+    public void registerSpatializerCallback(
+            @NonNull ISpatializerCallback cb) {
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.registerStateCallback(cb);
+    }
+
+    /** @see Spatializer.SpatializerInfoDispatcherStub */
+    public void unregisterSpatializerCallback(
+            @NonNull ISpatializerCallback cb) {
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.unregisterStateCallback(cb);
+    }
+
+    /** @see Spatializer#SpatializerHeadTrackingDispatcherStub */
+    public void registerSpatializerHeadTrackingCallback(
+            @NonNull ISpatializerHeadTrackingModeCallback cb) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.registerHeadTrackingModeCallback(cb);
+    }
+
+    /** @see Spatializer#SpatializerHeadTrackingDispatcherStub */
+    public void unregisterSpatializerHeadTrackingCallback(
+            @NonNull ISpatializerHeadTrackingModeCallback cb) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.unregisterHeadTrackingModeCallback(cb);
+    }
+
+    /** @see Spatializer.SpatializerHeadTrackerAvailableDispatcherStub */
+    public void registerSpatializerHeadTrackerAvailableCallback(
+            @NonNull ISpatializerHeadTrackerAvailableCallback cb, boolean register) {
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.registerHeadTrackerAvailableCallback(cb, register);
+    }
+
+    /** @see Spatializer#setOnHeadToSoundstagePoseUpdatedListener */
+    public void registerHeadToSoundstagePoseCallback(
+            @NonNull ISpatializerHeadToSoundStagePoseCallback cb) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.registerHeadToSoundstagePoseCallback(cb);
+    }
+
+    /** @see Spatializer#clearOnHeadToSoundstagePoseUpdatedListener */
+    public void unregisterHeadToSoundstagePoseCallback(
+            @NonNull ISpatializerHeadToSoundStagePoseCallback cb) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.unregisterHeadToSoundstagePoseCallback(cb);
+    }
+
+    /** @see Spatializer#getSpatializerCompatibleAudioDevices() */
+    public @NonNull List<AudioDeviceAttributes> getSpatializerCompatibleAudioDevices() {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.getCompatibleAudioDevices();
+    }
+
+    /** @see Spatializer#addSpatializerCompatibleAudioDevice(AudioDeviceAttributes) */
+    public void addSpatializerCompatibleAudioDevice(@NonNull AudioDeviceAttributes ada) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(ada);
+        mSpatializerHelper.addCompatibleAudioDevice(ada);
+    }
+
+    /** @see Spatializer#removeSpatializerCompatibleAudioDevice(AudioDeviceAttributes) */
+    public void removeSpatializerCompatibleAudioDevice(@NonNull AudioDeviceAttributes ada) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(ada);
+        mSpatializerHelper.removeCompatibleAudioDevice(ada);
+    }
+
+    /** @see Spatializer#getSupportedHeadTrackingModes() */
+    public int[] getSupportedHeadTrackingModes() {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.getSupportedHeadTrackingModes();
+    }
+
+    /** @see Spatializer#getHeadTrackingMode() */
+    public int getActualHeadTrackingMode() {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.getActualHeadTrackingMode();
+    }
+
+    /** @see Spatializer#getDesiredHeadTrackingMode() */
+    public int getDesiredHeadTrackingMode() {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.getDesiredHeadTrackingMode();
+    }
+
+    /** @see Spatializer#setGlobalTransform */
+    public void setSpatializerGlobalTransform(@NonNull float[] transform) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(transform);
+        mSpatializerHelper.setGlobalTransform(transform);
+    }
+
+    /** @see Spatializer#recenterHeadTracker() */
+    public void recenterHeadTracker() {
+        enforceModifyDefaultAudioEffectsPermission();
+        mSpatializerHelper.recenterHeadTracker();
+    }
+
+    /** @see Spatializer#setDesiredHeadTrackingMode */
+    public void setDesiredHeadTrackingMode(@Spatializer.HeadTrackingModeSet int mode) {
+        enforceModifyDefaultAudioEffectsPermission();
+        switch(mode) {
+            case Spatializer.HEAD_TRACKING_MODE_DISABLED:
+            case Spatializer.HEAD_TRACKING_MODE_RELATIVE_WORLD:
+            case Spatializer.HEAD_TRACKING_MODE_RELATIVE_DEVICE:
+                break;
+            default:
+                return;
+        }
+        mSpatializerHelper.setDesiredHeadTrackingMode(mode);
+    }
+
+    /** @see Spatializer#setEffectParameter */
+    public void setSpatializerParameter(int key, @NonNull byte[] value) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(value);
+        mSpatializerHelper.setEffectParameter(key, value);
+    }
+
+    /** @see Spatializer#getEffectParameter */
+    public void getSpatializerParameter(int key, @NonNull byte[] value) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(value);
+        mSpatializerHelper.getEffectParameter(key, value);
+    }
+
+    /** @see Spatializer#getOutput */
+    public int getSpatializerOutput() {
+        enforceModifyDefaultAudioEffectsPermission();
+        return mSpatializerHelper.getOutput();
+    }
+
+    /** @see Spatializer#setOnSpatializerOutputChangedListener */
+    public void registerSpatializerOutputCallback(ISpatializerOutputCallback cb) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.registerSpatializerOutputCallback(cb);
+    }
+
+    /** @see Spatializer#clearOnSpatializerOutputChangedListener */
+    public void unregisterSpatializerOutputCallback(ISpatializerOutputCallback cb) {
+        enforceModifyDefaultAudioEffectsPermission();
+        Objects.requireNonNull(cb);
+        mSpatializerHelper.unregisterSpatializerOutputCallback(cb);
+    }
+
+    void onInitSpatializer() {
+        final String settings = Settings.Secure.getStringForUser(mContentResolver,
+                Settings.Secure.SPATIAL_AUDIO_ENABLED, UserHandle.USER_CURRENT);
+        if (settings == null) {
+            Log.e(TAG, "error reading spatial audio device settings");
+        } else {
+            Log.v(TAG, "restoring spatial audio device settings: " + settings);
+            mSpatializerHelper.setSADeviceSettings(settings);
+        }
+        mSpatializerHelper.init(/*effectExpected*/ mHasSpatializerEffect);
+        mSpatializerHelper.setFeatureEnabled(mHasSpatializerEffect);
+    }
+
+    /**
+     * post a message to persist the spatial audio device settings.
+     * Message is delayed by 1s on purpose in case of successive changes in quick succession (at
+     * init time for instance)
+     * Note this method is made public to work around a Mockito bug where it needs to be public
+     * in order to be mocked by a test a the same package
+     * (see https://code.google.com/archive/p/mockito/issues/127)
+     */
+    public void persistSpatialAudioDeviceSettings() {
+        sendMsg(mAudioHandler,
+                MSG_PERSIST_SPATIAL_AUDIO_DEVICE_SETTINGS,
+                SENDMSG_REPLACE, /*arg1*/ 0, /*arg2*/ 0, TAG,
+                /*delay*/ 1000);
+    }
+
+    void onPersistSpatialAudioDeviceSettings() {
+        final String settings = mSpatializerHelper.getSADeviceSettings();
+        Log.v(TAG, "saving spatial audio device settings: " + settings);
+        boolean res = Settings.Secure.putStringForUser(mContentResolver,
+                Settings.Secure.SPATIAL_AUDIO_ENABLED,
+                settings, UserHandle.USER_CURRENT);
+        if (!res) {
+            Log.e(TAG, "error saving spatial audio device settings: " + settings);
+        }
+    }
+
+    //==========================================================================================
+    /**
+     * PICO OS: silences or restores the audio captured by the recording clients of a package.
+     * @see AudioManager#setRecordSilenced(String, boolean)
+     */
+    public int setRecordSilenced(String packageName, boolean silenced) {
+        return AudioSystem.setRecordSilenced(packageName, silenced);
     }
 
     //======================

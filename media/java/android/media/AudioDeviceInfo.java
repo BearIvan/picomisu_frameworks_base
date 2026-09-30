@@ -149,6 +149,35 @@ public final class AudioDeviceInfo {
             TYPE_AUX_LINE,
             TYPE_IP,
             TYPE_BUS,
+            TYPE_HEARING_AID,
+            TYPE_BUILTIN_MIC,
+            TYPE_FM_TUNER,
+            TYPE_TV_TUNER}
+    )
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface AudioDeviceType {}
+
+    /** @hide */
+    @IntDef(flag = false, prefix = "TYPE", value = {
+            TYPE_BUILTIN_EARPIECE,
+            TYPE_BUILTIN_SPEAKER,
+            TYPE_WIRED_HEADSET,
+            TYPE_WIRED_HEADPHONES,
+            TYPE_BLUETOOTH_SCO,
+            TYPE_BLUETOOTH_A2DP,
+            TYPE_HDMI,
+            TYPE_DOCK,
+            TYPE_USB_ACCESSORY,
+            TYPE_USB_DEVICE,
+            TYPE_USB_HEADSET,
+            TYPE_TELEPHONY,
+            TYPE_LINE_ANALOG,
+            TYPE_HDMI_ARC,
+            TYPE_LINE_DIGITAL,
+            TYPE_FM,
+            TYPE_AUX_LINE,
+            TYPE_IP,
+            TYPE_BUS,
             TYPE_HEARING_AID }
     )
     @Retention(RetentionPolicy.SOURCE)

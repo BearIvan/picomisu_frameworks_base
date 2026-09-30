@@ -18,6 +18,8 @@ package android.media;
 
 import android.bluetooth.BluetoothDevice;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceAttributes;
+import android.media.AudioFormat;
 import android.media.AudioFocusInfo;
 import android.media.AudioPlaybackConfiguration;
 import android.media.AudioRecordingConfiguration;
@@ -28,6 +30,11 @@ import android.media.IAudioServerStateDispatcher;
 import android.media.IPlaybackConfigDispatcher;
 import android.media.IRecordingConfigDispatcher;
 import android.media.IRingtonePlayer;
+import android.media.ISpatializerCallback;
+import android.media.ISpatializerHeadTrackerAvailableCallback;
+import android.media.ISpatializerHeadTrackingModeCallback;
+import android.media.ISpatializerHeadToSoundStagePoseCallback;
+import android.media.ISpatializerOutputCallback;
 import android.media.IVolumeController;
 import android.media.IVolumeController;
 import android.media.PlayerBase;
@@ -265,6 +272,71 @@ interface IAudioService {
     int setAllowedCapturePolicy(in int capturePolicy);
 
     int getAllowedCapturePolicy();
+
+    int getSpatializerImmersiveAudioLevel();
+
+    boolean isSpatializerEnabled();
+
+    boolean isSpatializerAvailable();
+
+    boolean isSpatializerAvailableForDevice(in AudioDeviceAttributes device);
+
+    boolean hasHeadTracker(in AudioDeviceAttributes device);
+
+    void setHeadTrackerEnabled(boolean enabled, in AudioDeviceAttributes device);
+
+    boolean isHeadTrackerEnabled(in AudioDeviceAttributes device);
+
+    boolean isHeadTrackerAvailable();
+
+    void registerSpatializerHeadTrackerAvailableCallback(
+            in ISpatializerHeadTrackerAvailableCallback cb, boolean register);
+
+    void setSpatializerEnabled(boolean enabled);
+
+    boolean canBeSpatialized(in AudioAttributes aa, in AudioFormat af);
+
+    void registerSpatializerCallback(in ISpatializerCallback cb);
+
+    void unregisterSpatializerCallback(in ISpatializerCallback cb);
+
+    void registerSpatializerHeadTrackingCallback(in ISpatializerHeadTrackingModeCallback cb);
+
+    void unregisterSpatializerHeadTrackingCallback(in ISpatializerHeadTrackingModeCallback cb);
+
+    void registerHeadToSoundstagePoseCallback(in ISpatializerHeadToSoundStagePoseCallback cb);
+
+    void unregisterHeadToSoundstagePoseCallback(in ISpatializerHeadToSoundStagePoseCallback cb);
+
+    List<AudioDeviceAttributes> getSpatializerCompatibleAudioDevices();
+
+    void addSpatializerCompatibleAudioDevice(in AudioDeviceAttributes ada);
+
+    void removeSpatializerCompatibleAudioDevice(in AudioDeviceAttributes ada);
+
+    void setDesiredHeadTrackingMode(int mode);
+
+    int getDesiredHeadTrackingMode();
+
+    int[] getSupportedHeadTrackingModes();
+
+    int getActualHeadTrackingMode();
+
+    oneway void setSpatializerGlobalTransform(in float[] transform);
+
+    oneway void recenterHeadTracker();
+
+    void setSpatializerParameter(int key, in byte[] value);
+
+    void getSpatializerParameter(int key, inout byte[] value);
+
+    int getSpatializerOutput();
+
+    void registerSpatializerOutputCallback(in ISpatializerOutputCallback cb);
+
+    void unregisterSpatializerOutputCallback(in ISpatializerOutputCallback cb);
+
+    int setRecordSilenced(String packageName, boolean silenced);
 
     // WARNING: read warning at top of file, new methods that need to be used by native
     // code via IAudioManager.h need to be added to the top section.

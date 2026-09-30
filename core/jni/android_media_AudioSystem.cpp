@@ -2248,6 +2248,36 @@ android_media_AudioSystem_setRttEnabled(JNIEnv *env, jobject thiz, jboolean enab
     return (jint) check_AudioSystem_Command(AudioSystem::setRttEnabled(enabled));
 }
 
+// PICO OS 5.13.7 backports the Android 13 spatializer and a per-package record silencing
+// control into its native audio policy service. The factory libandroid_runtime forwards
+// these three methods to AudioSystem::setRecordSilenced(), AudioSystem::getSpatializer()
+// and AudioSystem::canBeSpatialized() of the PICO libaudioclient. The Android 10
+// libaudioclient and audio policy service of this build have neither a spatializer nor
+// these entry points, so the methods report the factory results for an audio policy
+// service without them: the request is not supported, no ISpatializer interface is
+// returned and no playback context can be spatialized.
+static jint
+android_media_AudioSystem_setRecordSilenced(JNIEnv *env, jobject thiz, jstring packageName,
+                                           jboolean silenced)
+{
+    ALOGW("setRecordSilenced(silenced=%d): not supported by the audio policy service",
+          silenced);
+    return (jint) check_AudioSystem_Command(INVALID_OPERATION);
+}
+
+static jobject
+android_media_AudioSystem_getSpatializer(JNIEnv *env, jobject thiz, jobject jISpatializerCallback)
+{
+    return nullptr;
+}
+
+static jboolean
+android_media_AudioSystem_canBeSpatialized(JNIEnv *env, jobject thiz, jobject jaa,
+                                           jobject jFormat, jobjectArray jDeviceArray)
+{
+    return false;
+}
+
 // ----------------------------------------------------------------------------
 
 static const JNINativeMethod gMethods[] = {
@@ -2325,6 +2355,15 @@ static const JNINativeMethod gMethods[] = {
     {"getHwOffloadEncodingFormatsSupportedForA2DP", "(Ljava/util/ArrayList;)I",
                     (void*)android_media_AudioSystem_getHwOffloadEncodingFormatsSupportedForA2DP},
     {"setAllowedCapturePolicy", "(II)I", (void *)android_media_AudioSystem_setAllowedCapturePolicy},
+    {"setRecordSilenced", "(Ljava/lang/String;Z)I",
+            (void *)android_media_AudioSystem_setRecordSilenced},
+    {"nativeGetSpatializer",
+            "(Landroid/media/INativeSpatializerCallback;)Landroid/os/IBinder;",
+            (void *)android_media_AudioSystem_getSpatializer},
+    {"canBeSpatialized",
+            "(Landroid/media/AudioAttributes;Landroid/media/AudioFormat;"
+            "[Landroid/media/AudioDeviceAttributes;)Z",
+            (void *)android_media_AudioSystem_canBeSpatialized},
     {"setRttEnabled",       "(Z)I",     (void *)android_media_AudioSystem_setRttEnabled},
 };
 

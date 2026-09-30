@@ -17,6 +17,7 @@
 package android.media;
 
 import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.annotation.TestApi;
 import android.annotation.UnsupportedAppUsage;
 import android.bluetooth.BluetoothCodecConfig;
@@ -24,6 +25,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.audiofx.AudioEffect;
 import android.media.audiopolicy.AudioMix;
+import android.os.IBinder;
 import android.util.Log;
 
 import java.util.ArrayList;
@@ -1048,6 +1050,47 @@ public class AudioSystem
      * @see AudioManager#setAllowedCapturePolicy()
      */
     public static native int setAllowedCapturePolicy(int uid, int flags);
+
+    /**
+     * PICO OS: silences or restores the audio captured by the recording clients of a package
+     * in the audio policy service.
+     * @see AudioManager#setRecordSilenced(String, boolean)
+     */
+    public static native int setRecordSilenced(String packageName, boolean silenced);
+
+    /**
+     * Get the ISpatializer interface from the audio policy service.
+     * The audio policy service will reject the request if an interface was already acquired
+     * and previous owner did not die or call ISpatializer.release().
+     * @param callback the callback to receive state updates if the ISpatializer
+     *        interface is acquired.
+     * @return the ISpatializer interface made available to control the
+     *        platform spatializer
+     */
+    @Nullable
+    public static ISpatializer getSpatializer(INativeSpatializerCallback callback) {
+        return ISpatializer.Stub.asInterface(nativeGetSpatializer(callback));
+    }
+    private static native IBinder nativeGetSpatializer(INativeSpatializerCallback callback);
+
+    /**
+     * Queries if some kind of spatialization will be performed if the audio playback context
+     * described by the provided arguments is present.
+     * The context is made of:
+     * - The audio attributes describing the playback use case.
+     * - The audio configuration describing the audio format, channels, sampling rate ...
+     * - The devices describing the sink audio device selected for playback.
+     * All arguments are optional and only the specified arguments are used to match against
+     * supported criteria. For instance, supplying no argument will tell if spatialization is
+     * supported or not in general.
+     * @param attributes audio attributes describing the playback use case
+     * @param format audio configuration describing the audio format, channels, sampling rate...
+     * @param devices the sink audio device selected for playback
+     * @return true if spatialization is enabled for this context, false otherwise.
+     */
+    public static native boolean canBeSpatialized(AudioAttributes attributes,
+                                              AudioFormat format,
+                                              AudioDeviceAttributes[] devices);
 
     static boolean isOffloadSupported(@NonNull AudioFormat format, @NonNull AudioAttributes attr) {
         return native_is_offload_supported(format.getEncoding(), format.getSampleRate(),
