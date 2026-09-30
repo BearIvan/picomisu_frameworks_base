@@ -6151,6 +6151,17 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         }
 
         @Override
+        public android.content.pm.ActivityInfo getPicoTopResumedActivityInfo(int displayId) {
+            synchronized (mGlobalLock) {
+                final ActivityDisplay activityDisplay =
+                        mRootActivityContainer.getActivityDisplay(displayId);
+                final ActivityRecord top =
+                        activityDisplay != null ? activityDisplay.getResumedActivity() : null;
+                return top != null ? top.info : null;
+            }
+        }
+
+        @Override
         public void onLocalVoiceInteractionStarted(IBinder activity,
                 IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor) {
             synchronized (mGlobalLock) {

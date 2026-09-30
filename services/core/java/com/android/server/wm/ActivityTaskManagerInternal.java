@@ -149,6 +149,14 @@ public abstract class ActivityTaskManagerInternal {
      */
     public abstract ComponentName getHomeActivityForUser(int userId);
 
+    /**
+     * PICO (factory IExtActivityTaskManagerInternal.getTopAppExt): info of the resumed activity
+     * on a display, or null.
+     */
+    public android.content.pm.ActivityInfo getPicoTopResumedActivityInfo(int displayId) {
+        return null;
+    }
+
     public abstract void onLocalVoiceInteractionStarted(IBinder callingActivity,
             IVoiceInteractionSession mSession,
             IVoiceInteractor mInteractor);
