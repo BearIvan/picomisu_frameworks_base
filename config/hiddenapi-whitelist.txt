@@ -47,6 +47,14 @@ Landroid/media/AudioProfile;->getChannelMasks()[I
 Landroid/media/AudioProfile;->getEncapsulationType()I
 Landroid/media/AudioProfile;->getFormat()I
 Landroid/media/AudioProfile;->getSampleRates()[I
+Landroid/media/MediaMetadataRetriever;->getVRType(I)I
+Landroid/media/PlayerSpatialHelper;-><init>(Landroid/media/AudioTrack;)V
+Landroid/media/PlayerSpatialHelper;-><init>(Landroid/media/MediaPlayer;)V
+Landroid/media/PlayerSpatialHelper;->isSpatializationEnabled()Z
+Landroid/media/PlayerSpatialHelper;->release()V
+Landroid/media/PlayerSpatialHelper;->setAudioOrientation(FFFF)I
+Landroid/media/PlayerSpatialHelper;->setAudioPose(FFFFFFF)I
+Landroid/media/PlayerSpatialHelper;->setSpatializationEnabled(Z)I
 Landroid/media/Spatializer$OnHeadToSoundstagePoseUpdatedListener;->onHeadToSoundstagePoseUpdated(Landroid/media/Spatializer;[F)V
 Landroid/media/Spatializer$OnHeadTrackerAvailableListener;->onHeadTrackerAvailableChanged(Landroid/media/Spatializer;Z)V
 Landroid/media/Spatializer$OnHeadTrackingModeChangedListener;->onDesiredHeadTrackingModeChanged(Landroid/media/Spatializer;I)V

@@ -92,6 +92,9 @@ public abstract class PlayerBase {
     @GuardedBy("mLock")
     private float mExtVol = 1.0f;
 
+    // PICO: spatial audio state of this player, created by getSpatialHelper()
+    private PlayerSpatialHelperImpl mSpatialHelper;
+
     /**
      * Constructor. Must be given audio attributes, as they are required for AppOps.
      * @param attr non-null audio attributes
@@ -288,6 +291,24 @@ public abstract class PlayerBase {
         } catch (Exception e) {
             // nothing to do here, the object is supposed to be released anyway
         }
+        // PICO: release the spatial audio state of the player
+        if (mSpatialHelper != null) {
+            mSpatialHelper.release();
+            mSpatialHelper = null;
+        }
+    }
+
+    /**
+     * PICO: spatial audio state of this player, created on first use.
+     * Used by {@link PlayerSpatialHelper}.
+     */
+    PlayerSpatialHelperImpl getSpatialHelper() {
+        synchronized (this) {
+            if (mSpatialHelper == null) {
+                mSpatialHelper = new PlayerSpatialHelperImpl(this);
+            }
+        }
+        return mSpatialHelper;
     }
 
     private void updateAppOpsPlayAudio() {

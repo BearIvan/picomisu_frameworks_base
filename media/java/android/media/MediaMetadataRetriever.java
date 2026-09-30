@@ -370,6 +370,21 @@ public class MediaMetadataRetriever implements AutoCloseable {
 
     private native Bitmap _getFrameAtTime(long timeUs, int option, int width, int height);
 
+    /**
+     * PICO: detects the VR layout of the video track. The hardware decoder reports the
+     * VR type of up to {@code detectCount} frames sampled over the track and the most
+     * frequent type is returned.
+     *
+     * @param detectCount the maximum number of sampled frames
+     * @return the VR type reported by the decoder, or -1 if it cannot be detected
+     * @hide
+     */
+    public int getVRType(int detectCount) {
+        return _getVRType(detectCount);
+    }
+
+    private native int _getVRType(int detectCount);
+
     public static final class BitmapParams {
         private Bitmap.Config inPreferredConfig = Bitmap.Config.ARGB_8888;
         private Bitmap.Config outActualConfig = Bitmap.Config.ARGB_8888;

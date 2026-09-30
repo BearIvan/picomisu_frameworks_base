@@ -435,6 +435,20 @@ static jobject android_media_MediaMetadataRetriever_getImageAtIndex(
     return getBitmapFromVideoFrame(env, videoFrame, -1, -1, outColorType);
 }
 
+// PICO: VR type of the video track, detected by the hardware decoder on up to
+// |detectCount| sampled frames (see StagefrightMetadataRetriever::getVRType()).
+static jint android_media_MediaMetadataRetriever_getVRType(
+        JNIEnv *env, jobject thiz, jint detectCount)
+{
+    ALOGV("getVRType: detectCount %d", detectCount);
+    sp<MediaMetadataRetriever> retriever = getRetriever(env, thiz);
+    if (retriever == 0) {
+        jniThrowException(env, "java/lang/IllegalStateException", "No retriever available");
+        return -1;
+    }
+    return retriever->getVRType(detectCount);
+}
+
 static jobject android_media_MediaMetadataRetriever_getThumbnailImageAtIndex(
         JNIEnv *env, jobject thiz, jint index, jobject params, jint targetSize, jint maxPixels)
 {
@@ -719,6 +733,9 @@ static const JNINativeMethod nativeMethods[] = {
             "(ILandroid/media/MediaMetadataRetriever$BitmapParams;)Landroid/graphics/Bitmap;",
             (void *)android_media_MediaMetadataRetriever_getImageAtIndex
         },
+
+        {"_getVRType",      "(I)I",
+                (void *)android_media_MediaMetadataRetriever_getVRType},
 
         {
             "getThumbnailImageAtIndex",
