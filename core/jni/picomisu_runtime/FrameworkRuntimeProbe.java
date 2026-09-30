@@ -298,6 +298,8 @@ public final class FrameworkRuntimeProbe {
                 "appended-aidl-wire-scenarios");
         check(FactoryOnlyAidlFixture.run(System.out) == FactoryOnlyAidlFixture.EXPECTED_LINES,
                 "factory-only-aidl-wire-scenarios");
+        check(FactoryClassPathFixture.run(System.out) == FactoryClassPathFixture.EXPECTED_LINES,
+                "factory-classpath-classes");
         drawSoftwareRouting();
         direct.release();
         initial.release();
