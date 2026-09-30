@@ -104,9 +104,15 @@ oneway interface IBackupAgent {
      *        passed here as a convenience to the agent.
      *
      * @param transportFlags Flags with additional information about transport.
+     *
+     * @param includePaths PICO backup: "domain:path" entries to back up instead of the
+     *        manifest rules, or null.
+     *
+     * @param excludePaths PICO backup: "domain:path" entries to leave out, or null.
      */
     void doFullBackup(in ParcelFileDescriptor data, long quotaBytes, int token,
-            IBackupManager callbackBinder, int transportFlags);
+            IBackupManager callbackBinder, int transportFlags, in List<String> includePaths,
+            in List<String> excludePaths);
 
     /**
      * Estimate how much data a full backup will deliver

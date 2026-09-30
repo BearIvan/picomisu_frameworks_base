@@ -870,6 +870,12 @@ static jint android_os_Binder_getCallingPid()
     return IPCThreadState::self()->getCallingPid();
 }
 
+// PICO OS 5.13.7: a regular (not @CriticalNative) native method in the factory Binder.
+static jint android_os_Binder_getLastFrozenPid(JNIEnv* env, jobject clazz)
+{
+    return IPCThreadState::self()->getLastFrozenPid();
+}
+
 static jint android_os_Binder_getCallingUid()
 {
     return IPCThreadState::self()->getCallingUid();
@@ -962,6 +968,7 @@ static const JNINativeMethod gBinderMethods[] = {
      /* name, signature, funcPtr */
     // @CriticalNative
     { "getCallingPid", "()I", (void*)android_os_Binder_getCallingPid },
+    { "getLastFrozenPid", "()I", (void*)android_os_Binder_getLastFrozenPid },
     // @CriticalNative
     { "getCallingUid", "()I", (void*)android_os_Binder_getCallingUid },
     // @CriticalNative

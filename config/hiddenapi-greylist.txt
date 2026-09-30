@@ -29,6 +29,8 @@ Landroid/app/admin/IDevicePolicyManager$Stub;->TRANSACTION_removeActiveAdmin:I
 Landroid/app/backup/IBackupManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/app/backup/IBackupManager;
 Landroid/app/backup/IFullBackupRestoreObserver$Stub;-><init>()V
 Landroid/app/backup/IRestoreObserver$Stub;-><init>()V
+Landroid/app/FreezeManager;->getService()Landroid/app/IFreezeManager;
+Landroid/app/FreezeManager;->IFreezeManagerSingleton:Landroid/util/Singleton;
 Landroid/app/IActivityController$Stub;-><init>()V
 Landroid/app/IActivityManager$Stub$Proxy;->getConfiguration()Landroid/content/res/Configuration;
 Landroid/app/IActivityManager$Stub$Proxy;->getLaunchedFromUid(Landroid/os/IBinder;)I

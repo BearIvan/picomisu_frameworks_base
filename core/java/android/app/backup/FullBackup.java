@@ -643,7 +643,7 @@ public class FullBackup {
          * BackupAgent internal data token.
          * @return null if the xml domain was invalid.
          */
-        private String getTokenForXmlDomain(String xmlDomain) {
+        String getTokenForXmlDomain(String xmlDomain) {
             if ("root".equals(xmlDomain)) {
                 return FullBackup.ROOT_TREE_TOKEN;
             } else if ("file".equals(xmlDomain)) {
@@ -700,7 +700,7 @@ public class FullBackup {
          * @param domain parsed from xml. Not sanitised before calling this function so may be null.
          * @return The directory relevant to the domain specified.
          */
-        private File getDirectoryForCriteriaDomain(String domain) {
+        File getDirectoryForCriteriaDomain(String domain) {
             if (TextUtils.isEmpty(domain)) {
                 return null;
             }

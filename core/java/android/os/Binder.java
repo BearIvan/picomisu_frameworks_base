@@ -265,6 +265,14 @@ public class Binder implements IBinder {
     public static final native int getCallingPid();
 
     /**
+     * Return the pid of the frozen process whose frozen binder reply the calling thread
+     * received last (PICO OS 5.13.7, used by {@code android.app.FreezeManager}).
+     *
+     * @hide
+     */
+    public static final native int getLastFrozenPid();
+
+    /**
      * Return the Linux uid assigned to the process that sent you the
      * current transaction that is being processed.  This uid can be used with
      * higher-level system services to determine its identity and check

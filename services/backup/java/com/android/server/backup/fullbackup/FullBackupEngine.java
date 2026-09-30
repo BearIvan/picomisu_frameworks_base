@@ -153,7 +153,9 @@ public class FullBackupEngine {
                         mQuota,
                         mToken,
                         backupManagerService.getBackupManagerBinder(),
-                        mTransportFlags);
+                        mTransportFlags,
+                        mExt.getIncludePaths(),
+                        mExt.getExcludePaths());
             } catch (IOException e) {
                 Slog.e(TAG, "Error running full backup for " + mPackage.packageName, e);
             } catch (RemoteException e) {

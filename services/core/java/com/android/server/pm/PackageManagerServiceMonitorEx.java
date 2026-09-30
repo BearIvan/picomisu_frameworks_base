@@ -3,6 +3,7 @@
 
 package com.android.server.pm;
 
+import android.content.pm.IPackageManagerMonitorEx;
 import android.os.Binder;
 
 import com.android.server.pm.permission.PermissionManagerServiceInternal;
@@ -14,7 +15,7 @@ import com.android.server.pm.permission.PermissionManagerServiceInternal;
  *
  * @hide
  */
-public class PackageManagerServiceMonitorEx {
+public class PackageManagerServiceMonitorEx extends IPackageManagerMonitorEx.Stub {
     private PackageManagerService mPackageManagerService;
     /** Never assigned in the factory services either. */
     protected PermissionManagerServiceInternal mPermissionManager;

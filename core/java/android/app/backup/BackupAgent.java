@@ -46,6 +46,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -125,7 +126,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public abstract class BackupAgent extends ContextWrapper {
     private static final String TAG = "BackupAgent";
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
 
     /** @hide */
     public static final int RESULT_SUCCESS = 0;
@@ -543,7 +544,7 @@ public abstract class BackupAgent extends ContextWrapper {
      * is a directory, but only if all the required flags of the include rule are satisfied by
      * the transport.
      */
-    private void applyXmlFiltersAndDoFullBackupForDomain(String packageName, String domainToken,
+    void applyXmlFiltersAndDoFullBackupForDomain(String packageName, String domainToken,
             Map<String, Set<PathWithRequiredFlags>> includeMap,
             ArraySet<PathWithRequiredFlags> filterSet, ArraySet<String> traversalExcludeSet,
             FullBackupDataOutput data) throws IOException {
@@ -780,7 +781,10 @@ public abstract class BackupAgent extends ContextWrapper {
                 }
 
                 // Finally, back this file up (or measure it) before proceeding
-                FullBackup.backupToTar(packageName, domain, null, domainPath, filePath, output);
+                int result = FullBackup.backupToTar(packageName, domain, null, domainPath,
+                        filePath, output);
+                Log.w(TAG, "backupToTar result=" + result + ",domain=" + domain + ",domainPath="
+                        + domainPath + ",filePath=" + filePath);
             }
         }
     }
@@ -789,6 +793,8 @@ public abstract class BackupAgent extends ContextWrapper {
         ArraySet<PathWithRequiredFlags> manifestExcludes, String filePath) {
         for (PathWithRequiredFlags exclude : manifestExcludes) {
             String excludePath = exclude.getPath();
+            Log.w(TAG, "manifestExcludesContainFilePath excludePath=" + excludePath
+                    + ",filePath=" + filePath);
             if (excludePath != null && excludePath.equals(filePath)) {
                 return true;
             }
@@ -958,6 +964,8 @@ public abstract class BackupAgent extends ContextWrapper {
 
     private final IBinder mBinder = new BackupServiceBinder().asBinder();
 
+    IExtBackupAgent mExt = new ExtBackupAgentImpl(this);
+
     /** @hide */
     public void attach(Context context) {
         attachBaseContext(context);
@@ -1056,7 +1064,8 @@ public abstract class BackupAgent extends ContextWrapper {
 
         @Override
         public void doFullBackup(ParcelFileDescriptor data,
-                long quotaBytes, int token, IBackupManager callbackBinder, int transportFlags) {
+                long quotaBytes, int token, IBackupManager callbackBinder, int transportFlags,
+                List<String> includePaths, List<String> excludePaths) {
             // Ensure that we're running with the app's normal permission level
             long ident = Binder.clearCallingIdentity();
 
@@ -1067,8 +1076,8 @@ public abstract class BackupAgent extends ContextWrapper {
             waitForSharedPrefs();
 
             try {
-                BackupAgent.this.onFullBackup(new FullBackupDataOutput(
-                        data, quotaBytes, transportFlags));
+                mExt.onFullBackup(BackupAgent.this, new FullBackupDataOutput(
+                        data, quotaBytes, transportFlags), includePaths, excludePaths);
             } catch (IOException ex) {
                 Log.d(TAG, "onFullBackup (" + BackupAgent.this.getClass().getName() + ") threw", ex);
                 throw new RuntimeException(ex);
