@@ -1924,6 +1924,12 @@
         <enum name="KEYCODE_THUMBS_UP" value="286" />
         <enum name="KEYCODE_THUMBS_DOWN" value="287" />
         <enum name="KEYCODE_PROFILE_SWITCH" value="288" />
+        <!-- PICO headset keys (factory PICO OS 5.13.7 framework-res; InputEventLabels.h). -->
+        <enum name="KEYCODE_LCONTROLLER_HOME" value="901" />
+        <enum name="KEYCODE_RCONTROLLER_HOME" value="902" />
+        <enum name="KEYCODE_DEFINE_CONFIRM" value="1001" />
+        <enum name="KEYCODE_DEFINE_CONTROLLER_CONFIRM" value="1002" />
+        <enum name="KEYCODE_DEFINE_DPINOUT" value="1003" />
     </attr>
 
     <!-- ***************************************************************** -->
