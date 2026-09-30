@@ -4,11 +4,17 @@ package android.content.pm;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.pico.utils.Features;
 import android.pico.utils.PicoSystemConfig;
+import android.util.ArraySet;
 import android.util.Slog;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
- * Derives PICO VR application and activity flags from parsed manifest data.
+ * Derives PICO VR application and activity flags and the 2D virtual-display configuration
+ * from parsed manifest data, and filters the PICO eye/face-tracking permissions.
  * @hide
  */
 public class ExtPackageParserImpl implements IExtPackageParser {
@@ -22,6 +28,9 @@ public class ExtPackageParserImpl implements IExtPackageParser {
     };
     private static String[] VR_TAG_ARRAY = {"com.picovr.type", "pvr.app.type"};
     private static String VR_ACTIVITY_FORCE_RENDER = "forceRenderActivity";
+    /** Packages whose eye-tracking permission request is added implicitly. */
+    public static final List<String> DEF_ADD_ET_PERMISSION =
+            Arrays.asList("com.tobii.usercalibration.neo3");
 
     private PackageParser mBase;
 
@@ -30,101 +39,160 @@ public class ExtPackageParserImpl implements IExtPackageParser {
     }
 
     /**
-     * Applies the factory VR metadata rules. The factory 2D virtual-display
-     * configuration (ExtPackageParserUtils) is not applied here yet.
+     * Applies the factory VR metadata rules and the 2D virtual-display configuration.
+     * The interface flag constants are read through {@code getExt()} as the factory does.
      */
     @Override
-    public PackageParser.Package parseVrFlags(PackageParser.Package pkg) {
-        final IExtApplicationInfo app = pkg.applicationInfo.getExt();
-        boolean vrApp = false;
-        if (pkg.mAppMetaData != null) {
-            for (String tag : VR_TAG_ARRAY) {
-                String type = pkg.mAppMetaData.getString(tag);
-                if (type == null) {
-                    continue;
-                }
-                if (type.equalsIgnoreCase("vr")) {
-                    vrApp = true;
-                    app.setVrAppFlag(IExtApplicationInfo.FLAG_VR_APP);
-                    app.setVrAppFlag(IExtApplicationInfo.FLAG_APPLICATION_HAVE_VR_FLAG);
-                    break;
-                }
-                if (type.equalsIgnoreCase("2d")) {
-                    break;
+    public PackageParser.Package parseVrFlags(PackageParser.Package parsed) {
+        ExtPackageParserUtils.loadVirtualDisplayConfigsFromFiles(false);
+        boolean haveVrAppFlag = false;
+        if (parsed.mAppMetaData != null) {
+            for (int i = 0; i < VR_TAG_ARRAY.length; i++) {
+                String value = parsed.mAppMetaData.getString(VR_TAG_ARRAY[i]);
+                if (value != null) {
+                    if (value.equalsIgnoreCase("vr")) {
+                        haveVrAppFlag = true;
+                        parsed.applicationInfo.getExt().setVrAppFlag(
+                                parsed.applicationInfo.getExt().FLAG_VR_APP);
+                        parsed.applicationInfo.getExt().setVrAppFlag(
+                                parsed.applicationInfo.getExt().FLAG_APPLICATION_HAVE_VR_FLAG);
+                        break;
+                    } else if (value.equalsIgnoreCase("2d")) {
+                        break;
+                    }
                 }
             }
         }
-        if (PicoSystemConfig.getInstance().getPicoWhitelistVrPackages().contains(pkg.packageName)) {
-            vrApp = true;
-            app.setVrAppFlag(IExtApplicationInfo.FLAG_VR_APP);
+        ArraySet<String> whitelistVrApps =
+                PicoSystemConfig.getInstance().getPicoWhitelistVrPackages();
+        if (whitelistVrApps.contains(parsed.packageName)) {
+            haveVrAppFlag = true;
+            parsed.applicationInfo.getExt().setVrAppFlag(
+                    parsed.applicationInfo.getExt().FLAG_VR_APP);
         }
-        for (PackageParser.Activity activity : pkg.activities) {
+        for (PackageParser.Activity activity : parsed.activities) {
             if (activity.className.equals("android.app.AppDetailsActivity")) {
                 break;
             }
-            final IExtActivityInfo ext = activity.info.getExt();
             Bundle metaData = activity.metaData;
             if (activity.info.targetActivity != null) {
-                final int count = pkg.activities.size();
-                for (int i = 0; i < count; i++) {
-                    PackageParser.Activity target = pkg.activities.get(i);
-                    if (activity.info.targetActivity.equals(target.info.name)) {
+                final int NA = parsed.activities.size();
+                for (int i = 0; i < NA; i++) {
+                    PackageParser.Activity t = parsed.activities.get(i);
+                    if (activity.info.targetActivity.equals(t.info.name)) {
                         Slog.w(TAG, "use realActivity: " + activity.info + ", real: "
                                 + activity.info.targetActivity);
-                        metaData = target.metaData;
+                        metaData = t.metaData;
                         break;
                     }
                 }
             }
-            boolean flat = false;
+            boolean have2DFlag = false;
             if (metaData != null) {
-                ext.updateAppFeature(metaData);
-                for (String tag : VR_TAG_ARRAY) {
-                    String type = metaData.getString(tag);
-                    if (type == null) {
-                        continue;
-                    }
-                    if (type.equalsIgnoreCase("vr")) {
-                        app.setVrAppFlag(IExtApplicationInfo.FLAG_VR_APP);
-                        ext.setVrActivity(IExtActivityInfo.FLAG_VR_ACTIVITY);
-                        break;
-                    }
-                    if (type.equalsIgnoreCase("2d")) {
-                        flat = true;
-                        break;
+                activity.info.getExt().updateAppFeature(metaData);
+                for (int i = 0; i < VR_TAG_ARRAY.length; i++) {
+                    String value = metaData.getString(VR_TAG_ARRAY[i]);
+                    if (value != null) {
+                        if (value.equalsIgnoreCase("vr")) {
+                            parsed.applicationInfo.getExt().setVrAppFlag(
+                                    parsed.applicationInfo.getExt().FLAG_VR_APP);
+                            activity.info.getExt().setVrActivity(
+                                    activity.info.getExt().FLAG_VR_ACTIVITY);
+                            break;
+                        } else if (value.equalsIgnoreCase("2d")) {
+                            have2DFlag = true;
+                            break;
+                        }
                     }
                 }
                 if (metaData.getBoolean(VR_ACTIVITY_FORCE_RENDER, false)) {
-                    ext.setVrActivityForceRenderFlag(IExtActivityInfo.FLAG_VR_ACTIVITY_FORCE_RENDER);
+                    activity.info.getExt().setVrActivityForceRenderFlag(
+                            activity.info.getExt().FLAG_VR_ACTIVITY_FORCE_RENDER);
                 }
             }
-            if (!flat) {
+            if (!have2DFlag) {
                 for (PackageParser.ActivityIntentInfo intent : activity.intents) {
                     for (String category : VR_CATEGORY_ARRAY) {
                         if (intent.hasCategory(category) && intent.hasAction(Intent.ACTION_MAIN)) {
-                            app.setVrAppFlag(IExtApplicationInfo.FLAG_VR_APP);
-                            ext.setVrActivity(IExtActivityInfo.FLAG_VR_ACTIVITY);
+                            parsed.applicationInfo.getExt().setVrAppFlag(
+                                    parsed.applicationInfo.getExt().FLAG_VR_APP);
+                            activity.info.getExt().setVrActivity(
+                                    activity.info.getExt().FLAG_VR_ACTIVITY);
                         }
                     }
                 }
                 if (activity.info.requestedVrComponent != null) {
-                    app.setVrAppFlag(IExtApplicationInfo.FLAG_VR_APP);
-                    ext.setVrActivity(IExtActivityInfo.FLAG_VR_ACTIVITY);
+                    parsed.applicationInfo.getExt().setVrAppFlag(
+                            parsed.applicationInfo.getExt().FLAG_VR_APP);
+                    activity.info.getExt().setVrActivity(
+                            activity.info.getExt().FLAG_VR_ACTIVITY);
                 }
             }
-            if (!ext.isVrActivity() && !flat && vrApp) {
-                ext.setVrActivity(IExtActivityInfo.FLAG_VR_ACTIVITY);
+            if (!activity.info.getExt().isVrActivity() && !have2DFlag && haveVrAppFlag) {
+                activity.info.getExt().setVrActivity(activity.info.getExt().FLAG_VR_ACTIVITY);
             }
-            if (!ext.isVrActivity()) {
-                app.setVrAppFlag(IExtApplicationInfo.FLAG_VR_APP_HAVE_2D_ACTIVITY);
+            if (!activity.info.getExt().isVrActivity()) {
+                parsed.applicationInfo.getExt().setVrAppFlag(
+                        parsed.applicationInfo.getExt().FLAG_VR_APP_HAVE_2D_ACTIVITY);
             }
             for (PackageParser.ActivityIntentInfo intent : activity.intents) {
                 if (intent.hasCategory(Intent.CATEGORY_LAUNCHER)
                         && intent.hasAction(Intent.ACTION_MAIN)) {
-                    app.setLaunchActivityOrientation(activity.info.screenOrientation);
+                    parsed.applicationInfo.getExt().setLaunchActivityOrientation(
+                            activity.info.screenOrientation);
                 }
             }
         }
-        return pkg;
+        ExtPackageParserUtils.applyVirtualDisplayConfigToApp(parsed.applicationInfo);
+        return parsed;
+    }
+
+    /**
+     * Drops the face- and eye-tracking permission definitions of the platform package when
+     * the device lacks the feature, and adds the eye-tracking permission request to the
+     * packages of {@link #DEF_ADD_ET_PERMISSION} when it is supported.
+     */
+    @Override
+    public void parseBaseApkCommon(PackageParser.Package pkg) {
+        if (!Features.supportFTFeature()) {
+            removePermission(pkg, "com.picovr.permission.FACE_TRACKING");
+        }
+        if (!Features.supportETFeature()) {
+            removePermission(pkg, "com.picovr.permission.EYE_TRACKING");
+        } else if (DEF_ADD_ET_PERMISSION.contains(pkg.packageName)
+                && pkg.requestedPermissions.indexOf("com.picovr.permission.EYE_TRACKING") == -1) {
+            pkg.requestedPermissions.add("com.picovr.permission.EYE_TRACKING");
+            Slog.w(TAG, "add permission: com.picovr.permission.EYE_TRACKING, for pkg: "
+                    + pkg.packageName);
+        }
+    }
+
+    /**
+     * Removes the permission {@code permissionName} declared by the platform package and,
+     * when it has one, its permission group.
+     */
+    private void removePermission(PackageParser.Package pkg, String permissionName) {
+        if (!"android".equals(pkg.packageName)) {
+            return;
+        }
+        for (int i = pkg.permissions.size() - 1; i >= 0; i--) {
+            PackageParser.Permission permission = pkg.permissions.get(i);
+            if (permissionName.equals(permission.info.name)) {
+                pkg.permissions.remove(i);
+                Slog.w(TAG, "removePermission: " + permission + ", info.group: "
+                        + permission.info.group);
+                if (permission.info.group != null) {
+                    for (int j = pkg.permissionGroups.size() - 1; j >= 0; j--) {
+                        PackageParser.PermissionGroup group = pkg.permissionGroups.get(j);
+                        if (group.info.name.equals(permission.info.group)) {
+                            pkg.permissionGroups.remove(j);
+                            Slog.w(TAG, "removePermissionGroup: " + group);
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
     }
 }

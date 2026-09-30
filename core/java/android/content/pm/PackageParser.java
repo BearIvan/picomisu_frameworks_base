@@ -2541,6 +2541,8 @@ public class PackageParser {
             adjustPackageToBeUnresizeableAndUnpipable(pkg);
         }
 
+        // PICO eye/face-tracking permission filter.
+        mExt.parseBaseApkCommon(pkg);
         return pkg;
     }
 

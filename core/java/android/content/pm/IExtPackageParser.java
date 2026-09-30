@@ -5,10 +5,11 @@ package android.content.pm;
 import com.pico.util.IExtBase;
 
 /**
- * PICO package-parser extension. The factory ET/FT permission filter
- * (parseBaseApkCommon) is not ported yet.
+ * PICO package-parser extension: VR flags, 2D virtual-display configuration and the
+ * eye/face-tracking permission filter.
  * @hide
  */
 public interface IExtPackageParser extends IExtBase {
+    void parseBaseApkCommon(PackageParser.Package pkg);
     PackageParser.Package parseVrFlags(PackageParser.Package pkg);
 }

@@ -37,7 +37,7 @@ public final class FrameworkRuntimeProbe {
     private static native int nativeDisplayFlags(long transaction, android.os.IBinder token);
 
     /** Number of "vr-policy" lines compared with the factory framework. */
-    private static final int VR_POLICY_LINES = 60;
+    private static final int VR_POLICY_LINES = 78;
 
     /** Records the canvas passed to View.draw; allocated without running View constructors. */
     static final class RecordingView extends View {

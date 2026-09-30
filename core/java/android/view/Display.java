@@ -89,6 +89,7 @@ public final class Display {
 
     // Temporary display metrics structure used for compatibility mode.
     private final DisplayMetrics mTempMetrics = new DisplayMetrics();
+    private final IExtDisplay mExt = new ExtDisplayImpl(this);
 
     // We cache the app width and height properties briefly between calls
     // to getHeight() and getWidth() to ensure that applications perceive
@@ -443,6 +444,14 @@ public final class Display {
         mAddress = displayInfo.address;
         mOwnerUid = displayInfo.ownerUid;
         mOwnerPackageName = displayInfo.ownerPackageName;
+    }
+
+    /**
+     * Returns the PICO display extension.
+     * @hide
+     */
+    public IExtDisplay getExt() {
+        return mExt;
     }
 
     /**

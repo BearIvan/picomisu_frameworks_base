@@ -475,7 +475,6 @@ public final class ViewRootImpl implements ViewParent,
     // Surface can never be reassigned or cleared (use Surface.clear()).
     @UnsupportedAppUsage
     public final Surface mSurface = new Surface();
-    private final IExtViewRootImpl mExt = new ExtViewRootImplImpl(this);
     private final SurfaceControl mSurfaceControl = new SurfaceControl();
 
     /**
@@ -675,6 +674,8 @@ public final class ViewRootImpl implements ViewParent,
         }
 
         loadSystemProperties();
+        // PICO: application resources of 2D virtual displays.
+        mExt.adjustApplicationContextResources();
     }
 
     public static void addFirstDrawHandler(Runnable callback) {
@@ -1010,6 +1011,8 @@ public final class ViewRootImpl implements ViewParent,
                 mFirstInputStage = nativePreImeStage;
                 mFirstPostImeInputStage = earlyPostImeStage;
                 mPendingInputEventQueueLengthCounterName = "aq:pending:" + counterSuffix;
+                // PICO: native shell client of input-method windows.
+                mExt.onSetView(mView, attrs);
             }
         }
     }
@@ -3502,7 +3505,18 @@ public final class ViewRootImpl implements ViewParent,
         }
 
         try {
-            boolean canUseAsync = draw(fullRedrawNeeded);
+            boolean canUseAsync = false;
+            if (mExt.isSkipDrawVrActivity()) {
+                // PICO VR activity: the frame is not synced to the window (ThreadedRenderer
+                // skips syncAndDrawFrame), so no frame-complete callback will come.
+                Log.w(TAG, "Will skip draw vr actvity :" + getTitle());
+                draw(fullRedrawNeeded);
+                if (mAttachInfo.mThreadedRenderer != null) {
+                    mAttachInfo.mThreadedRenderer.setFrameCompleteCallback(null);
+                }
+            } else {
+                canUseAsync = draw(fullRedrawNeeded);
+            }
             if (usingAsyncReport && !canUseAsync) {
                 mAttachInfo.mThreadedRenderer.setFrameCompleteCallback(null);
                 usingAsyncReport = false;
@@ -4467,6 +4481,8 @@ public final class ViewRootImpl implements ViewParent,
         }
 
         updateForceDarkMode();
+        // PICO: application resources of 2D virtual displays.
+        mExt.adjustApplicationContextResources();
     }
 
     /**
@@ -7373,6 +7389,8 @@ public final class ViewRootImpl implements ViewParent,
             mAdded = false;
         }
         WindowManagerGlobal.getInstance().doRemoveView(this);
+        // PICO: destroy the native shell client of the window.
+        mExt.onDoDie();
     }
 
     public void requestUpdateConfiguration(Configuration config) {
@@ -7948,6 +7966,9 @@ public final class ViewRootImpl implements ViewParent,
     }
     final InvalidateOnAnimationRunnable mInvalidateOnAnimationRunnable =
             new InvalidateOnAnimationRunnable();
+
+    // PICO extension; initialized after the other fields as in the factory framework.
+    private final IExtViewRootImpl mExt = new ExtViewRootImplImpl(this);
 
     public void dispatchInvalidateDelayed(View view, long delayMilliseconds) {
         Message msg = mHandler.obtainMessage(MSG_INVALIDATE, view);

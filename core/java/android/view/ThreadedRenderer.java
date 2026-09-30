@@ -677,7 +677,12 @@ public final class ThreadedRenderer extends HardwareRenderer {
             attachInfo.mPendingAnimatingRenderNodes = null;
         }
 
-        int syncResult = syncAndDrawFrame(choreographer.mFrameInfo);
+        int syncResult = 0;
+        // PICO: a VR activity window records its display list but does not draw it into the
+        // window surface.
+        if (!attachInfo.mViewRootImpl.getExt().isSkipDrawVrActivity()) {
+            syncResult = syncAndDrawFrame(choreographer.mFrameInfo);
+        }
         if ((syncResult & SYNC_LOST_SURFACE_REWARD_IF_FOUND) != 0) {
             setEnabled(false);
             attachInfo.mViewRootImpl.mSurface.release();

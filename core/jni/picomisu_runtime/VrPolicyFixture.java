@@ -13,11 +13,16 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.IExtActivityInfo;
 import android.content.pm.IExtApplicationInfo;
+import android.content.pm.ExtPackageParserImpl;
+import android.content.pm.ExtPackageParserUtils;
 import android.content.pm.IExtPackageParser;
 import android.content.pm.PackageParser;
+import android.content.pm.PermissionGroupInfo;
+import android.content.pm.PermissionInfo;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Parcel;
+import android.pico.utils.Features;
 import android.pico.utils.PicoSystemConfig;
 import android.util.ArrayMap;
 import android.view.Display;
@@ -26,6 +31,8 @@ import android.view.IExtViewRootImpl;
 import android.view.View;
 import android.view.ViewRootImpl;
 import android.view.WindowManager;
+
+import org.json.JSONObject;
 
 import java.io.PrintStream;
 import java.lang.reflect.Constructor;
@@ -57,6 +64,8 @@ public final class VrPolicyFixture {
         activityInfo();
         applicationInfo();
         packageParser();
+        packageParserBase();
+        virtualDisplayConfig();
         activityThreadAndViewRoot();
         return sLines;
     }
@@ -318,6 +327,172 @@ public final class VrPolicyFixture {
         PackageParser.Package missing = new PackageParser.Package("org.picomisu.missing");
         activity(missing, "org.picomisu.missing.Alias").info.targetActivity = "org.picomisu.missing.None";
         parsed(parser, "missing-target", missing);
+    }
+
+    private static String names(PackageParser.Package pkg) {
+        StringBuilder text = new StringBuilder();
+        for (PackageParser.Permission permission : pkg.permissions) {
+            text.append(permission.info.name).append(',');
+        }
+        text.append('|');
+        for (PackageParser.PermissionGroup group : pkg.permissionGroups) {
+            text.append(group.info.name).append(',');
+        }
+        text.append('|').append(pkg.requestedPermissions);
+        return text.toString();
+    }
+
+    private static PackageParser.Package permissions(String packageName) {
+        PackageParser.Package pkg = new PackageParser.Package(packageName);
+        String[][] declared = {
+            {"com.picovr.permission.FACE_TRACKING", "org.picomisu.group.FACE"},
+            {"com.picovr.permission.EYE_TRACKING", "org.picomisu.group.EYE"},
+            {"org.picomisu.permission.OTHER", null},
+        };
+        for (String[] item : declared) {
+            PermissionInfo info = new PermissionInfo();
+            info.name = item[0];
+            info.group = item[1];
+            pkg.permissions.add(new PackageParser.Permission(pkg, info));
+        }
+        for (String name : new String[] {"org.picomisu.group.EYE", "org.picomisu.group.FACE",
+                "org.picomisu.group.OTHER"}) {
+            PermissionGroupInfo info = new PermissionGroupInfo();
+            info.name = name;
+            pkg.permissionGroups.add(new PackageParser.PermissionGroup(pkg, info));
+        }
+        return pkg;
+    }
+
+    private static void baseApk(IExtPackageParser parser, String name, PackageParser.Package pkg) {
+        String result;
+        try {
+            parser.parseBaseApkCommon(pkg);
+            result = names(pkg);
+        } catch (Throwable e) {
+            result = "exception:" + e.getClass().getName();
+        }
+        emit("parser.base." + name, result);
+    }
+
+    /** ET/FT permission filter of the factory PackageParser.parseBaseApkCommon hook. */
+    private static void packageParserBase() throws Exception {
+        PackageParser packageParser = new PackageParser();
+        Field field = PackageParser.class.getDeclaredField("mExt");
+        field.setAccessible(true);
+        IExtPackageParser parser = (IExtPackageParser) field.get(packageParser);
+        emit("parser.base.features", Features.supportFTFeature() + "/" + Features.supportETFeature()
+                + "/" + ExtPackageParserImpl.DEF_ADD_ET_PERMISSION);
+        baseApk(parser, "platform", permissions("android"));
+        baseApk(parser, "other-package", permissions("org.picomisu.permissions"));
+        PackageParser.Package calibration = new PackageParser.Package("com.tobii.usercalibration.neo3");
+        baseApk(parser, "et-calibration", calibration);
+        baseApk(parser, "et-calibration-repeated", calibration);
+        PackageParser.Package requested = new PackageParser.Package("com.tobii.usercalibration.neo3");
+        requested.requestedPermissions.add("com.picovr.permission.EYE_TRACKING");
+        baseApk(parser, "et-calibration-requested", requested);
+        baseApk(parser, "et-other", new PackageParser.Package("org.picomisu.eye"));
+    }
+
+    /**
+     * 2D virtual-display configuration of ExtPackageParserUtils: JSON entries, platform
+     * defaults and per-package overrides. File loading is disabled (mAppConfigsLoaded) so that
+     * the results do not depend on the device files and properties.
+     */
+    @SuppressWarnings("unchecked")
+    private static void virtualDisplayConfig() throws Exception {
+        Class<?> utils = Class.forName("android.content.pm.ExtPackageParserUtils");
+        Class<?> configClass = Class.forName(
+                "android.content.pm.ExtPackageParserUtils$VirtualDisplayConfig");
+        Constructor<?> constructor = configClass.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        Method parse = utils.getDeclaredMethod("parseVirtualDisplayConfig", JSONObject.class,
+                configClass);
+        parse.setAccessible(true);
+        String project = Features.getProjectName();
+        String[][] entries = {
+            {"full", "{\"packageName\":\"org.picomisu.full\",\"density\":\"320\","
+                    + "\"forceOrientation\":\"1\",\"defaultOrientation\":\"0\","
+                    + "\"portraitWidth\":\"100\",\"portraitHeight\":\"200\","
+                    + "\"landscapeWidth\":\"300\",\"landscapeHeight\":\"400\"}"},
+            {"other-platform", "{\"platform\":\"picomisu-a|picomisu-b\",\"density\":\"100\"}"},
+            {"this-platform", "{\"platform\":\"picomisu-a|" + project + "\",\"density\":\"150\"}"},
+            {"numbers", "{\"packageName\":\"org.picomisu.numbers\",\"density\":240,"
+                    + "\"portraitWidth\":-5}"},
+            {"invalid", "{\"density\":\"12\",\"forceOrientation\":\"x\",\"portraitWidth\":\"7\"}"},
+            {"empty", "{}"},
+        };
+        for (String[] entry : entries) {
+            Object config = constructor.newInstance();
+            String result;
+            try {
+                result = parse.invoke(null, new JSONObject(entry[1]), config) + "|" + config;
+            } catch (Throwable e) {
+                result = "exception:" + e.getClass().getName();
+            }
+            emit("vdc.parse." + entry[0], result);
+        }
+
+        Field loaded = utils.getDeclaredField("mAppConfigsLoaded");
+        loaded.setAccessible(true);
+        Field platform = utils.getDeclaredField("mPlatformVirtualDisplayConfig");
+        platform.setAccessible(true);
+        Field overrides = utils.getDeclaredField("mAppVirtualDisplayOverrideConfigs");
+        overrides.setAccessible(true);
+        Object previousPlatform = platform.get(null);
+        ArrayMap<String, Object> map = (ArrayMap<String, Object>) overrides.get(null);
+        ArrayMap<String, Object> previousOverrides = new ArrayMap<>(map);
+        boolean previousLoaded = loaded.getBoolean(null);
+        try {
+            loaded.setBoolean(null, true);
+            Object platformConfig = constructor.newInstance();
+            parse.invoke(null, new JSONObject("{\"density\":\"320\",\"portraitWidth\":\"1000\","
+                    + "\"portraitHeight\":\"2000\",\"landscapeWidth\":\"3000\","
+                    + "\"landscapeHeight\":\"4000\"}"), platformConfig);
+            platform.set(null, platformConfig);
+            Object appConfig = constructor.newInstance();
+            parse.invoke(null, new JSONObject("{\"packageName\":\"org.picomisu.override\","
+                    + "\"density\":\"0\",\"portraitWidth\":\"555\",\"portraitHeight\":\"-1\","
+                    + "\"landscapeHeight\":\"777\",\"forceOrientation\":\"2\"}"), appConfig);
+            map.clear();
+            map.put("org.picomisu.override", appConfig);
+
+            ApplicationInfo plain = new ApplicationInfo();
+            plain.packageName = "org.picomisu.plain";
+            ExtPackageParserUtils.applyVirtualDisplayConfigToApp(plain);
+            emit("vdc.apply.platform", describe(plain.getExt()));
+            ApplicationInfo override = new ApplicationInfo();
+            override.packageName = "org.picomisu.override";
+            ExtPackageParserUtils.applyVirtualDisplayConfigToApp(override);
+            emit("vdc.apply.override", describe(override.getExt()));
+            override.getExt().set2dAppDensity(1);
+            override.getExt().set2dAppDefaultOrientation(5);
+            ExtPackageParserUtils.applyVirtualDisplayConfigToApp(override);
+            emit("vdc.apply.override-again", describe(override.getExt()));
+
+            // Already loaded: no reload replaces the configuration set above.
+            ExtPackageParserUtils.loadVirtualDisplayConfigsFromFiles(false);
+            ApplicationInfo after = new ApplicationInfo();
+            after.packageName = "org.picomisu.override";
+            ExtPackageParserUtils.applyVirtualDisplayConfigToApp(after);
+            emit("vdc.load-skipped", describe(after.getExt()) + "/"
+                    + (platform.get(null) == platformConfig) + "/" + map.size());
+
+            // parseVrFlags applies the configuration to the parsed application.
+            PackageParser packageParser = new PackageParser();
+            Field field = PackageParser.class.getDeclaredField("mExt");
+            field.setAccessible(true);
+            IExtPackageParser parser = (IExtPackageParser) field.get(packageParser);
+            PackageParser.Package pkg = new PackageParser.Package("org.picomisu.override");
+            activity(pkg, "org.picomisu.override.Main");
+            parser.parseVrFlags(pkg);
+            emit("vdc.parse-vr-flags", describe(pkg.applicationInfo.getExt()));
+        } finally {
+            platform.set(null, previousPlatform);
+            map.clear();
+            map.putAll(previousOverrides);
+            loaded.setBoolean(null, previousLoaded);
+        }
     }
 
     /** Settings stub: IContentProvider proxy answering Settings "call" with sSetting. */

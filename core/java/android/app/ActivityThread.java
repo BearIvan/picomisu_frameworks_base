@@ -391,7 +391,6 @@ public final class ActivityThread extends ClientTransactionHandler {
 
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
     private final ResourcesManager mResourcesManager;
-    private final IExtActivityThread mExt = new ExtActivityThreadImpl(this);
 
     // Registry of remote cancellation transports pending a reply with reply handles.
     @GuardedBy("this")
@@ -906,6 +905,11 @@ public final class ActivityThread extends ClientTransactionHandler {
     private class ApplicationThread extends IApplicationThread.Stub {
         private static final String DB_INFO_FORMAT = "  %8s %8s %14s %14s  %s";
 
+        // Non-private as in the factory framework, so that no synthetic access constructor
+        // is generated and the PICO mExt accessor keeps the factory name access$100.
+        protected ApplicationThread() {
+        }
+
         public final void scheduleSleeping(IBinder token, boolean sleeping) {
             sendMessage(H.SLEEPING, token, sleeping ? 1 : 0);
         }
@@ -1052,6 +1056,8 @@ public final class ActivityThread extends ClientTransactionHandler {
             data.buildSerial = buildSerial;
             data.autofillOptions = autofillOptions;
             data.contentCaptureOptions = contentCaptureOptions;
+            // PICO: record the application display and configuration.
+            mExt.onBindApplication(appInfo, data);
             sendMessage(H.BIND_APPLICATION, data);
         }
 
@@ -2144,6 +2150,9 @@ public final class ActivityThread extends ClientTransactionHandler {
     }
 
     private Configuration mMainThreadConfig = new Configuration();
+
+    // PICO extension; initialized after the other fields as in the factory framework.
+    private final IExtActivityThread mExt = new ExtActivityThreadImpl(this);
 
     Configuration applyConfigCompatMainThread(int displayDensity, Configuration config,
             CompatibilityInfo compat) {
@@ -3381,7 +3390,8 @@ public final class ActivityThread extends ClientTransactionHandler {
                 }
             }
         }
-        return appContext;
+        // PICO: 2D virtual-display context of the activity.
+        return mExt.adjustCreateBaseContextForActivity(appContext);
     }
 
     /**
@@ -3402,6 +3412,8 @@ public final class ActivityThread extends ClientTransactionHandler {
 
         // Make sure we are running with the most recent config.
         handleConfigurationChanged(null, null);
+        // PICO: show the VR display loading UI when the application asks for it.
+        mExt.notifyAppLaunchStatus(r);
 
         if (localLOGV) Slog.v(
             TAG, "Handling launch of " + r);
@@ -5575,6 +5587,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     }
 
     private void handleConfigurationChanged(Configuration config, CompatibilityInfo compat) {
+        mExt.handleConfigurationChanged(config, compat);
 
         int configDiff;
         boolean equivalent;

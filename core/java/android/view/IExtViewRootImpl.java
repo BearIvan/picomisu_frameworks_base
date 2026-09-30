@@ -5,10 +5,13 @@ package android.view;
 import com.pico.util.IExtBase;
 
 /**
- * PICO view-root extension. Only the VR skip-draw policy is ported; the factory
- * NS client, input and window hooks are not.
+ * PICO view-root extension: VR skip-draw policy, 2D-display application resources and the
+ * native shell ("NS") client of input-method windows.
  * @hide
  */
 public interface IExtViewRootImpl extends IExtBase {
+    void adjustApplicationContextResources();
     boolean isSkipDrawVrActivity();
+    void onDoDie();
+    void onSetView(View view, WindowManager.LayoutParams attrs);
 }
