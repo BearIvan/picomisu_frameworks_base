@@ -938,6 +938,9 @@ public class ActivityStack extends ConfigurationContainer {
 
     /** Removes the stack completely. Also calls WindowManager to do the same on its side. */
     void remove() {
+        // PICO (factory ExtActivityStackImpl.remove): stacks launched from this one inherit its
+        // caller stack.
+        mExt.remove(this);
         removeFromDisplay();
         if (mTaskStack != null) {
             mTaskStack.removeIfPossible();
@@ -3800,13 +3803,12 @@ public class ActivityStack extends ConfigurationContainer {
      * @return The stack that now got the focus, {@code null} if none found.
      */
     private ActivityStack adjustFocusToNextFocusableStack(String reason, boolean allowFocusSelf) {
-        final ActivityStack stack =
-                mRootActivityContainer.getNextFocusableStack(this, !allowFocusSelf);
-        if ("moveTaskToBackLocked".equals(reason)) {
-            // Factory ExtActivityStackImpl.getNextFocusableStack: a 2D app display whose task
-            // moves to the back is reported to SystemExt as hidden.
-            mService.getActivityStartController().getExt().onTaskMovedToBack(getDisplay());
-        }
+        // PICO (factory ExtActivityStackImpl.getNextFocusableStack): on a 2D app display focus
+        // only returns to the stack that launched this one; otherwise it moves to another
+        // display, and the 2D app display is reported to SystemExt as hidden.
+        final ActivityStack stack = android.pico.utils.Features.isPvr2DEnabled()
+                ? mExt.getNextFocusableStack(reason, !allowFocusSelf)
+                : mRootActivityContainer.getNextFocusableStack(this, !allowFocusSelf);
         final String myReason = reason + " adjustFocusToNextFocusableStack";
         if (stack == null) {
             return null;
@@ -4105,7 +4107,10 @@ public class ActivityStack extends ConfigurationContainer {
 
             r.pauseKeyDispatchingLocked();
 
-            adjustFocusedActivityStack(r, "finishActivity");
+            // PICO (factory): the finish reason is kept, so a clear-task finish does not move
+            // focus off a 2D app display (ExtActivityStackImpl.getNextFocusableStack).
+            adjustFocusedActivityStack(r, android.pico.utils.Features.isPvr2DEnabled()
+                    ? reason + " finishActivity" : "finishActivity");
 
             finishActivityResultsLocked(r, resultCode, resultData);
 
@@ -5116,10 +5121,18 @@ public class ActivityStack extends ConfigurationContainer {
         updateTaskMovement(tr, false);
 
         getDisplay().mDisplayContent.prepareAppTransition(TRANSIT_TASK_TO_BACK, false);
+        final boolean isFocused = isFocusedStackOnDisplay();
         moveToBack("moveTaskToBackLocked", tr);
 
         if (inPinnedWindowingMode()) {
             mStackSupervisor.removeStack(this);
+            return true;
+        }
+
+        // PICO (factory ExtActivityStackImpl.moveToBack): focus goes to the caller stack of this
+        // one; when that is on another display the move is complete here.
+        if (android.pico.utils.Features.isPvr2DEnabled() && isFocused
+                && mExt.moveToBack("moveTaskToBackLocked")) {
             return true;
         }
 
@@ -5619,6 +5632,11 @@ public class ActivityStack extends ConfigurationContainer {
             IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor,
             boolean toTop, ActivityRecord activity, ActivityRecord source,
             ActivityOptions options) {
+        // PICO (factory ExtActivityStackImpl.updateCaller): remember the 2D app stack that
+        // launched this one, so focus returns there when this stack goes away.
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            mExt.updateCaller(activity);
+        }
         final TaskRecord task = TaskRecord.create(
                 mService, taskId, info, intent, voiceSession, voiceInteractor);
         // add the task to stack first, mTaskPositioner might need the stack association

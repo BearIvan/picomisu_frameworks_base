@@ -873,6 +873,12 @@ class TaskRecord extends ConfigurationContainer {
         mCallingPackage = r.launchedFromPackage;
         setIntent(r.intent, r.info);
         setLockTaskAuth(r);
+        // PICO (factory): a task re-rooted by a new activity takes over that activity's caller.
+        final ActivityStack stack = getStack();
+        if (android.pico.utils.Features.isPvr2DEnabled() && stack != null
+                && mActivities.indexOf(r) == -1) {
+            stack.getExt().updateCaller(r);
+        }
     }
 
     /** Sets the original intent, _without_ updating the calling uid or package. */

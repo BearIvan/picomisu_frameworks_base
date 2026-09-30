@@ -516,6 +516,18 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
     }
 
     ActivityStack getNextFocusableStack(ActivityStack currentFocus, boolean ignoreCurrent) {
+        final ActivityStack next = getNextFocusableStackInner(currentFocus, ignoreCurrent);
+        if (!android.pico.utils.Features.isPvr2DEnabled()) {
+            return next;
+        }
+        // PICO (factory ExtActivityStackImpl.allowUse): focus on a display only passes to the
+        // stack that launched the current one (its caller stack). ActivityStack's own focus
+        // adjustment uses getNextFocusableStackInner and applies the rule to 2D app displays
+        // only (ExtActivityStackImpl.getNextFocusableStack).
+        return next != null && next.getExt().allowUse(currentFocus) ? next : null;
+    }
+
+    ActivityStack getNextFocusableStackInner(ActivityStack currentFocus, boolean ignoreCurrent) {
         final int currentWindowingMode = currentFocus != null
                 ? currentFocus.getWindowingMode() : WINDOWING_MODE_UNDEFINED;
 
