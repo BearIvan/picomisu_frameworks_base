@@ -96,6 +96,12 @@ public class WifiConfiguration implements Parcelable {
 
     /** {@hide} */
     public static final String shareThisApVarName = "share_this_ap";
+    /** {@hide} */
+    public static final String successConnectVarName = "connectSuccess";
+    /** {@hide} */
+    public static final String needLoginVarName = "needLogin";
+    /** {@hide} */
+    public static final String autoConnectVarName = "autoConnect";
 
     /**
      * Recognized key management schemes.
@@ -616,6 +622,24 @@ public class WifiConfiguration implements Parcelable {
      * This configuration is used in AP to extend the coverage.
      */
     public boolean shareThisAp;
+
+    /**
+     * @hide
+     * PICO: the network has been connected successfully.
+     */
+    public boolean successConnect;
+
+    /**
+     * @hide
+     * PICO: the network requires a captive portal login.
+     */
+    public boolean needLogin;
+
+    /**
+     * @hide
+     * PICO: the network may be joined automatically.
+     */
+    public boolean autoConnect;
 
     /**
      * Update identifier, for Passpoint network.
@@ -1881,6 +1905,9 @@ public class WifiConfiguration implements Parcelable {
         roamingConsortiumIds = new long[0];
         priority = 0;
         hiddenSSID = false;
+        successConnect = false;
+        needLogin = false;
+        autoConnect = true;
         shareThisAp = false;
         allowedKeyManagement = new BitSet();
         allowedProtocols = new BitSet();
@@ -2180,6 +2207,9 @@ public class WifiConfiguration implements Parcelable {
                 .append(recentFailure.getAssociationStatus()).append("\n");
 
         sbuf.append("ShareThisAp: ").append(this.shareThisAp);
+        sbuf.append("successConnect: ").append(this.successConnect);
+        sbuf.append("needLogin: ").append(this.needLogin);
+        sbuf.append("autoConnect: ").append(this.autoConnect);
         sbuf.append('\n');
         sbuf.append("wifi id: ").append(this.staId).append("\n");
         return sbuf.toString();
@@ -2531,6 +2561,9 @@ public class WifiConfiguration implements Parcelable {
             wepTxKeyIndex = source.wepTxKeyIndex;
             priority = source.priority;
             hiddenSSID = source.hiddenSSID;
+            successConnect = source.successConnect;
+            needLogin = source.needLogin;
+            autoConnect = source.autoConnect;
             allowedKeyManagement   = (BitSet) source.allowedKeyManagement.clone();
             allowedProtocols       = (BitSet) source.allowedProtocols.clone();
             allowedAuthAlgorithms  = (BitSet) source.allowedAuthAlgorithms.clone();
@@ -2624,6 +2657,9 @@ public class WifiConfiguration implements Parcelable {
         dest.writeInt(wepTxKeyIndex);
         dest.writeInt(priority);
         dest.writeInt(hiddenSSID ? 1 : 0);
+        dest.writeInt(successConnect ? 1 : 0);
+        dest.writeInt(needLogin ? 1 : 0);
+        dest.writeInt(autoConnect ? 1 : 0);
         dest.writeInt(requirePMF ? 1 : 0);
         dest.writeString(updateIdentifier);
 
@@ -2708,6 +2744,9 @@ public class WifiConfiguration implements Parcelable {
                 config.wepTxKeyIndex = in.readInt();
                 config.priority = in.readInt();
                 config.hiddenSSID = in.readInt() != 0;
+                config.successConnect = in.readInt() != 0;
+                config.needLogin = in.readInt() != 0;
+                config.autoConnect = in.readInt() != 0;
                 config.requirePMF = in.readInt() != 0;
                 config.updateIdentifier = in.readString();
 
