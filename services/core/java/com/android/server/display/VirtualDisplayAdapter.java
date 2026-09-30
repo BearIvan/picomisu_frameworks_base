@@ -405,6 +405,8 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
                 if ((mFlags & VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS) != 0) {
                     mInfo.flags |= DisplayDeviceInfo.FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS;
                 }
+                // Factory ExtVirtualDisplayAdapterImpl.adjustDisplayDeviceInfoFlags.
+                mInfo.flags |= mFlags & LogicalDisplay.PICO_DISPLAY_FLAGS;
 
                 mInfo.type = Display.TYPE_VIRTUAL;
                 mInfo.touch = ((mFlags & VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH) == 0) ?

@@ -57,6 +57,11 @@ import java.util.Objects;
  * </p>
  */
 final class LogicalDisplay {
+    // PICO VR display flags (factory PICO OS 5.13.7 Ext display layer): 1 << 14 VR loading
+    // display, 1 << 15 2D app virtual display, 1 << 16 unfocusable 2D app display, 1 << 20.
+    // The virtual display creation flag, the DisplayDeviceInfo flag and the Display flag use
+    // the same bits.
+    static final int PICO_DISPLAY_FLAGS = (1 << 14) | (1 << 15) | (1 << 16) | (1 << 20);
     private final DisplayInfo mBaseDisplayInfo = new DisplayInfo();
 
     // The layer stack we use when the display has been blanked to prevent any
@@ -264,6 +269,8 @@ final class LogicalDisplay {
             if ((deviceInfo.flags & DisplayDeviceInfo.FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS) != 0) {
                 mBaseDisplayInfo.flags |= Display.FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS;
             }
+            // Factory ExtLogicalDisplayImpl.adjustDisplayInfoFlags.
+            mBaseDisplayInfo.flags |= deviceInfo.flags & PICO_DISPLAY_FLAGS;
             Rect maskingInsets = getMaskingInsets(deviceInfo);
             int maskedWidth = deviceInfo.width - maskingInsets.left - maskingInsets.right;
             int maskedHeight = deviceInfo.height - maskingInsets.top - maskingInsets.bottom;
@@ -353,6 +360,17 @@ final class LogicalDisplay {
             boolean isBlanked) {
         // Set the layer stack.
         device.setLayerStackLocked(t, isBlanked ? BLANK_LAYER_STACK : mLayerStack);
+        // Factory ExtLogicalDisplayImpl.setDisplayFlags: SurfaceFlinger display flag 1 marks a
+        // 2D app virtual display, 1 << 20 is passed through.
+        final int displayInfoFlags = getDisplayInfoLocked().flags;
+        int surfaceFlingerFlags = 0;
+        if ((displayInfoFlags & (1 << 15)) != 0) {
+            surfaceFlingerFlags |= 1;
+        }
+        if ((displayInfoFlags & (1 << 20)) != 0) {
+            surfaceFlingerFlags |= 1 << 20;
+        }
+        t.setDisplayFlags(device.getDisplayTokenLocked(), surfaceFlingerFlags);
 
         // Set the color mode and allowed display mode.
         if (device == mPrimaryDisplayDevice) {
