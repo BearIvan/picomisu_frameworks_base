@@ -963,6 +963,10 @@ public final class SystemServer {
             com.android.server.pico.TransferServer.publish();
             traceEnd();
 
+            traceBeginAndSlog("StartPicoSysTransServer");
+            com.android.server.pico.SysTransServer.publish();
+            traceEnd();
+
             traceBeginAndSlog("StartKeyChainSystemService");
             mSystemServiceManager.startService(KeyChainSystemService.class);
             traceEnd();
