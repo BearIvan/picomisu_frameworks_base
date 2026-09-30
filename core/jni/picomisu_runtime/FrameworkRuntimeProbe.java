@@ -292,6 +292,8 @@ public final class FrameworkRuntimeProbe {
         check(QcomApiFixture.run(System.out) == QcomApiFixture.EXPECTED_LINES, "qcom-api-wire-scenarios");
         check(AudioApiFixture.run(System.out) == AudioApiFixture.EXPECTED_LINES,
                 "audio-api-wire-scenarios");
+        check(ShiftedAidlFixture.run(System.out) == ShiftedAidlFixture.EXPECTED_LINES,
+                "shifted-aidl-wire-scenarios");
         drawSoftwareRouting();
         direct.release();
         initial.release();
