@@ -1693,13 +1693,16 @@ public final class BatteryStatsService extends IBatteryStats.Stub
     }
 
     /**
-     * Smartisan battery stats extension (factory PICO OS 5.13.7). As in the factory, the
-     * default ISysSvsFactory battery stats service extension (used when the sys services JAR is
-     * absent) does not implement IBatteryStatsOptEx, so this cast then fails.
+     * Smartisan battery stats extension (factory PICO OS 5.13.7). The default ISysSvsFactory
+     * battery stats service extension (used when the sys services JAR is absent, as on the
+     * Source image) does not implement IBatteryStatsOptEx; the factory casts unconditionally,
+     * which throws from LightsService.onBootPhase(PHASE_SYSTEM_SERVICES_READY) and kills
+     * system_server. Return null then: LightsService checks mBatteryStatsOptEx for null.
      */
     @Override
     public IBatteryStatsOptEx getIBatteryStatsOptEx() {
-        return (IBatteryStatsOptEx) SysOptBridge.getFactory().getBatteryStatsServiceOptEx();
+        Object optEx = SysOptBridge.getFactory().getBatteryStatsServiceOptEx();
+        return optEx instanceof IBatteryStatsOptEx ? (IBatteryStatsOptEx) optEx : null;
     }
 
 }
