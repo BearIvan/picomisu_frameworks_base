@@ -76,6 +76,15 @@ class LaunchParamsController {
      */
     void calculate(TaskRecord task, WindowLayout layout, ActivityRecord activity,
                    ActivityRecord source, ActivityOptions options, int phase, LaunchParams result) {
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            // PICO (factory): SystemExt places tasks (ExtActivityStartControllerImpl); keep a
+            // task on the display of its stack and skip the launch params modifiers.
+            result.reset();
+            if (task != null && task.getStack() != null) {
+                result.mPreferredDisplayId = task.getStack().mDisplayId;
+            }
+            return;
+        }
         result.reset();
 
         if (task != null || activity != null) {
@@ -126,6 +135,9 @@ class LaunchParamsController {
 
     boolean layoutTask(TaskRecord task, WindowLayout layout, ActivityRecord activity,
             ActivityRecord source, ActivityOptions options) {
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            return false;
+        }
         calculate(task, layout, activity, source, options, PHASE_BOUNDS, mTmpParams);
 
         // No changes, return.

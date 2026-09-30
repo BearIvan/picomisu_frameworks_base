@@ -197,6 +197,10 @@ class LaunchParamsPersister {
     }
 
     void saveTask(TaskRecord task) {
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            // PICO (factory): launch params of 2D app displays are not persisted.
+            return;
+        }
         final ComponentName name = task.realActivity;
         final int userId = task.userId;
         PersistableLaunchParams params;

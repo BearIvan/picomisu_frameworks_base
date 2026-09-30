@@ -1120,6 +1120,12 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
             return false;
         }
 
+        // PICO (factory): apps may start activities on the 2D app displays that SystemExt
+        // creates for them (private virtual displays owned by the system uid).
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            return true;
+        }
+
         // Check if the caller has enough privileges to embed activities and launch to private
         // displays.
         final int startAnyPerm = mService.checkPermission(INTERNAL_SYSTEM_WINDOW, callingPid,

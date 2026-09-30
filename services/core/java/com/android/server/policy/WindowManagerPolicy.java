@@ -797,6 +797,10 @@ public interface WindowManagerPolicy extends WindowManagerPolicyConstants {
         if (type >= FIRST_APPLICATION_WINDOW && type <= LAST_APPLICATION_WINDOW) {
             return APPLICATION_LAYER;
         }
+        // PICO (factory IExtWindowManagerPolicy): window type 2998 is laid out as an application.
+        if (android.pico.utils.Features.isPvr2DEnabled() && type == 2998) {
+            return APPLICATION_LAYER;
+        }
 
         switch (type) {
             case TYPE_WALLPAPER:

@@ -1903,6 +1903,20 @@ public class ActivityStack extends ConfigurationContainer {
             mStackSupervisor.mAppVisibilitiesChangedSinceLastPause = false;
         }
 
+        // PICO (factory ExtActivityStackImpl.interruptCompletePauseLocked): with 2D app displays
+        // only this stack's display updates visibility after a pause.
+        final ActivityDisplay pauseDisplay = getDisplay();
+        if (android.pico.utils.Features.isPvr2DEnabled() && pauseDisplay != null) {
+            mStackSupervisor.getKeyguardController().beginActivityVisibilityUpdate();
+            try {
+                pauseDisplay.ensureActivitiesVisible(resuming, 0, !PRESERVE_WINDOWS,
+                        true /* notifyClients */);
+            } finally {
+                mStackSupervisor.getKeyguardController().endActivityVisibilityUpdate();
+            }
+            return;
+        }
+
         mRootActivityContainer.ensureActivitiesVisible(resuming, 0, !PRESERVE_WINDOWS);
     }
 

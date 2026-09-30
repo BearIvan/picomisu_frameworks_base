@@ -3190,7 +3190,9 @@ public final class ActivityRecord extends ConfigurationContainer {
      *         {@link #ensureActivityConfiguration} is not called.
      */
     boolean shouldUpdateConfigForDisplayChanged() {
-        return mLastReportedDisplayId != getDisplayId();
+        // PICO (factory): activities on 2D app displays are not relaunched for display moves.
+        return (!android.pico.utils.Features.isPvr2DEnabled() || getDisplayId() <= 0)
+                && mLastReportedDisplayId != getDisplayId();
     }
 
     boolean ensureActivityConfiguration(int globalChanges, boolean preserveWindow) {
