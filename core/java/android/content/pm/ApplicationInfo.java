@@ -1316,6 +1316,16 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
 
     private int mHiddenApiPolicy = HIDDEN_API_ENFORCEMENT_DEFAULT;
 
+    private ApplicationInfoSmtBase mSmtEx = new ApplicationInfoSmtBase(this);
+
+    /**
+     * Returns the Smartisan application extension used by PICO OS.
+     * @hide
+     */
+    public ApplicationInfoSmtBase getSmtEx() {
+        return mSmtEx;
+    }
+
     private IExtApplicationInfo mExt = new ExtApplicationInfoImpl(this);
 
     public void dump(Printer pw, String prefix) {
@@ -1617,6 +1627,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         mHiddenApiPolicy = orig.mHiddenApiPolicy;
         hiddenUntilInstalled = orig.hiddenUntilInstalled;
         zygotePreloadName = orig.zygotePreloadName;
+        mSmtEx.copyFrom(orig.getSmtEx());
         mExt.copyFrom(orig);
     }
 
@@ -1707,6 +1718,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeInt(mHiddenApiPolicy);
         dest.writeInt(hiddenUntilInstalled ? 1 : 0);
         dest.writeString(zygotePreloadName);
+        mSmtEx.writeToParcel(dest);
         mExt.writeToParcel(dest);
     }
 
@@ -1786,6 +1798,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         mHiddenApiPolicy = source.readInt();
         hiddenUntilInstalled = source.readInt() != 0;
         zygotePreloadName = source.readString();
+        mSmtEx.readFromParcel(source);
         mExt.readFromParcel(source);
     }
 
