@@ -646,6 +646,14 @@ public final class DisplayManager {
                 name, width, height, densityDpi, surface, flags, callback, handler, uniqueId);
     }
 
+    /** @hide */
+    public VirtualDisplay createVirtualDisplay(@Nullable MediaProjection projection,
+            @NonNull VirtualDisplayConfig virtualDisplayConfig,
+            @Nullable VirtualDisplay.Callback callback, @Nullable Handler handler) {
+        return mGlobal.createVirtualDisplayExt(mContext, projection, virtualDisplayConfig,
+                callback, handler);
+    }
+
     /**
      * Gets the stable device display size, in pixels.
      *

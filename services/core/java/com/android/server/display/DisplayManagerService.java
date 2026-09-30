@@ -56,6 +56,7 @@ import android.hardware.display.DisplayedContentSamplingAttributes;
 import android.hardware.display.IDisplayManager;
 import android.hardware.display.IDisplayManagerCallback;
 import android.hardware.display.IVirtualDisplayCallback;
+import android.hardware.display.VirtualDisplayConfig;
 import android.hardware.display.WifiDisplayStatus;
 import android.hardware.input.InputManagerInternal;
 import android.media.projection.IMediaProjection;
@@ -748,8 +749,8 @@ public final class DisplayManagerService extends SystemService {
     }
 
     private int createVirtualDisplayInternal(IVirtualDisplayCallback callback,
-            IMediaProjection projection, int callingUid, String packageName, String name, int width,
-            int height, int densityDpi, Surface surface, int flags, String uniqueId) {
+            IMediaProjection projection, int callingUid, String packageName, Surface surface,
+            int flags, VirtualDisplayConfig virtualDisplayConfig) {
         synchronized (mSyncRoot) {
             if (mVirtualDisplayAdapter == null) {
                 Slog.w(TAG, "Rejecting request to create private virtual display "
@@ -758,8 +759,8 @@ public final class DisplayManagerService extends SystemService {
             }
 
             DisplayDevice device = mVirtualDisplayAdapter.createVirtualDisplayLocked(
-                    callback, projection, callingUid, packageName, name, width, height, densityDpi,
-                    surface, flags, uniqueId);
+                    callback, projection, callingUid, packageName, surface, flags,
+                    virtualDisplayConfig);
             if (device == null) {
                 return -1;
             }
@@ -1368,6 +1369,18 @@ public final class DisplayManagerService extends SystemService {
         mViewports.clear();
     }
 
+    @VisibleForTesting
+    int getDisplayIdToMirrorInternal(int displayId) {
+        synchronized (mSyncRoot) {
+            LogicalDisplay display = mLogicalDisplays.get(displayId);
+            if (display != null) {
+                DisplayDevice displayDevice = display.getPrimaryDisplayDeviceLocked();
+                return displayDevice.getDisplayIdToMirrorLocked();
+            }
+            return Display.INVALID_DISPLAY;
+        }
+    }
+
     private void configureDisplayLocked(SurfaceControl.Transaction t, DisplayDevice device) {
         final DisplayDeviceInfo info = device.getDisplayDeviceInfoLocked();
         final boolean ownContent = (info.flags & DisplayDeviceInfo.FLAG_OWN_CONTENT_ONLY) != 0;
@@ -1378,8 +1391,8 @@ public final class DisplayManagerService extends SystemService {
         if (!ownContent) {
             if (display != null && !display.hasContentLocked()) {
                 // If the display does not have any content of its own, then
-                // automatically mirror the default logical display contents.
-                display = null;
+                // automatically mirror the requested logical display contents if possible.
+                display = mLogicalDisplays.get(device.getDisplayIdToMirrorLocked());
             }
             if (display == null) {
                 display = mLogicalDisplays.get(Display.DEFAULT_DISPLAY);
@@ -1953,7 +1966,7 @@ public final class DisplayManagerService extends SystemService {
                 int width, int height, int densityDpi, Surface surface, int flags,
                 String uniqueId) {
             final int callingUid = Binder.getCallingUid();
-            if (!validatePackageName(callingUid, packageName)) {
+            if (!"android".equals(packageName) && !validatePackageName(callingUid, packageName)) {
                 throw new SecurityException("packageName must match the calling uid");
             }
             if (callback == null) {
@@ -1966,6 +1979,34 @@ public final class DisplayManagerService extends SystemService {
                 throw new IllegalArgumentException("width, height, and densityDpi must be "
                         + "greater than 0");
             }
+            final VirtualDisplayConfig.Builder builder = new VirtualDisplayConfig.Builder(name,
+                    width, height, densityDpi);
+            builder.setFlags(flags);
+            if (uniqueId != null) {
+                builder.setUniqueId(uniqueId);
+            }
+            if (surface != null) {
+                builder.setSurface(surface);
+            }
+            return createVirtualDisplayExt(builder.build(), callback, projection, packageName);
+        }
+
+        @Override // Binder call
+        public int createVirtualDisplayExt(VirtualDisplayConfig virtualDisplayConfig,
+                IVirtualDisplayCallback callback, IMediaProjection projection, String packageName) {
+            final int callingUid = Binder.getCallingUid();
+            if (!"android".equals(packageName) && !validatePackageName(callingUid, packageName)) {
+                throw new SecurityException("packageName must match the calling uid");
+            }
+            if (callback == null) {
+                throw new IllegalArgumentException("appToken must not be null");
+            }
+            if (virtualDisplayConfig == null) {
+                throw new IllegalArgumentException("virtualDisplayConfig must not be null");
+            }
+            final Surface surface = virtualDisplayConfig.getSurface();
+            int flags = virtualDisplayConfig.getFlags();
+
             if (surface != null && surface.isSingleBuffered()) {
                 throw new IllegalArgumentException("Surface can't be single-buffered");
             }
@@ -2026,7 +2067,7 @@ public final class DisplayManagerService extends SystemService {
             final long token = Binder.clearCallingIdentity();
             try {
                 return createVirtualDisplayInternal(callback, projection, callingUid, packageName,
-                        name, width, height, densityDpi, surface, flags, uniqueId);
+                        surface, flags, virtualDisplayConfig);
             } finally {
                 Binder.restoreCallingIdentity(token);
             }
