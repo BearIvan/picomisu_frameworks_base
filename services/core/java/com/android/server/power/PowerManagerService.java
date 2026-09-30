@@ -964,6 +964,12 @@ public final class PowerManagerService extends SystemService
                 com.android.internal.R.bool.config_unplugTurnsOnScreen);
         mWakeUpWhenPluggedOrUnpluggedInTheaterModeConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_allowTheaterModeWakeFromUnplug);
+        if (android.pico.utils.Features.FEAT_HOLD_SCREEN_STATUS_WHEN_PLUG_STATE_CHANGE) {
+            // PICO (factory ExtPowerManagerServiceImpl): plugging or unplugging the charger
+            // never turns the headset screen on.
+            mWakeUpWhenPluggedOrUnpluggedConfig = false;
+            mWakeUpWhenPluggedOrUnpluggedInTheaterModeConfig = false;
+        }
         mSuspendWhenScreenOffDueToProximityConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_suspendWhenScreenOffDueToProximity);
         mDreamsSupportedConfig = resources.getBoolean(
@@ -1341,6 +1347,11 @@ public final class PowerManagerService extends SystemService
                     return true;
 
                 case PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK:
+                    // PICO (factory ExtPowerManagerServiceImpl.proximityScreenOffWakeLock): the
+                    // headset proximity sensor is the wear sensor, not a phone call sensor.
+                    if (android.pico.utils.Features.FEAT_DISABLE_PROXIMITY_SCREEN_OFF_WAKE_LOCK) {
+                        return false;
+                    }
                     return mSystemReady && mDisplayManagerInternal.isProximitySensorAvailable();
 
                 default:
@@ -1448,6 +1459,7 @@ public final class PowerManagerService extends SystemService
                 updatePowerStateLocked();
                 com.android.server.api.ApiLayerService.getInstance().updatePowerState(
                         com.android.server.api.ApiLayerService.POWER_STATE_WAKE_UP);
+                sendPicoPowerStatus("wakeUp");
             }
         }
     }
@@ -1493,7 +1505,31 @@ public final class PowerManagerService extends SystemService
                 updatePowerStateLocked();
                 com.android.server.api.ApiLayerService.getInstance().updatePowerState(
                         com.android.server.api.ApiLayerService.POWER_STATE_GO_TO_SLEEP);
+                sendPicoPowerStatus("goToSleep");
             }
+        }
+    }
+
+    /** pvr_manager (PICO system service), looked up again when it died. */
+    private com.pvr.IPvrManagerService mPicoPvrManagerService;
+
+    /**
+     * PICO (factory ExtPowerManagerServiceImpl.proxyWakeUpInternal / proxyGoToSleepInternal):
+     * reports "power_status" = "wakeUp" / "goToSleep" to pvr_manager.
+     */
+    private void sendPicoPowerStatus(String status) {
+        if (mPicoPvrManagerService == null || !mPicoPvrManagerService.asBinder().isBinderAlive()) {
+            final IBinder binder = android.os.ServiceManager.checkService("pvr_manager");
+            if (binder == null) {
+                Slog.w(TAG, "pvr_manager has not been added to ServiceManager,do nothing.");
+                return;
+            }
+            mPicoPvrManagerService = com.pvr.IPvrManagerService.Stub.asInterface(binder);
+        }
+        try {
+            mPicoPvrManagerService.sendPvrMessages("power_status", status);
+        } catch (Exception e) {
+            Slog.e(TAG, "mPvrManagerService sendPvrMessages error");
         }
     }
 
@@ -2584,7 +2620,10 @@ public final class PowerManagerService extends SystemService
         if ((mWakeLockSummary & WAKE_LOCK_SCREEN_BRIGHT) != 0
                 || (mUserActivitySummary & USER_ACTIVITY_SCREEN_BRIGHT) != 0
                 || !mBootCompleted
-                || mScreenBrightnessBoostInProgress) {
+                || mScreenBrightnessBoostInProgress
+                // PICO (factory ExtPowerManagerServiceImpl.disableDimPowerState): the headset
+                // display never dims before the screen timeout.
+                || android.pico.utils.Features.FEAT_DISABLE_DIM_POWER_STATE) {
             return DisplayPowerRequest.POLICY_BRIGHT;
         }
 
