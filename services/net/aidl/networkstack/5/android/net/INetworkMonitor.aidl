@@ -24,6 +24,8 @@ interface INetworkMonitor {
   oneway void forceReevaluation(int uid);
   oneway void notifyPrivateDnsChanged(in android.net.PrivateDnsConfigParcel config);
   oneway void notifyDnsResponse(int returnCode);
+  oneway void updateDnsEvent(String hostname, int returnCode, long timestamp);
+  oneway void updateDnsEvents(in String[] hostnameList, in int[] returnCodeList, in long[] timestampList);
   oneway void notifyNetworkConnected(in android.net.LinkProperties lp, in android.net.NetworkCapabilities nc);
   oneway void notifyNetworkDisconnected();
   oneway void notifyLinkPropertiesChanged(in android.net.LinkProperties lp);

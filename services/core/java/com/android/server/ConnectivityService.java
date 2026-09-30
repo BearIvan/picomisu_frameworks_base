@@ -649,6 +649,15 @@ public class ConnectivityService extends IConnectivityManager.Stub
     @VisibleForTesting
     final MultipathPolicyTracker mMultipathPolicyTracker;
 
+    // DNS events of the default network, batched before being handed to NetworkMonitor.
+    private long mLastDnsSuccessTimestamp = 0;
+    private final int DNS_EVENT_UPDATE_MIN_INTERVAL = 5000;
+    private final int DNS_EVENT_LIST_MAX = 30;
+    private static int mDnsSuccessCount = 0;
+    private int[] returnCodeList = new int[DNS_EVENT_LIST_MAX];
+    private String[] hostNameList = new String[DNS_EVENT_LIST_MAX];
+    private long[] timestampList = new long[DNS_EVENT_LIST_MAX];
+
     /**
      * Implements support for the legacy "one network per network type" model.
      *
@@ -1820,6 +1829,19 @@ public class ConnectivityService extends IConnectivityManager.Stub
             // NetworkMonitor registrants.
             if (nai != null && nai.satisfies(mDefaultRequest)) {
                 nai.networkMonitor().notifyDnsResponse(returnCode);
+                if (returnCode == 0) {
+                    if (timestamp - mLastDnsSuccessTimestamp >= DNS_EVENT_UPDATE_MIN_INTERVAL) {
+                        mLastDnsSuccessTimestamp = timestamp;
+                        addDnsEventInfo(hostname, returnCode, timestamp);
+                        if (mDnsSuccessCount >= DNS_EVENT_LIST_MAX) {
+                            nai.networkMonitor().updateDnsEvents(hostNameList, returnCodeList,
+                                    timestampList);
+                            clearDnsEventInfo();
+                        }
+                    }
+                } else {
+                    nai.networkMonitor().updateDnsEvent(hostname, returnCode, timestamp);
+                }
             }
         }
 
@@ -1829,6 +1851,24 @@ public class ConnectivityService extends IConnectivityManager.Stub
             mHandler.post(() -> handleNat64PrefixEvent(netId, added, prefixString, prefixLength));
         }
     };
+
+    public void addDnsEventInfo(String hostname, int returnCode, long timestamp) {
+        if (mDnsSuccessCount < DNS_EVENT_LIST_MAX) {
+            hostNameList[mDnsSuccessCount] = hostname;
+            returnCodeList[mDnsSuccessCount] = returnCode;
+            timestampList[mDnsSuccessCount] = timestamp;
+            mDnsSuccessCount++;
+        }
+    }
+
+    public void clearDnsEventInfo() {
+        for (int i = 0; i < DNS_EVENT_LIST_MAX; i++) {
+            hostNameList[i] = null;
+            returnCodeList[i] = 0;
+            timestampList[i] = 0;
+        }
+        mDnsSuccessCount = 0;
+    }
 
     @VisibleForTesting
     protected void registerNetdEventCallback() {

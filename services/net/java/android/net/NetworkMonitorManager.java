@@ -145,6 +145,33 @@ public class NetworkMonitorManager {
         }
     }
 
+    public boolean updateDnsEvent(String hostname, int returnCode, long timestamp) {
+        final long token = Binder.clearCallingIdentity();
+        try {
+            mNetworkMonitor.updateDnsEvent(hostname, returnCode, timestamp);
+            return true;
+        } catch (RemoteException e) {
+            log("Error in notifyDnsResponse", e);
+            return false;
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+    }
+
+    public boolean updateDnsEvents(String[] hostnameList, int[] returnCodeList,
+            long[] timestampList) {
+        final long token = Binder.clearCallingIdentity();
+        try {
+            mNetworkMonitor.updateDnsEvents(hostnameList, returnCodeList, timestampList);
+            return true;
+        } catch (RemoteException e) {
+            log("Error in notifyDnsResponse", e);
+            return false;
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+    }
+
     public boolean notifyNetworkConnected(LinkProperties lp, NetworkCapabilities nc) {
         final long token = Binder.clearCallingIdentity();
         try {
