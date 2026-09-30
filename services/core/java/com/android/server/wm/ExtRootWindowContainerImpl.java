@@ -22,6 +22,21 @@ public class ExtRootWindowContainerImpl {
         mBase = base;
     }
 
+    /**
+     * RootWindowContainer.positionChildAt: the VR loading display always goes to the bottom, and
+     * a display moved to the bottom goes just above it.
+     */
+    public int redirectPositionWhenPositionChildAt(int position, DisplayContent child) {
+        if (child.getDisplay().getExt().isVrLoadingDisplay()) {
+            return Integer.MIN_VALUE;
+        }
+        if ((position == Integer.MIN_VALUE || position == 0) && mBase.getChildCount() > 1
+                && mBase.getChildAt(0).getDisplay().getExt().isVrLoadingDisplay()) {
+            return 1;
+        }
+        return position;
+    }
+
     /** RootWindowContainer.updateFocusedWindowLocked picked a new top focused display. */
     public void onTopFocusedDisplayIdChanged(int displayId) {
         mTopFocusedDisplayId = displayId;

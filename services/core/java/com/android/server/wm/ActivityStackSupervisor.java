@@ -2410,6 +2410,13 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
 
         // Update the current top activity.
         mTopResumedActivity = topStack.mResumedActivity;
+        // PICO (factory ExtActivityStackSupervisorImpl.setFocusDisplay): publish the display of
+        // the top resumed activity; system dialogs (android.app.Dialog) are shown there.
+        if (android.pico.utils.Features.isPvr2DEnabled() && mTopResumedActivity != null) {
+            final int displayId = mTopResumedActivity.getDisplayId();
+            android.os.SystemProperties.set("pvr.focused.display.id",
+                    String.valueOf(displayId == INVALID_DISPLAY ? DEFAULT_DISPLAY : displayId));
+        }
         scheduleTopResumedActivityStateIfNeeded();
     }
 

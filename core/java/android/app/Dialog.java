@@ -195,6 +195,15 @@ public class Dialog implements DialogInterface, Window.Callback,
 
         mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 
+        // PICO (factory ExtDialogImpl.adjustDialogContext): system dialogs (package "android")
+        // appear on the display of the top resumed activity, which system_server publishes in
+        // pvr.focused.display.id, so they show on the focused 2D panel instead of display 0.
+        if (android.pico.utils.Features.isPvr2DEnabled()
+                && "android".equals(mContext.getPackageName())) {
+            mContext.updateDisplay(
+                    android.os.SystemProperties.getInt("pvr.focused.display.id", 0));
+        }
+
         final Window w = new PhoneWindow(mContext);
         mWindow = w;
         w.setCallback(this);
