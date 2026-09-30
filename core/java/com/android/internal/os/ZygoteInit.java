@@ -485,6 +485,8 @@ public class ZygoteInit {
     private static Runnable handleSystemServerProcess(ZygoteArguments parsedArgs) {
         // set umask to 0077 so new files and directories will default to owner-only permissions.
         Os.umask(S_IRWXG | S_IRWXO);
+        // PICO: map the enlarged system_server Binder transaction buffer.
+        systemServerMmap();
 
         if (parsedArgs.mNiceName != null) {
             Process.setArgV0(parsedArgs.mNiceName);
@@ -1000,4 +1002,18 @@ public class ZygoteInit {
     }
 
     private static final native void nativeZygoteInit();
+
+    /**
+     * PICO: the OpenXR runtime process maps the runtime-size Binder transaction buffer
+     * (ProcessState::selfForRuntime) before its Binder state is created.
+     */
+    public static void runtimeMmap(String niceName) {
+        if ("com.pico.xr.openxr_runtime".equals(niceName)) {
+            runtimeMmap();
+        }
+    }
+
+    private static final native void runtimeMmap();
+
+    private static native void systemServerMmap();
 }

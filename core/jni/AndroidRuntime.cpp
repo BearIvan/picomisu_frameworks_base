@@ -273,6 +273,17 @@ static void com_android_internal_os_ZygoteInit_nativeZygoteInit(JNIEnv* env, job
     gCurRuntime->onZygoteInit();
 }
 
+// PICO: create this process's Binder state with the factory transaction buffer sizes.
+static void com_android_internal_os_ZygoteInit_systemServerMmap(JNIEnv* env, jobject clazz)
+{
+    sp<ProcessState> proc = ProcessState::selfForSystemServer();
+}
+
+static void com_android_internal_os_ZygoteInit_runtimeMmap(JNIEnv* env, jobject clazz)
+{
+    sp<ProcessState> proc = ProcessState::selfForRuntime();
+}
+
 static void com_android_internal_os_RuntimeInit_nativeSetExitWithoutCleanup(JNIEnv* env,
         jobject clazz, jboolean exitWithoutCleanup)
 {
@@ -300,6 +311,10 @@ int register_com_android_internal_os_ZygoteInit_nativeZygoteInit(JNIEnv* env)
     const JNINativeMethod methods[] = {
         { "nativeZygoteInit", "()V",
             (void*) com_android_internal_os_ZygoteInit_nativeZygoteInit },
+        { "systemServerMmap", "()V",
+            (void*) com_android_internal_os_ZygoteInit_systemServerMmap },
+        { "runtimeMmap", "()V",
+            (void*) com_android_internal_os_ZygoteInit_runtimeMmap },
     };
     return jniRegisterNativeMethods(env, "com/android/internal/os/ZygoteInit",
         methods, NELEM(methods));

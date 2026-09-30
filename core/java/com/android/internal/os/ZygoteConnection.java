@@ -583,6 +583,7 @@ class ZygoteConnection {
         if (parsedArgs.mNiceName != null) {
             Process.setArgV0(parsedArgs.mNiceName);
         }
+        ZygoteInit.runtimeMmap(parsedArgs.mNiceName);
 
         // End of the postFork event.
         Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
