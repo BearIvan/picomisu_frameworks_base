@@ -514,6 +514,8 @@ class ActivityStarter {
      */
     int execute() {
         try {
+            mRequest.intent = mService.getActivityStartController().getExt()
+                    .getIntentFromVRShell(mRequest.caller, mRequest.intent);
             // TODO(b/64750076): Look into passing request directly to these methods to allow
             // for transactional diffs and preprocessing.
             if (mRequest.mayWait) {
@@ -1518,6 +1520,14 @@ class ActivityStarter {
             return START_CANCELED;
         }
 
+        // PICO: the SystemExt app decides whether (and on which display) this start happens.
+        if (android.pico.utils.Features.isPvr2DEnabled() && mController.getExt().interceptStart(
+                mRequest.caller, r, reusedActivity, sourceRecord, startFlags, false,
+                mLastStartReason)) {
+            ActivityOptions.abort(mOptions);
+            return android.app.ActivityManager.START_SWITCHES_CANCELED;
+        }
+
         if (reusedActivity != null) {
             // When the flags NEW_TASK and CLEAR_TASK are set, then the task gets reused but
             // still needs to be a lock task mode violation since the task gets cleared out and
@@ -1689,7 +1699,8 @@ class ActivityStarter {
         // Should this be considered a new task?
         int result = START_SUCCESS;
         if (mStartActivity.resultTo == null && mInTask == null && !mAddingToTask
-                && (mLaunchFlags & FLAG_ACTIVITY_NEW_TASK) != 0) {
+                && (mLaunchFlags & FLAG_ACTIVITY_NEW_TASK) != 0
+                || mController.getExt().forceNewTask(mStartActivity, mSourceRecord)) {
             newTask = true;
             String packageName= mService.mContext.getPackageName();
             if (mPerf != null) {
@@ -2542,6 +2553,8 @@ class ActivityStarter {
         addOrReparentStartingActivity(mInTask, "setTaskFromInTask");
         if (DEBUG_TASKS) Slog.v(TAG_TASKS, "Starting new activity " + mStartActivity
                 + " in explicit task " + mStartActivity.getTaskRecord());
+        mService.getActivityStartController().getExt().onTaskMovedToFront(
+                mTargetStack.getDisplay(), "inTaskToFront");
 
         return START_SUCCESS;
     }

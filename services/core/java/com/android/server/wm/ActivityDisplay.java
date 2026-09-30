@@ -174,6 +174,14 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
         mDisplayContent = createDisplayContent();
         updateBounds();
         mActivityDisplaySmtEx = new ActivityDisplaySmtEx(this, mService);
+        mExt.init(mService, mDisplay);
+    }
+
+    /** PICO VR state of this display (factory ExtActivityDisplayImpl). */
+    private final ExtActivityDisplayImpl mExt = new ExtActivityDisplayImpl(this);
+
+    ExtActivityDisplayImpl getExt() {
+        return mExt;
     }
 
     // Smartisan extension state of this display (factory PICO OS 5.13.7).
@@ -194,6 +202,7 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
     }
 
     void onDisplayChanged() {
+        mExt.onDisplayChanged();
         // The window policy is responsible for stopping activities on the default display.
         final int displayId = mDisplay.getDisplayId();
         if (displayId != DEFAULT_DISPLAY) {
@@ -660,6 +669,8 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
             }
 
             stack.findTaskLocked(r, mTmpFindTaskResult);
+            mService.getActivityStartController().getExt().reuseTask(r, mTmpFindTaskResult, result,
+                    isPreferredDisplay);
             // It is possible to have tasks in multiple stacks with the same root affinity, so
             // we should keep looking after finding an affinity match to see if there is a
             // better match in another stack. Also, task affinity isn't a good enough reason

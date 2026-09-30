@@ -945,6 +945,9 @@ public final class ActivityRecord extends ConfigurationContainer {
         }
     }
 
+    /** PICO: the activity that started this one (factory ExtActivityRecordImpl). */
+    ActivityRecord mPicoSourceRecord;
+
     ActivityRecord(ActivityTaskManagerService _service, WindowProcessController _caller,
             int _launchedFromPid, int _launchedFromUid, String _launchedFromPackage, Intent _intent,
             String _resolvedType, ActivityInfo aInfo, Configuration _configuration,
@@ -952,6 +955,7 @@ public final class ActivityRecord extends ConfigurationContainer {
             boolean _rootVoiceInteraction, ActivityStackSupervisor supervisor,
             ActivityOptions options, ActivityRecord sourceRecord) {
         mAtmService = _service;
+        mPicoSourceRecord = sourceRecord;
         mRootActivityContainer = _service.mRootActivityContainer;
         appToken = new Token(this, _intent);
         info = aInfo;
@@ -2198,6 +2202,7 @@ public final class ActivityRecord extends ConfigurationContainer {
         if (display != null) {
             display.handleActivitySizeCompatModeIfNeeded(r);
         }
+        r.mAtmService.getActivityStartController().getExt().onActivityResumed(r);
     }
 
     /**

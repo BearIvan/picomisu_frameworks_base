@@ -718,6 +718,7 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             mVrController.onSystemReady();
             mRecentTasks.onSystemReadyLocked();
             mStackSupervisor.onSystemReady();
+            getActivityStartController().getExt().onSystemReady();
         }
     }
 
@@ -2419,6 +2420,11 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             if (getLockTaskController().isLockTaskModeViolation(task)) {
                 Slog.e(TAG, "moveTaskToFront: Attempt to violate Lock Task Mode");
                 SafeActivityOptions.abort(options);
+                return;
+            }
+            if (android.pico.utils.Features.isPvr2DEnabled()
+                    && getActivityStartController().getExt().interceptStart(appThread,
+                            task.getTopActivity(), null, null, 0, true, null)) {
                 return;
             }
             ActivityOptions realOptions = options != null

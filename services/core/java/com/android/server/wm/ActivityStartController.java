@@ -135,6 +135,14 @@ public class ActivityStartController {
         mFactory.setController(this);
         mPendingRemoteAnimationRegistry = new PendingRemoteAnimationRegistry(service,
                 service.mH);
+        mExt = new ExtActivityStartControllerImpl(this, service);
+    }
+
+    /** PICO VR activity start routing (factory ExtActivityStartControllerImpl). */
+    private final ExtActivityStartControllerImpl mExt;
+
+    ExtActivityStartControllerImpl getExt() {
+        return mExt;
     }
 
     /**
@@ -143,6 +151,7 @@ public class ActivityStartController {
      *         considered invalid and no longer modified or used.
      */
     ActivityStarter obtainStarter(Intent intent, String reason) {
+        mExt.obtainStarter(intent, reason);
         return mFactory.obtain().setIntent(intent).setReason(reason);
     }
 

@@ -315,6 +315,9 @@ public class RootActivityContainer extends ConfigurationContainer
         // The display hasn't been added to ActivityManager yet, create a new record now.
         activityDisplay = new ActivityDisplay(this, display);
         addChild(activityDisplay, ActivityDisplay.POSITION_BOTTOM);
+        if (mService.getActivityStartController() != null) {
+            mService.getActivityStartController().getExt().onNewDisplayAdded(activityDisplay);
+        }
         return activityDisplay;
     }
 
@@ -1688,6 +1691,10 @@ public class RootActivityContainer extends ConfigurationContainer
             @Nullable ActivityOptions options, @Nullable TaskRecord candidateTask, boolean onTop,
             @Nullable LaunchParamsController.LaunchParams launchParams, int realCallingPid,
             int realCallingUid) {
+        if (android.pico.utils.Features.isPvr2DEnabled() && launchParams != null) {
+            mService.getActivityStartController().getExt().calculateDisplayId(r, candidateTask,
+                    options, launchParams);
+        }
         int taskId = INVALID_TASK_ID;
         int displayId = INVALID_DISPLAY;
         //Rect bounds = null;

@@ -1307,6 +1307,7 @@ public class ActivityStack extends ConfigurationContainer {
             // This also moves the entire hierarchy branch to top, including parents
             insertTaskAtTop(task, null /* starting */);
         }
+        mService.getActivityStartController().getExt().onTaskMovedToFront(display, reason);
     }
 
     /**
@@ -2662,6 +2663,10 @@ public class ActivityStack extends ConfigurationContainer {
         mStackSupervisor.mUserLeaving = false;
 
         if (!hasRunningActivity) {
+            if (ExtActivityStartControllerImpl.disableResumeNextFocusableActivityWhenStackIsEmpty(
+                    getDisplay())) {
+                return false;
+            }
             // There are no activities left in the stack, let's look somewhere else.
             return resumeNextFocusableActivityWhenStackIsEmpty(prev, options);
         }
@@ -3783,6 +3788,11 @@ public class ActivityStack extends ConfigurationContainer {
     private ActivityStack adjustFocusToNextFocusableStack(String reason, boolean allowFocusSelf) {
         final ActivityStack stack =
                 mRootActivityContainer.getNextFocusableStack(this, !allowFocusSelf);
+        if ("moveTaskToBackLocked".equals(reason)) {
+            // Factory ExtActivityStackImpl.getNextFocusableStack: a 2D app display whose task
+            // moves to the back is reported to SystemExt as hidden.
+            mService.getActivityStartController().getExt().onTaskMovedToBack(getDisplay());
+        }
         final String myReason = reason + " adjustFocusToNextFocusableStack";
         if (stack == null) {
             return null;
@@ -4153,6 +4163,7 @@ public class ActivityStack extends ConfigurationContainer {
             return false;
         } finally {
             mWindowManager.continueSurfaceLayout();
+            mService.getActivityStartController().getExt().onFinishActivity(r);
         }
     }
 
@@ -4773,6 +4784,7 @@ public class ActivityStack extends ConfigurationContainer {
             Slog.w(TAG, "Activity " + r + " being finished, but not in LRU list");
         }
 
+        mService.getActivityStartController().getExt().getSystemExt().handleDestroyActivity(r.info);
         return removedFromHistory;
     }
 
@@ -5029,10 +5041,7 @@ public class ActivityStack extends ConfigurationContainer {
             mRootActivityContainer.resumeFocusedStacksTopActivities();
             EventLog.writeEvent(EventLogTags.AM_TASK_TO_FRONT, tr.userId, tr.taskId);
             mService.getTaskChangeNotificationController().notifyTaskMovedToFront(tr.getTaskInfo());
-            if (mDisplayId == DEFAULT_DISPLAY) {
-                // Factory ExtActivityDisplayImpl.onTaskMovedToFront on the default display.
-                com.android.server.api.ApiLayerService.getInstance().updateTopAppOnDefaultDisplay(tr.getTaskInfo());
-            }
+            mService.getActivityStartController().getExt().onTaskMovedToFront(getDisplay(), reason);
         } finally {
             getDisplay().continueUpdateImeTarget();
         }
@@ -5582,6 +5591,7 @@ public class ActivityStack extends ConfigurationContainer {
         if (display.isSingleTaskInstance()) {
             mService.notifySingleTaskDisplayEmpty(display.mDisplayId);
         }
+        mService.getActivityStartController().getExt().onTaskRemoved(task);
     }
 
     TaskRecord createTaskRecord(int taskId, ActivityInfo info, Intent intent,
