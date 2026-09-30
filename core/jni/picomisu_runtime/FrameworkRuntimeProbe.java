@@ -296,6 +296,8 @@ public final class FrameworkRuntimeProbe {
                 "shifted-aidl-wire-scenarios");
         check(AppendedAidlFixture.run(System.out) == AppendedAidlFixture.EXPECTED_LINES,
                 "appended-aidl-wire-scenarios");
+        check(FactoryOnlyAidlFixture.run(System.out) == FactoryOnlyAidlFixture.EXPECTED_LINES,
+                "factory-only-aidl-wire-scenarios");
         drawSoftwareRouting();
         direct.release();
         initial.release();
