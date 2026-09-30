@@ -2605,6 +2605,16 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         }
 
         mWmService.mWindowPlacerLocked.requestTraversal();
+        // PICO (factory ExtDisplayContentImpl.removeImmediately): the input method client of a
+        // removed 2D app display is removed from InputMethodManagerService.
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            final android.os.IBinder imms = android.os.ServiceManager.checkService(
+                    android.content.Context.INPUT_METHOD_SERVICE);
+            if (imms instanceof com.android.server.inputmethod.InputMethodManagerService) {
+                ((com.android.server.inputmethod.InputMethodManagerService) imms)
+                        .onPicoDisplayContentDestroy(mDisplayId);
+            }
+        }
     }
 
     /** Returns true if a removal action is still being deferred. */

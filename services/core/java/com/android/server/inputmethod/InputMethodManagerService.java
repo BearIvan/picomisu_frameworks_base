@@ -156,6 +156,7 @@ import com.android.server.inputmethod.InputMethodSubtypeSwitchingController.ImeS
 import com.android.server.inputmethod.InputMethodUtils.InputMethodSettings;
 import com.android.server.statusbar.StatusBarManagerService;
 import com.android.server.wm.WindowManagerInternal;
+import com.android.server.wm.WindowManagerService;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -1515,6 +1516,10 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         if (mCurMethodId != null && !mMethodMap.get(mCurMethodId).isSystem()) {
             return;
         }
+        if (android.pico.utils.Features.isPvr2DEnabled()
+                && picoDisableResetDefaultIme(mCurMethodId)) {
+            return;
+        }
         final List<InputMethodInfo> suitableImes = InputMethodUtils.getDefaultEnabledImes(
                 context, mSettings.getEnabledInputMethodListLocked());
         if (suitableImes.isEmpty()) {
@@ -2286,6 +2291,111 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         }
     }
 
+    /** PICO: the window manager, for the IME target and visibility of the PICO WM layer. */
+    private WindowManagerService getPicoWindowManagerService() {
+        return mIWindowManager instanceof WindowManagerService
+                ? (WindowManagerService) mIWindowManager : null;
+    }
+
+    /**
+     * PICO (factory ExtInputMethodManagerServiceImpl.onShowCurrentInput): the IME is shown for
+     * the focused window; tell the window manager, the API layer and SystemExt (display of the
+     * IME target).
+     */
+    private void picoOnShowCurrentInput() {
+        if (mCurFocusedWindow == null) {
+            return;
+        }
+        final WindowManagerService wms = getPicoWindowManagerService();
+        if (wms != null) {
+            wms.notifyPicoImeVisibleChanged(true);
+        }
+        com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(true);
+        dispatchImeVisibleStatusToNS(
+                mWindowManagerInternal.getDisplayIdForWindow(mCurFocusedWindow));
+    }
+
+    /** PICO (factory ExtInputMethodManagerServiceImpl.onHideCurrentInput). */
+    private void picoOnHideCurrentInput() {
+        final WindowManagerService wms = getPicoWindowManagerService();
+        if (wms != null) {
+            wms.notifyPicoImeVisibleChanged(false);
+        }
+        com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(false);
+        dispatchImeVisibleStatusToNS(-1);
+    }
+
+    /**
+     * PICO (factory ExtInputMethodManagerServiceImpl.disableCheckClientState): a call from a
+     * client that is not (or no longer) registered, e.g. from a destroyed 2D app display, is
+     * ignored instead of throwing.
+     */
+    private static boolean picoDisableCheckClientState() {
+        return android.pico.utils.Features.isPvr2DEnabled();
+    }
+
+    /**
+     * PICO (factory ExtInputMethodManagerServiceImpl.disableResetDefaultIme): a locale change
+     * does not replace the PICO keyboard (or the Sogou car IME) with the default system IME.
+     */
+    private static boolean picoDisableResetDefaultIme(String curMethodId) {
+        if (curMethodId != null && (curMethodId.contains("pico")
+                || curMethodId.contains("com.sohu.inputmethod.sogou.car"))) {
+            Slog.i(TAG, "avoid reset pico IME when locale changed, mCurMethodId=" + curMethodId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * PICO (factory ExtDisplayContentImpl.removeImmediately ->
+     * ExtInputMethodManagerServiceImpl.onDisplayContentDestroy): a second after a display is
+     * removed, the client registered for it is removed (hiding the IME if it was shown for it) and
+     * told to drop its cached InputMethodManager.
+     */
+    public void onPicoDisplayContentDestroy(final int displayId) {
+        mHandler.postDelayed(() -> {
+            synchronized (mMethodMap) {
+                ClientState state = null;
+                final int numClients = mClients.size();
+                for (int i = 0; i < numClients; i++) {
+                    final ClientState clientState = mClients.valueAt(i);
+                    if (clientState != null && clientState.selfReportedDisplayId == displayId) {
+                        state = clientState;
+                    }
+                }
+                if (state == null) {
+                    return;
+                }
+                if (mInputShown && mCurClient != null
+                        && mCurClient.selfReportedDisplayId == displayId) {
+                    Slog.w(TAG, "IME target display destroy, force hide current showing ime");
+                    hideCurrentInputLocked(0, null);
+                }
+                Slog.w(TAG, "force remove ClientState by display removed [" + displayId + "]");
+                picoOnClientRemoved(state.client);
+                removeClient(state.client);
+            }
+        }, 1000);
+    }
+
+    private static void picoOnClientRemoved(IInputMethodClient client) {
+        if (!android.pico.utils.Features.limitTheNumberOfDisplayCaches()) {
+            return;
+        }
+        final Parcel data = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.android.internal.view.IInputMethodClient");
+            client.asBinder().transact(
+                    android.view.inputmethod.InputMethodManager.CODE_PICO_ON_CLIENT_REMOVED,
+                    data, null, IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            data.recycle();
+        }
+    }
+
     @Override
     public void onServiceConnected(ComponentName name, IBinder service) {
         synchronized (mMethodMap) {
@@ -2443,6 +2553,9 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
                 mShowRequested = mInputShown;
                 mInputShown = false;
                 unbindCurrentClientLocked(UnbindReason.DISCONNECT_IME);
+                // PICO (factory): the crashed IME is reported as hidden.
+                Slog.w(TAG, "onServiceDisconnected");
+                picoOnHideCurrentInput();
             }
         }
     }
@@ -2863,11 +2976,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
                     MSG_SHOW_SOFT_INPUT, getImeShowFlags(), mCurMethod,
                     resultReceiver));
             mInputShown = true;
-            com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(true);
-            if (mCurFocusedWindow != null) {
-                dispatchImeVisibleStatusToNS(
-                        mWindowManagerInternal.getDisplayIdForWindow(mCurFocusedWindow));
-            }
+            picoOnShowCurrentInput();
             if (mHaveConnection && !mVisibleBound) {
                 bindCurrentInputMethodServiceLocked(
                         mCurIntent, mVisibleConnection, IME_VISIBLE_BIND_FLAGS);
@@ -2912,6 +3021,10 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
                     // be made before input is started in it.
                     final ClientState cs = mClients.get(client.asBinder());
                     if (cs == null) {
+                        // PICO (factory): the client of a removed 2D app display is ignored.
+                        if (picoDisableCheckClientState()) {
+                            return false;
+                        }
                         throw new IllegalArgumentException("unknown client " + client.asBinder());
                     }
                     if (!mWindowManagerInternal.isInputMethodClientFocus(cs.uid, cs.pid,
@@ -2969,8 +3082,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
             mVisibleBound = false;
         }
         mInputShown = false;
-        com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(false);
-        dispatchImeVisibleStatusToNS(-1);
+        picoOnHideCurrentInput();
         mShowRequested = false;
         mShowExplicitlyRequested = false;
         mShowForced = false;
@@ -3053,6 +3165,12 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
 
         final ClientState cs = mClients.get(client.asBinder());
         if (cs == null) {
+            // PICO (factory): the client of a removed 2D app display is not an IME target.
+            if (picoDisableCheckClientState()) {
+                Slog.w(TAG, "ClientState not found when start ime. force return"
+                        + " NOT_IME_TARGET_WINDOW");
+                return InputBindResult.NOT_IME_TARGET_WINDOW;
+            }
             throw new IllegalArgumentException("unknown client " + client.asBinder());
         }
         if (cs.selfReportedDisplayId != windowDisplayId) {
@@ -3113,6 +3231,11 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         mCurFocusedWindow = windowToken;
         mCurFocusedWindowSoftInputMode = softInputMode;
         mCurFocusedWindowClient = cs;
+        // PICO (factory ExtInputMethodManagerServiceImpl.updateCurrentFocusedWindow).
+        final WindowManagerService picoWms = getPicoWindowManagerService();
+        if (picoWms != null) {
+            picoWms.notifyPicoImeTargetChanged(mCurFocusedWindow);
+        }
 
         // Should we auto-show the IME even if the caller has not
         // specified what should be done with it?

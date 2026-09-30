@@ -1972,10 +1972,28 @@ public class WindowManagerService extends IWindowManager.Stub
                 return;
             }
             outDisplayFrame.set(win.getDisplayFrameLw());
+            // PICO (factory ExtWindowManagerServiceImpl.adjustGetWindowDisplayFrame).
+            mRoot.getExt().adjustWindowDisplayFrame(win, outDisplayFrame);
             if (win.inSizeCompatMode()) {
                 outDisplayFrame.scale(win.mInvGlobalScale);
             }
         }
+    }
+
+    /**
+     * PICO (factory ExtWindowManagerServiceImpl.notifyImeTargetChanged): InputMethodManagerService
+     * reports the window token of the current IME target.
+     */
+    public void notifyPicoImeTargetChanged(final IBinder target) {
+        mH.post(() -> mRoot.getExt().onImeTargetChanged(target));
+    }
+
+    /**
+     * PICO (factory ExtWindowManagerServiceImpl.notifyImeVisibleChanged): InputMethodManagerService
+     * reports that the IME was shown or hidden.
+     */
+    public void notifyPicoImeVisibleChanged(boolean visible) {
+        mRoot.getExt().onImeVisibleChanged(visible);
     }
 
     public void onRectangleOnScreenRequested(IBinder token, Rect rectangle) {

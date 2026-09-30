@@ -839,7 +839,33 @@ public final class InputMethodManager {
             mH.obtainMessage(MSG_UPDATE_ACTIVITY_VIEW_TO_SCREEN_MATRIX, bindSequence, 0,
                     matrixValues).sendToTarget();
         }
+
+        @Override
+        public boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply,
+                int flags) throws RemoteException {
+            // PICO (factory ExtInputMethodManagerImpl.onTransact): system_server removed this
+            // client because its 2D app display went away; drop the cached per-display instance.
+            if (code == CODE_PICO_ON_CLIENT_REMOVED) {
+                if (android.pico.utils.Features.limitTheNumberOfDisplayCaches()) {
+                    synchronized (sLock) {
+                        final int index = sInstanceMap.indexOfValue(InputMethodManager.this);
+                        if (index >= 0) {
+                            sInstanceMap.removeAt(index);
+                        }
+                    }
+                }
+                return true;
+            }
+            return super.onTransact(code, data, reply, flags);
+        }
     };
+
+    /**
+     * PICO: IInputMethodClient transaction sent by InputMethodManagerService when it removes the
+     * client of a destroyed 2D app display (factory IExtInputMethodManager.CODE_ON_CLIENT_REMOVED).
+     * @hide
+     */
+    public static final int CODE_PICO_ON_CLIENT_REMOVED = 10000;
 
     final InputConnection mDummyInputConnection = new BaseInputConnection(this, false);
 
