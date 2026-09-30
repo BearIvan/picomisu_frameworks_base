@@ -53,6 +53,7 @@ import java.io.File;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 
 /**
  * A proxy to the {@link BackupManagerService} implementation.
@@ -109,9 +110,11 @@ public class Trampoline extends IBackupManager.Stub {
     // TODD(b/121198006): remove this object and synchronized all methods on "this".
     private final Object mStateLock = new Object();
 
-    private volatile BackupManagerService mService;
+    volatile BackupManagerService mService;
     private HandlerThread mHandlerThread;
     private Handler mHandler;
+
+    IExtTrampoline mExt = new ExtTrampolineImpl(this);
 
     public Trampoline(Context context) {
         mContext = context;
@@ -796,6 +799,19 @@ public class Trampoline extends IBackupManager.Stub {
         if (mService != null) {
             mService.setAncestralSerialNumber(ancestralSerialNumber);
         }
+    }
+
+    @Override
+    public void backup(ParcelFileDescriptor fd, String packageNames, List<String> includePaths,
+            List<String> excludePaths, IFullBackupRestoreObserver observer, long timeout,
+            boolean notKill) {
+        mExt.backup(fd, packageNames, includePaths, excludePaths, observer, timeout, notKill);
+    }
+
+    @Override
+    public void restore(ParcelFileDescriptor fd, IFullBackupRestoreObserver observer,
+            long timeout) {
+        mExt.restore(fd, observer, timeout);
     }
 
     @Override

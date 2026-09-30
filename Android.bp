@@ -65,6 +65,17 @@ java_defaults {
         "core/java/com/pxr/net/IPxrNetworkManager.aidl",
         "core/java/com/pxr/pxrapi/IScreenCaptureInterface.aidl",
 
+        // Smartisan interfaces of PICO OS 5.13.7 reconstructed by tools/reconstruct-pico-aidl.py.
+        "core/java/android/app/IActivityLifeCycleObserver.aidl",
+        "core/java/android/app/IActivityManagerSmtEx.aidl",
+        "core/java/android/app/IActivityManagerSysMoEx.aidl",
+        "core/java/android/app/IAppStartEventObserver.aidl",
+        "core/java/android/app/IMemClient.aidl",
+        "core/java/android/app/ISysClient.aidl",
+        "core/java/android/content/pm/IPackageManagerSmtEx.aidl",
+        "core/java/android/view/IWindowSessionSmtEx.aidl",
+        "core/java/com/android/internal/app/IBatteryStatsOptEx.aidl",
+
         "core/java/android/accessibilityservice/IAccessibilityServiceConnection.aidl",
         "core/java/android/accessibilityservice/IAccessibilityServiceClient.aidl",
         "core/java/android/accounts/IAccountManager.aidl",

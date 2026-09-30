@@ -164,7 +164,7 @@ public class InputManagerService extends IInputManager.Stub
     private final PersistentDataStore mDataStore = new PersistentDataStore();
 
     // List of currently registered input devices changed listeners by process id.
-    private Object mInputDevicesLock = new Object();
+    Object mInputDevicesLock = new Object();
     private boolean mInputDevicesChangedPending; // guarded by mInputDevicesLock
     private InputDevice[] mInputDevices = new InputDevice[0];
     private final SparseArray<InputDevicesChangedListenerRecord> mInputDevicesChangedListeners =
@@ -191,6 +191,8 @@ public class InputManagerService extends IInputManager.Stub
 
     private IWindow mFocusedWindow;
     private boolean mFocusedWindowHasCapture;
+
+    private final IExtInputManagerService mExt = new ExtInputManagerServiceImpl(this);
 
     private static native long nativeInit(InputManagerService service,
             Context context, MessageQueue messageQueue);
@@ -679,6 +681,17 @@ public class InputManagerService extends IInputManager.Stub
             }
         }
         return null;
+    }
+
+    /**
+     * Gets the PICO virtual input device standing in for a VR controller, hand or
+     * head-control device id.
+     * @param deviceId The device id.
+     * @return The virtual input device or null if not found.
+     */
+    @Override // Binder call
+    public InputDevice getVitualInputDevice(int deviceId) {
+        return mExt.getVitualInputDevice(deviceId);
     }
 
     // Binder call

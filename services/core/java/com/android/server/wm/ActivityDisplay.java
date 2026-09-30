@@ -173,6 +173,15 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
         mDisplay = display;
         mDisplayContent = createDisplayContent();
         updateBounds();
+        mActivityDisplaySmtEx = new ActivityDisplaySmtEx(this, mService);
+    }
+
+    // Smartisan extension state of this display (factory PICO OS 5.13.7).
+    private final ActivityDisplaySmtEx mActivityDisplaySmtEx;
+
+    /** Smartisan extension state of this display (factory PICO OS 5.13.7). */
+    public ActivityDisplaySmtEx getActivityDisplaySmtEx() {
+        return mActivityDisplaySmtEx;
     }
 
     protected DisplayContent createDisplayContent() {

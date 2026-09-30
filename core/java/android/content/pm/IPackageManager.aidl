@@ -35,6 +35,7 @@ import android.content.pm.IPackageStatsObserver;
 import android.content.pm.IOnPermissionsChangeListener;
 import android.content.pm.IntentFilterVerificationInfo;
 import android.content.pm.InstrumentationInfo;
+import android.content.pm.IPackageManagerSmtEx;
 import android.content.pm.KeySet;
 import android.content.pm.ModuleInfo;
 import android.content.pm.PackageInfo;
@@ -775,4 +776,6 @@ interface IPackageManager {
     void notifyPackagesReplacedReceived(in String[] packages);
 
     List<SplitPermissionInfoParcelable> getSplitPermissions();
+
+    IPackageManagerSmtEx getISmtEx();
 }

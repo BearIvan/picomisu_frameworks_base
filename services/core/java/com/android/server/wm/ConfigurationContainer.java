@@ -616,4 +616,15 @@ public abstract class ConfigurationContainer<E extends ConfigurationContainer> {
     abstract protected E getChildAt(int index);
 
     abstract protected ConfigurationContainer getParent();
+
+    // Smartisan extension state of this container (factory PICO OS 5.13.7), created lazily.
+    private ConfigurationContainerSmtBase mSmtEx;
+
+    /** Smartisan extension state of this container (factory PICO OS 5.13.7). */
+    public ConfigurationContainerSmtBase getSmtEx() {
+        if (mSmtEx == null) {
+            mSmtEx = ConfigurationContainerSmtBaseFactory.createSmtEx(this);
+        }
+        return mSmtEx;
+    }
 }

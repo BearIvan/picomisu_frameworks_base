@@ -2111,6 +2111,11 @@ public class PackageInstallerSession extends IPackageInstallerSession.Stub {
     }
 
     @Override
+    public int getInstallFlags() {
+        return params.installFlags;
+    }
+
+    @Override
     public int[] getChildSessionIds() {
         final int[] childSessionIds = mChildSessionIds.copyKeys();
         if (childSessionIds != null) {

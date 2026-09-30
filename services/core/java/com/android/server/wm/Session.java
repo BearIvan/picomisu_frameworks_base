@@ -46,6 +46,7 @@ import android.view.IWindow;
 import android.view.IWindowId;
 import android.view.IWindowSession;
 import android.view.IWindowSessionCallback;
+import android.view.IWindowSessionSmtEx;
 import android.view.InputChannel;
 import android.view.InsetsState;
 import android.view.SurfaceControl;
@@ -84,6 +85,8 @@ class Session extends IWindowSession.Stub implements IBinder.DeathRecipient {
     private AlertWindowNotification mAlertWindowNotification;
     private boolean mShowingAlertWindowNotificationAllowed;
     private boolean mClientDead = false;
+    // Smartisan extension of this session (factory PICO OS 5.13.7).
+    private final SessionSmtBase mSmtEx = new SessionSmtBase(this);
     private float mLastReportedAnimatorScale;
     private String mPackageName;
     private String mRelayoutTag;
@@ -609,5 +612,15 @@ class Session extends IWindowSession.Stub implements IBinder.DeathRecipient {
 
     boolean hasAlertWindowSurfaces() {
         return !mAlertWindowSurfaces.isEmpty();
+    }
+
+    /**
+     * Smartisan window session extension (factory PICO OS 5.13.7). As in the factory, the
+     * SessionSmtBase itself is cast to IWindowSessionSmtEx, which it does not implement, so
+     * this cast fails; the extension binder is SessionSmtBase#getISmtEx().
+     */
+    @Override
+    public IWindowSessionSmtEx getISmtEx() {
+        return (IWindowSessionSmtEx) mSmtEx;
     }
 }

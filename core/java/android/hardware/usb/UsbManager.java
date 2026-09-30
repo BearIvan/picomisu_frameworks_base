@@ -888,6 +888,22 @@ public class UsbManager {
     }
 
     /**
+     * Asks the USB device manager to enter accessory mode.
+     *
+     * @return false if the service is unavailable or accessory mode cannot be started now.
+     */
+    private boolean startAccessory() {
+        if (mService == null) {
+            return false;
+        }
+        try {
+            return mService.startAccessory();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * Returns whether the given functions are valid inputs to UsbManager.
      * Currently the empty functions or any of MTP, PTP, RNDIS, MIDI are accepted.
      *

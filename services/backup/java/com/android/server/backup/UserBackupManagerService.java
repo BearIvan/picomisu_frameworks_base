@@ -1333,6 +1333,8 @@ public class UserBackupManagerService {
         }
     };
 
+    IExtUserBackupManagerService mExt = new ExtUserBackupManagerServiceImpl(this);
+
     // Add the backup agents in the given packages to our set of known backup participants.
     // If 'packageNames' is null, adds all backup agents in the whole system.
     private void addPackageParticipantsLocked(String[] packageNames) {
@@ -1956,6 +1958,14 @@ public class UserBackupManagerService {
 
     /** Unbind the backup agent and kill the app if it's a non-system app. */
     public void tearDownAgentAndKill(ApplicationInfo app) {
+        tearDownAgentAndKill(app, false);
+    }
+
+    /**
+     * Unbind the backup agent and, unless {@code notKill} is set (PICO backup that must leave
+     * the app running), kill the app if it's a non-system app.
+     */
+    public void tearDownAgentAndKill(ApplicationInfo app, boolean notKill) {
         if (app == null) {
             // Null means the system package, so just quietly move on.  :)
             return;
@@ -1968,7 +1978,7 @@ public class UserBackupManagerService {
             // The agent was running with a stub Application object, so shut it down.
             // !!! We hardcode the confirmation UI's package name here rather than use a
             //     manifest flag!  TODO something less direct.
-            if (!UserHandle.isCore(app.uid)
+            if (!notKill && !UserHandle.isCore(app.uid)
                     && !app.packageName.equals("com.android.backupconfirm")) {
                 if (MORE_DEBUG) Slog.d(TAG, "Killing agent host process");
                 mActivityManager.killApplicationProcess(app.processName, app.uid);

@@ -80,6 +80,9 @@ public final class UidRecord {
      */
     final Object networkStateLock = new Object();
 
+    // Smartisan extension state of this uid (factory PICO OS 5.13.7).
+    private UidRecordSmtBase mSmtEx = new UidRecordSmtBase();
+
     static final int CHANGE_PROCSTATE = 0;
     static final int CHANGE_GONE = 1<<0;
     static final int CHANGE_IDLE = 1<<1;
@@ -119,6 +122,11 @@ public final class UidRecord {
         uid = _uid;
         idle = true;
         reset();
+    }
+
+    /** Smartisan extension state of this uid (factory PICO OS 5.13.7). */
+    public UidRecordSmtBase getSmtEx() {
+        return mSmtEx;
     }
 
     public int getCurProcState() {

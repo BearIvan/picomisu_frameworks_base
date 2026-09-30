@@ -16,6 +16,7 @@
 
 package com.android.internal.app;
 
+import com.android.internal.app.IBatteryStatsOptEx;
 import com.android.internal.os.BatteryStatsImpl;
 
 import android.bluetooth.BluetoothActivityEnergyInfo;
@@ -161,4 +162,7 @@ interface IBatteryStats {
 
     /** {@hide} */
     boolean setChargingStateUpdateDelayMillis(int delay);
+
+    /** Smartisan extension of the factory PICO OS 5.13.7 framework. {@hide} */
+    IBatteryStatsOptEx getIBatteryStatsOptEx();
 }

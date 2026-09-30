@@ -26,6 +26,7 @@ import android.view.DisplayCutout;
 import android.view.InputChannel;
 import android.view.IWindow;
 import android.view.IWindowId;
+import android.view.IWindowSessionSmtEx;
 import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.view.InsetsState;
@@ -301,4 +302,7 @@ interface IWindowSession {
      * Called when the system gesture exclusion has changed.
      */
     oneway void reportSystemGestureExclusionChanged(IWindow window, in List<Rect> exclusionRects);
+
+    /** Smartisan extension of the factory PICO OS 5.13.7 framework. */
+    IWindowSessionSmtEx getISmtEx();
 }

@@ -409,6 +409,9 @@ public class ActivityStack extends ConfigurationContainer {
     /** List for processing through a set of activities */
     private final ArrayList<ActivityRecord> mTmpActivities = new ArrayList<>();
 
+    // PICO activity stack extension (factory PICO OS 5.13.7).
+    private final IExtActivityStack mExt = new ExtActivityStackImpl(this);
+
     /** Run all ActivityStacks through this */
     protected final ActivityStackSupervisor mStackSupervisor;
     protected final RootActivityContainer mRootActivityContainer;
@@ -459,6 +462,7 @@ public class ActivityStack extends ConfigurationContainer {
                         if (r.hasProcess()) {
                             mService.logAppTooSlow(r.app, r.pauseTime, "pausing " + r);
                         }
+                        mExt.scheduleActivityTimeout(r, "pauseTimeout");
                         activityPausedLocked(r.appToken, true);
                     }
                 } break;
@@ -476,6 +480,7 @@ public class ActivityStack extends ConfigurationContainer {
                     // so we need to be conservative and assume it isn't.
                     Slog.w(TAG, "Activity destroy timeout for " + r);
                     synchronized (mService.mGlobalLock) {
+                        mExt.scheduleActivityTimeout(r, "destroyTimeout");
                         activityDestroyedLocked(r != null ? r.appToken : null, "destroyTimeout");
                     }
                 } break;
@@ -485,6 +490,7 @@ public class ActivityStack extends ConfigurationContainer {
                     // so we need to be conservative and assume it isn't.
                     Slog.w(TAG, "Activity stop timeout for " + r);
                     synchronized (mService.mGlobalLock) {
+                        mExt.scheduleActivityTimeout(r, "stopTimeout");
                         if (r.isInHistory()) {
                             r.activityStoppedLocked(null /* icicle */,
                                     null /* persistentState */, null /* description */);
@@ -5869,5 +5875,10 @@ public class ActivityStack extends ConfigurationContainer {
         // TODO: Remove, no longer needed with windowingMode.
         proto.write(FULLSCREEN, matchParentBounds());
         proto.end(token);
+    }
+
+    /** PICO activity stack extension (factory PICO OS 5.13.7). */
+    public IExtActivityStack getExt() {
+        return mExt;
     }
 }

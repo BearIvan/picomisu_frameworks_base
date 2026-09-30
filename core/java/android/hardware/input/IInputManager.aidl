@@ -87,4 +87,7 @@ interface IInputManager {
 
     /** Create an input monitor for gestures. */
     InputMonitor monitorGestureInput(String name, int displayId);
+
+    /** Get the PICO virtual input device of a VR input device id. */
+    InputDevice getVitualInputDevice(int deviceId);
 }

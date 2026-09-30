@@ -163,6 +163,7 @@ import android.app.ContentProviderHolder;
 import android.app.Dialog;
 import android.app.IActivityController;
 import android.app.IActivityManager;
+import android.app.IActivityManagerSmtEx;
 import android.app.IApplicationThread;
 import android.app.IAssistDataReceiver;
 import android.app.IInstrumentationWatcher;
@@ -346,6 +347,7 @@ import com.android.server.NetworkManagementInternal;
 import com.android.server.PackageWatchdog;
 import com.android.server.RescueParty;
 import com.android.server.ServiceThread;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemConfig;
 import com.android.server.SystemService;
 import com.android.server.SystemServiceManager;
@@ -2449,6 +2451,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         mProcStartHandler = null;
         mHiddenApiBlacklist = null;
         mFactoryTest = FACTORY_TEST_OFF;
+        mMonitorEx = new ActivityManagerServiceSysMoEx(this, injector, mHandlerThread);
+        mSmtEx = new ActivityManagerServiceSmtBase(this, injector, mHandlerThread);
     }
 
     // Note: This method is invoked on the main thread but may need to attach various
@@ -2457,6 +2461,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         LockGuard.installLock(this, LockGuard.INDEX_ACTIVITY);
         mInjector = new Injector();
         mContext = systemContext;
+        mMonitorEx = new ActivityManagerServiceSysMoEx(this);
+        mSmtEx = new ActivityManagerServiceSmtBase(this);
 
         mFactoryTest = FactoryTest.getMode();
         mSystemThread = ActivityThread.currentActivityThread();
@@ -6729,6 +6735,14 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     private final long[] mProcessStateStatsLongs = new long[1];
 
+    // Smartisan memory process controller (factory PICO OS 5.13.7), see
+    // keepProcessAliveBackground().
+    IMemoryProcessController memoryProcessController =
+            SysOptBridge.getFactory().getMemoryProcessController();
+    // Smartisan extensions returned by getMonitorEx() and getISmtEx() (factory PICO OS 5.13.7).
+    private final ActivityManagerServiceSysMoEx mMonitorEx;
+    private final ActivityManagerServiceSmtBase mSmtEx;
+
     private boolean isProcessAliveLocked(ProcessRecord proc) {
         if (proc.pid <= 0) {
             if (DEBUG_OOM_ADJ) Slog.d(TAG, "Process hasn't started yet: " + proc);
@@ -9591,6 +9605,20 @@ public class ActivityManagerService extends IActivityManager.Stub
             String parentShortComponentName, ProcessRecord parentProcess,
             String subject, final String report, final File dataFile,
             final ApplicationErrorReport.CrashInfo crashInfo) {
+        addErrorToDropBox(eventType, process, processName, activityShortComponentName,
+                parentShortComponentName, parentProcess, subject, report, dataFile, crashInfo,
+                null);
+    }
+
+    /**
+     * Same as the variant above, with a Smartisan custom error type (factory PICO OS 5.13.7)
+     * written as the "Type:" header line when not null.
+     */
+    public void addErrorToDropBox(String eventType,
+            ProcessRecord process, String processName, String activityShortComponentName,
+            String parentShortComponentName, ProcessRecord parentProcess,
+            String subject, final String report, final File dataFile,
+            final ApplicationErrorReport.CrashInfo crashInfo, String customErrorType) {
         // NOTE -- this must never acquire the ActivityManagerService lock,
         // otherwise the watchdog may be prevented from resetting the system.
 
@@ -9632,6 +9660,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
         if (subject != null) {
             sb.append("Subject: ").append(subject).append("\n");
+        }
+        if (customErrorType != null) {
+            sb.append("Type: ").append(customErrorType).append("\n");
         }
         sb.append("Build: ").append(Build.FINGERPRINT).append("\n");
         if (Debug.isDebuggerConnected()) {
@@ -17645,6 +17676,23 @@ public class ActivityManagerService extends IActivityManager.Stub
             @Nullable IProgressListener unlockListener) {
         // Permission check done inside UserController.
         return mUserController.startUser(userId, /* foreground */ true, unlockListener);
+    }
+
+    @Override
+    public void keepProcessAliveBackground(ComponentName className, int keepAlivePid, int flags,
+            int level) {
+        int alivePid = keepAlivePid == -1 ? Binder.getCallingPid() : keepAlivePid;
+        memoryProcessController.keepAliveBackground(className, alivePid, flags, level);
+    }
+
+    @Override
+    public ActivityManagerServiceSysMoEx getMonitorEx() {
+        return mMonitorEx;
+    }
+
+    @Override
+    public IActivityManagerSmtEx getISmtEx() {
+        return mSmtEx.getISmtEx();
     }
 
     @Override

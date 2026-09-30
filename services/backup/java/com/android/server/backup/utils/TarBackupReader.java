@@ -384,12 +384,14 @@ public class TarBackupReader {
      * @param info - file metadata.
      * @param signatures - array of signatures parsed from backup file.
      * @param userId - ID of the user for which restore is performed.
+     * @param ignoreSignatureAndAllowFlag - PICO restore: accept the data regardless of the
+     *     signatures and of the allowBackup flag of the installed package.
      * @return a restore policy constant.
      */
     public RestorePolicy chooseRestorePolicy(PackageManager packageManager,
             boolean allowApks, FileMetadata info, Signature[] signatures,
-            PackageManagerInternal pmi, int userId) {
-        if (signatures == null) {
+            PackageManagerInternal pmi, int userId, boolean ignoreSignatureAndAllowFlag) {
+        if (signatures == null && !ignoreSignatureAndAllowFlag) {
             return RestorePolicy.IGNORE;
         }
 
@@ -401,7 +403,7 @@ public class TarBackupReader {
                     info.packageName, PackageManager.GET_SIGNING_CERTIFICATES, userId);
             // Fall through to IGNORE if the app explicitly disallows backup
             final int flags = pkgInfo.applicationInfo.flags;
-            if ((flags & ApplicationInfo.FLAG_ALLOW_BACKUP) != 0) {
+            if (ignoreSignatureAndAllowFlag || (flags & ApplicationInfo.FLAG_ALLOW_BACKUP) != 0) {
                 // Restore system-uid-space packages only if they have
                 // defined a custom backup agent
                 if (!UserHandle.isCore(pkgInfo.applicationInfo.uid)
@@ -413,7 +415,8 @@ public class TarBackupReader {
                     // such packages are signed with the platform cert instead of
                     // the app developer's cert, so they're different on every
                     // device.
-                    if (AppBackupUtils.signaturesMatch(signatures, pkgInfo, pmi)) {
+                    if (ignoreSignatureAndAllowFlag
+                            || AppBackupUtils.signaturesMatch(signatures, pkgInfo, pmi)) {
                         if ((pkgInfo.applicationInfo.flags
                                 & ApplicationInfo.FLAG_RESTORE_ANY_VERSION) != 0) {
                             Slog.i(TAG, "Package has restoreAnyVersion; taking data");

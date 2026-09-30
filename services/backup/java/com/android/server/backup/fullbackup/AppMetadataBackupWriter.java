@@ -58,13 +58,26 @@ public class AppMetadataBackupWriter {
     public void backupManifest(
             PackageInfo packageInfo, File manifestFile, File filesDir, boolean withApk)
             throws IOException {
+        backupManifest(packageInfo, manifestFile, filesDir, withApk,
+                /* ignoreSignature */ false);
+    }
+
+    /**
+     * Back up the app's manifest without specifying a pseudo-directory for the TAR stream,
+     * leaving out the signature block when {@code ignoreSignature} is set (PICO backup).
+     *
+     * @see #backupManifest(PackageInfo, File, File, String, String, boolean, boolean)
+     */
+    public void backupManifest(PackageInfo packageInfo, File manifestFile, File filesDir,
+            boolean withApk, boolean ignoreSignature) throws IOException {
         backupManifest(
                 packageInfo,
                 manifestFile,
                 filesDir,
                 /* domain */ null,
                 /* linkDomain */ null,
-                withApk);
+                withApk,
+                ignoreSignature);
     }
 
     /**
@@ -87,7 +100,26 @@ public class AppMetadataBackupWriter {
             @Nullable String linkDomain,
             boolean withApk)
             throws IOException {
-        byte[] manifestBytes = getManifestBytes(packageInfo, withApk);
+        backupManifest(packageInfo, manifestFile, filesDir, domain, linkDomain, withApk,
+                /* ignoreSignature */ false);
+    }
+
+    /**
+     * Back up the app's manifest, leaving out the signature block when {@code ignoreSignature}
+     * is set (PICO backup that may be restored regardless of the signing certificates).
+     *
+     * @see #backupManifest(PackageInfo, File, File, String, String, boolean)
+     */
+    public void backupManifest(
+            PackageInfo packageInfo,
+            File manifestFile,
+            File filesDir,
+            @Nullable String domain,
+            @Nullable String linkDomain,
+            boolean withApk,
+            boolean ignoreSignature)
+            throws IOException {
+        byte[] manifestBytes = getManifestBytes(packageInfo, withApk, ignoreSignature);
         FileOutputStream outputStream = new FileOutputStream(manifestFile);
         outputStream.write(manifestBytes);
         outputStream.close();
@@ -123,7 +155,8 @@ public class AppMetadataBackupWriter {
      *     N* (signature byte array in ascii format per Signature.toCharsString())
      * </pre>
      */
-    private byte[] getManifestBytes(PackageInfo packageInfo, boolean withApk) {
+    private byte[] getManifestBytes(PackageInfo packageInfo, boolean withApk,
+            boolean ignoreSignature) {
         String packageName = packageInfo.packageName;
         StringBuilder builder = new StringBuilder(4096);
         StringBuilderPrinter printer = new StringBuilderPrinter(builder);
@@ -140,7 +173,7 @@ public class AppMetadataBackupWriter {
 
         // Write the signature block.
         SigningInfo signingInfo = packageInfo.signingInfo;
-        if (signingInfo == null) {
+        if (signingInfo == null || ignoreSignature) {
             printer.println("0");
         } else {
             // Retrieve the newest signatures to write.

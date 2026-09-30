@@ -152,6 +152,7 @@ import android.content.pm.IPackageInstallObserver2;
 import android.content.pm.IPackageInstaller;
 import android.content.pm.IPackageManager;
 import android.content.pm.IPackageManagerNative;
+import android.content.pm.IPackageManagerSmtEx;
 import android.content.pm.IPackageMoveObserver;
 import android.content.pm.IPackageStatsObserver;
 import android.content.pm.InstantAppInfo;
@@ -966,6 +967,10 @@ public class PackageManagerService extends IPackageManager.Stub
     // TODO remove this and go through mPermissonManager directly
     final DefaultPermissionGrantPolicy mDefaultPermissionPolicy;
     private final PermissionManagerServiceInternal mPermissionManager;
+
+    // Smartisan extensions of the package manager (factory PICO OS 5.13.7), see getISmtEx().
+    private final PackageManagerServiceMonitorEx mPackageManagerServiceMonitorEx;
+    private PackageManagerServiceSmtBase mPackageManagerServiceSmtBase;
 
     private final ComponentResolver mComponentResolver;
     // List of packages names to keep cached, even if they are uninstalled for all users
@@ -2437,6 +2442,10 @@ public class PackageManagerService extends IPackageManager.Stub
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "create package manager");
         EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_START,
                 SystemClock.uptimeMillis());
+
+        mPackageManagerServiceMonitorEx = new PackageManagerServiceMonitorEx(this);
+        mPackageManagerServiceSmtBase = new PackageManagerServiceSmtBase(this,
+                mPackageManagerServiceMonitorEx);
 
         if (mSdkVersion <= 0) {
             Slog.w(TAG, "**** ro.build.version.sdk not set!");
@@ -25733,6 +25742,34 @@ public class PackageManagerService extends IPackageManager.Stub
         } finally {
             Binder.restoreCallingIdentity(ident);
         }
+    }
+
+    /**
+     * Smartisan package manager extension (factory PICO OS 5.13.7), only for callers signed
+     * with the platform (system server package) certificate.
+     */
+    @Override
+    public IPackageManagerSmtEx getISmtEx() {
+        if (!checkPermissionBySign()) {
+            return null;
+        }
+        return mPackageManagerServiceSmtBase.getISmtEx();
+    }
+
+    private boolean checkPermissionBySign() {
+        int callerUid = Binder.getCallingUid();
+        PackageManager pkgManager = mContext.getPackageManager();
+        ApplicationInfo myAppinfo = new ApplicationInfo();
+        try {
+            myAppinfo = pkgManager.getApplicationInfo(mContext.getPackageName(), 0);
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+        }
+        int myUid = myAppinfo.uid;
+        if (pkgManager.checkSignatures(myUid, callerUid) == PackageManager.SIGNATURE_MATCH) {
+            return true;
+        }
+        return false;
     }
 
     static class ActiveInstallSession {

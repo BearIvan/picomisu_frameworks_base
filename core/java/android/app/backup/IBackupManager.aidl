@@ -710,4 +710,22 @@ interface IBackupManager {
      */
     void setAncestralSerialNumber(in long ancestralSerialNumber);
 
+    /**
+     * PICO full backup of package {@code packageNames} into {@code fd}, restricted to
+     * {@code includePaths} minus {@code excludePaths}; {@code timeout} overrides the agent
+     * timeout when positive and {@code notKill} keeps the app running afterwards.
+     *
+     * <p>Callers must hold the android.permission.BACKUP permission to use this method.
+     */
+    void backup(in ParcelFileDescriptor fd, String packageNames, in List<String> includePaths,
+            in List<String> excludePaths, IFullBackupRestoreObserver observer, long timeout,
+            boolean notKill);
+
+    /**
+     * PICO full restore of the backup stream {@code fd}; {@code timeout} overrides the agent
+     * timeout when positive.
+     *
+     * <p>Callers must hold the android.permission.BACKUP permission to use this method.
+     */
+    void restore(in ParcelFileDescriptor fd, IFullBackupRestoreObserver observer, long timeout);
 }

@@ -1328,6 +1328,19 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
 
     private IExtApplicationInfo mExt = new ExtApplicationInfoImpl(this);
 
+    /**
+     * Smartisan per-application configuration (JSON), set through
+     * {@code IPackageManagerSmtEx.updateAppInfo}.
+     * @hide
+     */
+    public String appInfoJsonConfig = "{\"app_fps\":0,\"eyebufferHeight\":0,\"eyebufferWidth\":0}";
+
+    /**
+     * Smartisan last update time of {@link #appInfoJsonConfig}.
+     * @hide
+     */
+    public long appLastTime = 0;
+
     public void dump(Printer pw, String prefix) {
         dump(pw, prefix, DUMP_FLAG_ALL);
     }
@@ -1627,6 +1640,8 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         mHiddenApiPolicy = orig.mHiddenApiPolicy;
         hiddenUntilInstalled = orig.hiddenUntilInstalled;
         zygotePreloadName = orig.zygotePreloadName;
+        appInfoJsonConfig = orig.appInfoJsonConfig;
+        appLastTime = orig.appLastTime;
         mSmtEx.copyFrom(orig.getSmtEx());
         mExt.copyFrom(orig);
     }
@@ -1718,6 +1733,8 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeInt(mHiddenApiPolicy);
         dest.writeInt(hiddenUntilInstalled ? 1 : 0);
         dest.writeString(zygotePreloadName);
+        dest.writeString(appInfoJsonConfig);
+        dest.writeLong(appLastTime);
         mSmtEx.writeToParcel(dest);
         mExt.writeToParcel(dest);
     }
@@ -1798,6 +1815,8 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         mHiddenApiPolicy = source.readInt();
         hiddenUntilInstalled = source.readInt() != 0;
         zygotePreloadName = source.readString();
+        appInfoJsonConfig = source.readString();
+        appLastTime = source.readLong();
         mSmtEx.readFromParcel(source);
         mExt.readFromParcel(source);
     }

@@ -125,4 +125,7 @@ interface IUsbManager
 
    /* Sets USB device connection handler. */
    void setUsbDeviceConnectionHandler(in ComponentName usbDeviceConnectionHandler);
+
+    /* Enters USB accessory mode. */
+    boolean startAccessory();
 }

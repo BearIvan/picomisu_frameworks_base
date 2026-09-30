@@ -172,7 +172,8 @@ public class RootActivityContainer extends ConfigurationContainer
      * List of displays which contain activities, sorted by z-order.
      * The last entry in the list is the topmost.
      */
-    private final ArrayList<ActivityDisplay> mActivityDisplays = new ArrayList<>();
+    // Protected as in the factory framework: read by RootActivityContainerSmtBase.
+    protected final ArrayList<ActivityDisplay> mActivityDisplays = new ArrayList<>();
 
     /** Reference to default display so we can quickly look it up. */
     private ActivityDisplay mDefaultDisplay;

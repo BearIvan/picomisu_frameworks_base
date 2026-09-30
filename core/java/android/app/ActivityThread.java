@@ -290,6 +290,8 @@ public final class ActivityThread extends ClientTransactionHandler {
     @UnsupportedAppUsage
     static volatile IPackageManager sPackageManager;
 
+    // Smartisan extension state; initialized before mAppThread, whose Smartisan part uses it.
+    private final ActivityThreadSmtBase mSmtEx = new ActivityThreadSmtBase(this);
     @UnsupportedAppUsage
     final ApplicationThread mAppThread = new ApplicationThread();
     @UnsupportedAppUsage
@@ -902,7 +904,8 @@ public final class ActivityThread extends ClientTransactionHandler {
         int flags;
     }
 
-    private class ApplicationThread extends IApplicationThread.Stub {
+    // Public as in the factory framework: ActivityThreadSmtBase.ApplicationThreadEx refers to it.
+    public class ApplicationThread extends IApplicationThread.Stub {
         private static final String DB_INFO_FORMAT = "  %8s %8s %14s %14s  %s";
 
         // Non-private as in the factory framework, so that no synthetic access constructor
@@ -1707,6 +1710,48 @@ public final class ActivityThread extends ClientTransactionHandler {
             mH.sendMessage(PooledLambda.obtainMessage(ActivityThread::handlePerformDirectAction,
                     ActivityThread.this, activityToken, actionId, arguments,
                     cancellationSignal, resultCallback));
+        }
+
+        // Smartisan part of this binder (factory PICO OS 5.13.7).
+        private ActivityThreadSmtBase.ApplicationThreadEx mApplicationThreadEx =
+                mSmtEx.new ApplicationThreadEx(this);
+
+        @Override
+        public void scheduleActivityTimeout(String reason) {
+            try {
+                StringBuffer err = new StringBuffer();
+                err.append("Acitivty Timeout reason : [" + reason + "] ");
+                StackTraceElement[] traceElements = mH.getLooper().getThread().getStackTrace();
+                for (int i = 0; i < traceElements.length; i++) {
+                    err.append("\tat ");
+                    err.append(traceElements[i].toString());
+                    err.append("\n");
+                }
+                Log.e(TAG, err.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onPrefetchRealStart(int pid) {
+            PrefetchRegister.getInstance().onRealStart(pid);
+        }
+
+        @Override
+        public void scheduleMethodTrace(int type, long flags, String cmd,
+                ParcelFileDescriptor fd) {
+            mApplicationThreadEx.scheduleMethodTrace(type, flags, cmd, fd);
+        }
+
+        @Override
+        public void configArtTracer(String[] state) {
+            mApplicationThreadEx.configArtTracer(state);
+        }
+
+        @Override
+        public final void completePrefetchBindApplication(long startSeq) {
+            mApplicationThreadEx.completePrefetchBindApplication(startSeq);
         }
     }
 
@@ -6141,8 +6186,10 @@ public final class ActivityThread extends ClientTransactionHandler {
         LocaleList.setDefault(new LocaleList(bestLocale, newLocaleList));
     }
 
+    // Protected as in the factory framework (the Smartisan prefetch bind path calls it), so
+    // that no synthetic accessor is generated for it.
     @UnsupportedAppUsage
-    private void handleBindApplication(AppBindData data) {
+    protected void handleBindApplication(AppBindData data) {
         long st_bindApp = SystemClock.uptimeMillis();
         BoostFramework ux_perf = null;
         // Register the UI Thread as a sensitive thread to the runtime.

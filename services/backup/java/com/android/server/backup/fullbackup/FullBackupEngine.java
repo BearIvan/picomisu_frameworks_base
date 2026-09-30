@@ -64,6 +64,7 @@ public class FullBackupEngine {
     private final int mOpToken;
     private final int mTransportFlags;
     private final BackupAgentTimeoutParameters mAgentTimeoutParameters;
+    IExtFullBackupEngine mExt = new ExtFullBackupEngineImpl(this);
 
     class FullBackupRunner implements Runnable {
         private final @UserIdInt int mUserId;
@@ -113,7 +114,8 @@ public class FullBackupEngine {
 
                     File manifestFile = new File(mFilesDir, BACKUP_MANIFEST_FILENAME);
                     appMetadataBackupWriter.backupManifest(
-                            mPackage, manifestFile, mFilesDir, writeApk);
+                            mPackage, manifestFile, mFilesDir, writeApk,
+                            mExt.isIgnoreSignature());
                     manifestFile.delete();
 
                     // Write widget data.
@@ -143,7 +145,7 @@ public class FullBackupEngine {
                                 : mAgentTimeoutParameters.getFullBackupAgentTimeoutMillis();
                 backupManagerService.prepareOperationTimeout(
                         mToken,
-                        timeout,
+                        mExt.getTimeout() > 0 ? mExt.getTimeout() : timeout,
                         mTimeoutMonitor /* in parent class */,
                         OP_TYPE_BACKUP_WAIT);
                 mAgent.doFullBackup(
@@ -309,7 +311,8 @@ public class FullBackupEngine {
 
     private void tearDown() {
         if (mPkg != null) {
-            backupManagerService.tearDownAgentAndKill(mPkg.applicationInfo);
+            backupManagerService.tearDownAgentAndKill(mPkg.applicationInfo,
+                    mExt.backupEndNotKill());
         }
     }
 }

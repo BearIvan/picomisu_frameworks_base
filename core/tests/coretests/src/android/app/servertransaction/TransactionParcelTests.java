@@ -636,5 +636,26 @@ public class TransactionParcelTests {
         public void performDirectAction(IBinder activityToken, String actionId, Bundle arguments,
                 RemoteCallback cancellationCallback, RemoteCallback resultCallback) {
         }
+
+        @Override
+        public void scheduleActivityTimeout(String reason) {
+        }
+
+        @Override
+        public void onPrefetchRealStart(int pid) {
+        }
+
+        @Override
+        public void completePrefetchBindApplication(long startSeq) {
+        }
+
+        @Override
+        public void configArtTracer(String[] state) {
+        }
+
+        @Override
+        public void scheduleMethodTrace(int type, long flags, String cmd,
+                ParcelFileDescriptor fd) {
+        }
     }
 }

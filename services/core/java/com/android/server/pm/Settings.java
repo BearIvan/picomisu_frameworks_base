@@ -379,6 +379,8 @@ public final class Settings {
     private final File mSystemDir;
 
     public final KeySetManagerService mKeySetManagerService = new KeySetManagerService(mPackages);
+    // Smartisan extension of the package settings (factory PICO OS 5.13.7).
+    private final SettingsSmtEx mSmtEx = new SettingsSmtEx(this);
     /** Settings and other information about permissions */
     final PermissionSettings mPermissions;
 
@@ -5101,6 +5103,11 @@ public final class Settings {
         } else {
             mRuntimePermissionsPersistence.writePermissionsForUserAsyncLPr(userId);
         }
+    }
+
+    /** Smartisan extension of the package settings (factory PICO OS 5.13.7). */
+    public SettingsSmtEx getSmtEx() {
+        return mSmtEx;
     }
 
     private final class RuntimePermissionPersistence {

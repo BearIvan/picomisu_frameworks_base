@@ -127,6 +127,8 @@ public class FullRestoreEngine extends RestoreEngine {
     private byte[] mWidgetData = null;
     private long mAppVersion;
 
+    IExtFullRestoreEngine mExt = new ExtFullRestoreEngineImpl(this);
+
     final int mEphemeralOpToken;
 
     private final BackupAgentTimeoutParameters mAgentTimeoutParameters;
@@ -234,7 +236,7 @@ public class FullRestoreEngine extends RestoreEngine {
                             PackageManagerInternal.class);
                     RestorePolicy restorePolicy = tarBackupReader.chooseRestorePolicy(
                             mBackupManagerService.getPackageManager(), allowApks, info, signatures,
-                            pmi, mUserId);
+                            pmi, mUserId, mExt.isIgnoreSignatureAndAllowFlag());
                     mManifestSignatures.put(info.packageName, signatures);
                     mPackagePolicies.put(pkg, restorePolicy);
                     mPackageInstallers.put(pkg, info.installerPackageName);
@@ -413,7 +415,7 @@ public class FullRestoreEngine extends RestoreEngine {
                                 mAgentTimeoutParameters.getRestoreAgentTimeoutMillis();
                         try {
                             mBackupManagerService.prepareOperationTimeout(token,
-                                    timeout,
+                                    mExt.getTimeout() > 0 ? mExt.getTimeout() : timeout,
                                     mMonitorTask,
                                     OP_TYPE_RESTORE_WAIT);
 

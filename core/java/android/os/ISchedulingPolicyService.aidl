@@ -40,4 +40,10 @@ interface ISchedulingPolicyService {
      * the original cpuset, and 'client' is ignored in this case.
      */
     int requestCpusetBoost(boolean enable, IBinder client);
+
+    /**
+     * Move thread tid of audioserver into thread group 'group' and its cpuset.
+     * The thread group leader of tid must be pid.
+     */
+    int requestThreadCpuset(int pid, int tid, int group);
 }

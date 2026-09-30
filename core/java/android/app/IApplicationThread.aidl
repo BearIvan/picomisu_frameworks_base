@@ -145,4 +145,10 @@ oneway interface IApplicationThread {
     void performDirectAction(IBinder activityToken, String actionId,
             in Bundle arguments, in RemoteCallback cancellationCallback,
             in RemoteCallback resultCallback);
+    // Smartisan/PICO methods of the factory PICO OS 5.13.7 framework.
+    void scheduleActivityTimeout(String reason);
+    void onPrefetchRealStart(int pid);
+    void completePrefetchBindApplication(long startSeq);
+    void configArtTracer(in String[] state);
+    void scheduleMethodTrace(int type, long flags, String cmd, in ParcelFileDescriptor fd);
 }

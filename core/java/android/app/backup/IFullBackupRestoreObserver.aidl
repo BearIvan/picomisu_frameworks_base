@@ -66,4 +66,9 @@ oneway interface IFullBackupRestoreObserver {
      * The user's window of opportunity for confirming the operation has timed out.
      */
     void onTimeout();
+
+    /**
+     * Notification: a PICO backup ({@code type} 0) or restore ({@code type} 1) failed.
+     */
+    void onBackupRestoreErr(int type, String message);
 }

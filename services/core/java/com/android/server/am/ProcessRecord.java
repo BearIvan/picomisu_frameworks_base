@@ -264,6 +264,8 @@ class ProcessRecord implements WindowProcessListener {
     final ArraySet<Binder> mAllowBackgroundActivityStartsTokens = new ArraySet<>();
     // a set of UIDs of all bound clients
     private ArraySet<Integer> mBoundClientUids = new ArraySet<>();
+    // Smartisan extension state of this process (factory PICO OS 5.13.7).
+    ProcessRecordSmtBase mSmtEx = new ProcessRecordSmtBase(this);
 
     String isolatedEntryPoint;  // Class to run on start if this is a special isolated process.
     String[] isolatedEntryPointArgs; // Arguments to pass to isolatedEntryPoint's main().
@@ -1681,5 +1683,10 @@ class ProcessRecord implements WindowProcessListener {
     private boolean getShowBackground() {
         return Settings.Secure.getInt(mService.mContext.getContentResolver(),
                 Settings.Secure.ANR_SHOW_BACKGROUND, 0) != 0;
+    }
+
+    /** Smartisan extension state of this process (factory PICO OS 5.13.7). */
+    public ProcessRecordSmtBase getSmtEx() {
+        return mSmtEx;
     }
 }

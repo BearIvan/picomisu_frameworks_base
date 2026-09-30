@@ -67,7 +67,7 @@ public final class InputManager {
     private static InputManager sInstance;
 
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
-    private final IInputManager mIm;
+    final IInputManager mIm;
 
     // Guarded by mInputDevicesLock
     private final Object mInputDevicesLock = new Object();
@@ -80,6 +80,8 @@ public final class InputManager {
     private final Object mTabletModeLock = new Object();
     private TabletModeChangedListener mTabletModeChangedListener;
     private List<OnTabletModeChangedListenerDelegate> mOnTabletModeChangedListeners;
+
+    private final IExtInputManager mExt = new ExtInputManagerImpl(this);
 
     /**
      * Broadcast Action: Query available keyboard layouts.
@@ -253,7 +255,7 @@ public final class InputManager {
 
             int index = mInputDevices.indexOfKey(id);
             if (index < 0) {
-                return null;
+                return mExt.getVirtualInputDeviceIfNeed(id);
             }
 
             InputDevice inputDevice = mInputDevices.valueAt(index);

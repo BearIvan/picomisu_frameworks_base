@@ -587,6 +587,15 @@ public class UsbService extends IUsbManager.Stub {
     }
 
     @Override
+    public boolean startAccessory() {
+        Slog.e(TAG, "startAccessory");
+        if (mDeviceManager != null) {
+            return mDeviceManager.mExt.startAccessory();
+        }
+        return false;
+    }
+
+    @Override
     public void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
         if (!DumpUtils.checkDumpPermission(mContext, TAG, writer)) return;
 

@@ -82,4 +82,7 @@ interface IPowerManager
 
     // Forces the system to suspend even if there are held wakelocks.
     boolean forceSuspend();
+
+    // Opens or closes the PICO proximity-sensor controlled screen.
+    void setSensorControlScreenFeatureState(boolean opened, IBinder appToken, String packageName);
 }

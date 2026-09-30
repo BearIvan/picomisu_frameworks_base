@@ -182,6 +182,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
 
     private final Object mLock = new Object();
 
+    IExtUsbDeviceManager mExt = new ExtUsbDeviceManagerImpl(this);
+
     private final Context mContext;
     private final ContentResolver mContentResolver;
     @GuardedBy("mLock")
@@ -357,6 +359,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         mUEventObserver.startObserving(USB_STATE_MATCH);
         mUEventObserver.startObserving(USB_STATE_MATCH_SEC);
         mUEventObserver.startObserving(ACCESSORY_START_MATCH);
+
+        mExt.init(mHandler, mHasUsbAccessory);
     }
 
     UsbProfileGroupSettingsManager getCurrentSettings() {
@@ -395,7 +399,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         mHandler.sendEmptyMessage(MSG_UPDATE_USER_RESTRICTIONS);
     }
 
-    private void startAccessoryMode() {
+    void startAccessoryMode() {
         if (!mHasUsbAccessory) return;
 
         mAccessoryStrings = nativeGetAccessoryStrings();

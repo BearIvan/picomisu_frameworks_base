@@ -386,5 +386,10 @@ public class BackupRestoreConfirmation extends Activity {
         public void onTimeout() throws RemoteException {
             mHandler.sendEmptyMessage(MSG_TIMEOUT);
         }
+
+        @Override
+        public void onBackupRestoreErr(int type, String message) throws RemoteException {
+            // Only reported for the PICO backup and restore, which bypass this UI.
+        }
     }
 }

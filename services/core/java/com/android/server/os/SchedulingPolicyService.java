@@ -137,6 +137,22 @@ public class SchedulingPolicyService extends ISchedulingPolicyService.Stub {
         }
     }
 
+    // Request to move a thread of audioserver to the given thread group and its cpuset.
+    public int requestThreadCpuset(int pid, int tid, int group) {
+        if (Binder.getCallingUid() != Process.AUDIOSERVER_UID
+                || Process.getThreadGroupLeader(tid) != pid) {
+            return PackageManager.PERMISSION_DENIED;
+        }
+        try {
+            Log.i(TAG, "Moving " + pid + " " + tid + " to group " + group);
+            Process.setThreadGroupAndCpuset(tid, group);
+            return PackageManager.PERMISSION_GRANTED;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed requestThreadCpuset: " + e);
+            return PackageManager.PERMISSION_DENIED;
+        }
+    }
+
     private int enableCpusetBoost(int pid, IBinder client) {
         if (mBoostedPid == pid) {
             return PackageManager.PERMISSION_GRANTED;

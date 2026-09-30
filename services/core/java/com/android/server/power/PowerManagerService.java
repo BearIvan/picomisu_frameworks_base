@@ -932,7 +932,9 @@ public final class PowerManagerService extends SystemService
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_BATTERY_CHANGED);
         filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
-        mContext.registerReceiver(new BatteryReceiver(), filter, null, mHandler);
+        if (!mExt.systemReady(mContext, mLightsManager)) {
+            mContext.registerReceiver(new BatteryReceiver(), filter, null, mHandler);
+        }
 
         filter = new IntentFilter();
         filter.addAction(Intent.ACTION_DREAMING_STARTED);
@@ -3988,6 +3990,8 @@ public final class PowerManagerService extends SystemService
         }
     };
 
+    private final IExtPowerManagerService mExt = new ExtPowerManagerServiceImpl(this);
+
     /**
      * Handler for asynchronous operations performed by the power manager.
      */
@@ -4824,6 +4828,12 @@ public final class PowerManagerService extends SystemService
             } finally {
                 Binder.restoreCallingIdentity(ident);
             }
+        }
+
+        @Override // Binder call
+        public void setSensorControlScreenFeatureState(boolean opened, IBinder appToken,
+                String packageName) {
+            mExt.setSensorControlScreenFeatureState(opened, appToken, packageName);
         }
 
         @Override // Binder call

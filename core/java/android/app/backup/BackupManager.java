@@ -28,11 +28,14 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.util.Log;
 import android.util.Pair;
+
+import java.util.List;
 
 /**
  * The interface through which an application interacts with the Android backup service to
@@ -254,6 +257,49 @@ public class BackupManager {
                 Log.e(TAG, "dataChanged(pkg) couldn't connect");
             }
         }
+    }
+
+    /**
+     * PICO full backup of one package into {@code fd}, killing the app afterwards.
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.BACKUP)
+    public static void backup(ParcelFileDescriptor fd, String packageNames,
+            List<String> includePaths, List<String> excludePaths,
+            IFullBackupRestoreObserver observer, long timeout) throws RemoteException {
+        backup(fd, packageNames, includePaths, excludePaths, observer, timeout, false);
+    }
+
+    /**
+     * PICO full backup of package {@code packageNames} into {@code fd} as an unencrypted adb
+     * backup stream, restricted to {@code includePaths} minus {@code excludePaths}.
+     *
+     * @param timeout agent timeout in milliseconds, the default timeout when not positive.
+     * @param notKill whether the app keeps running after the backup.
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.BACKUP)
+    public static void backup(ParcelFileDescriptor fd, String packageNames,
+            List<String> includePaths, List<String> excludePaths,
+            IFullBackupRestoreObserver observer, long timeout, boolean notKill)
+            throws RemoteException {
+        checkServiceBinder();
+        sService.backup(fd, packageNames, includePaths, excludePaths, observer, timeout,
+                notKill);
+    }
+
+    /**
+     * PICO full restore of the unencrypted adb backup stream {@code fd}.
+     *
+     * @param timeout agent timeout in milliseconds, the default timeout when not positive.
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.BACKUP)
+    public static void restore(ParcelFileDescriptor fd, IFullBackupRestoreObserver observer,
+            long timeout) throws RemoteException {
+        checkServiceBinder();
+        sService.restore(fd, observer, timeout);
     }
 
     /**

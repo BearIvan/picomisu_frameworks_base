@@ -20,6 +20,9 @@ Landroid/app/ActivityManagerNative;-><init>()V
 Landroid/app/ActivityThread$AppBindData;-><init>()V
 Landroid/app/ActivityThread$CreateServiceData;-><init>()V
 Landroid/app/ActivityThread$H;-><init>(Landroid/app/ActivityThread;)V
+Landroid/app/PrefetchRegister;->getInstance()Landroid/app/PrefetchRegister;
+Landroid/app/PrefetchRegister;->onRealStart(I)V
+Landroid/app/PrefetchRegister;->registerStartPrefetchListener(ILandroid/app/PrefetchRegister$PrefetchCallbackLocal;)V
 Landroid/app/admin/IDevicePolicyManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/app/admin/IDevicePolicyManager;
 Landroid/app/admin/IDevicePolicyManager$Stub;->TRANSACTION_packageHasActiveAdmins:I
 Landroid/app/admin/IDevicePolicyManager$Stub;->TRANSACTION_removeActiveAdmin:I

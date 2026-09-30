@@ -4323,4 +4323,27 @@ public class ActivityManager {
             }
         }
     }
+
+    /**
+     * Asks the Smartisan memory process controller to keep the calling process alive in the
+     * background (factory PICO OS 5.13.7 API).
+     * @hide
+     */
+    public final void keepAliveBackground(int flags) {
+        keepAliveBackground(-1, flags, 2);
+    }
+
+    /**
+     * Asks the Smartisan memory process controller to keep process {@code keepAlivePid} (the
+     * calling process if -1) alive in the background (factory PICO OS 5.13.7 API).
+     * @hide
+     */
+    public final void keepAliveBackground(int keepAlivePid, int flags, int level) {
+        try {
+            getService().keepProcessAliveBackground(
+                    new ComponentName(mContext, mContext.getPackageName()), keepAlivePid, flags,
+                    level);
+        } catch (RemoteException e) {
+        }
+    }
 }

@@ -2769,6 +2769,11 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
                             mService.logAppTooSlow(r.app, r.topResumedStateLossTime,
                                     "top state loss for " + r);
                         }
+                        final ActivityStack activityStack = r.getActivityStack();
+                        if (activityStack != null) {
+                            activityStack.getExt().scheduleActivityTimeout(r,
+                                    "topResumeLossTimeout");
+                        }
                     }
                     handleTopResumedStateReleased(true /* timeout */);
                 } break;

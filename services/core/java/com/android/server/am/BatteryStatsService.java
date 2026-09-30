@@ -56,6 +56,7 @@ import android.util.Slog;
 import android.util.StatsLog;
 
 import com.android.internal.app.IBatteryStats;
+import com.android.internal.app.IBatteryStatsOptEx;
 import com.android.internal.os.BatteryStatsHelper;
 import com.android.internal.os.BatteryStatsImpl;
 import com.android.internal.os.PowerProfile;
@@ -64,6 +65,7 @@ import com.android.internal.os.RpmStats;
 import com.android.internal.util.DumpUtils;
 import com.android.internal.util.ParseUtils;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -1688,6 +1690,16 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         } finally {
             Binder.restoreCallingIdentity(ident);
         }
+    }
+
+    /**
+     * Smartisan battery stats extension (factory PICO OS 5.13.7). As in the factory, the
+     * default ISysSvsFactory battery stats service extension (used when the sys services JAR is
+     * absent) does not implement IBatteryStatsOptEx, so this cast then fails.
+     */
+    @Override
+    public IBatteryStatsOptEx getIBatteryStatsOptEx() {
+        return (IBatteryStatsOptEx) SysOptBridge.getFactory().getBatteryStatsServiceOptEx();
     }
 
 }

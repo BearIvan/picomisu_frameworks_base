@@ -22,6 +22,8 @@ import android.app.ContentProviderHolder;
 import android.app.GrantedUriPermission;
 import android.app.IApplicationThread;
 import android.app.IActivityController;
+import android.app.IActivityManagerSmtEx;
+import android.app.IActivityManagerSysMoEx;
 import android.app.IAppTask;
 import android.app.IAssistDataReceiver;
 import android.app.IInstrumentationWatcher;
@@ -593,4 +595,10 @@ interface IActivityManager {
      * unlockProgressListener can be null if monitoring progress is not necessary.
      */
     boolean startUserInForegroundWithListener(int userid, IProgressListener unlockProgressListener);
+
+    // Smartisan/PICO methods of the factory PICO OS 5.13.7 framework.
+    IActivityManagerSysMoEx getMonitorEx();
+    IActivityManagerSmtEx getISmtEx();
+    void keepProcessAliveBackground(in ComponentName mClassName, int keepAlivePid, int flags,
+            int level);
 }

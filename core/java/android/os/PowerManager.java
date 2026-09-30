@@ -772,6 +772,8 @@ public final class PowerManager {
 
     IDeviceIdleController mIDeviceIdleController;
 
+    private Binder mAppToken;
+
     /**
      * {@hide}
      */
@@ -1901,6 +1903,27 @@ public final class PowerManager {
     public boolean forceSuspend() {
         try {
             return mService.forceSuspend();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Opens or closes the PICO proximity-sensor controlled screen. While it is closed the
+     * device never sleeps automatically; the system opens it again when the calling
+     * application dies. Only allowed packages holding
+     * {@link android.Manifest.permission#DEVICE_POWER} may call this.
+     *
+     * @param opened whether the sensor controlled screen is enabled.
+     * @hide
+     */
+    public void setSensorControlScreenFeatureState(boolean opened) {
+        try {
+            if (mAppToken == null) {
+                mAppToken = new Binder();
+            }
+            mService.setSensorControlScreenFeatureState(opened, mAppToken,
+                    mContext.getPackageName());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

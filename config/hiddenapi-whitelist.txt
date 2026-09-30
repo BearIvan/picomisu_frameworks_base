@@ -3,6 +3,8 @@
 Landroid/Manifest$permission;->POWER_SCENE_CHANGE:Ljava/lang/String;
 Landroid/Manifest$permission;->lifecycle:Ljava/lang/String;
 Landroid/Manifest$permission;->startevent:Ljava/lang/String;
+Landroid/content/pm/ApplicationInfo;->appInfoJsonConfig:Ljava/lang/String;
+Landroid/content/pm/ApplicationInfo;->appLastTime:J
 Landroid/media/AudioAttributes$Builder;->setIsContentSpatialized(Z)Landroid/media/AudioAttributes$Builder;
 Landroid/media/AudioAttributes$Builder;->setSpatializationBehavior(I)Landroid/media/AudioAttributes$Builder;
 Landroid/media/AudioAttributes$Builder;->setSpatializationType(I)Landroid/media/AudioAttributes$Builder;

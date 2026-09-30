@@ -694,6 +694,15 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         mLifecycleManager = new ClientLifecycleManager();
         mInternal = new LocalService();
         GL_ES_VERSION = SystemProperties.getInt("ro.opengles.version", GL_ES_VERSION_UNDEFINED);
+        mSmtEx = new ActivityTaskManagerServiceSmtEx(this);
+    }
+
+    // Smartisan extension state of the activity task manager (factory PICO OS 5.13.7).
+    private final ActivityTaskManagerServiceSmtEx mSmtEx;
+
+    /** Smartisan extension state of the activity task manager (factory PICO OS 5.13.7). */
+    public ActivityTaskManagerServiceSmtEx getSmtEx() {
+        return mSmtEx;
     }
 
     public void onSystemReady() {

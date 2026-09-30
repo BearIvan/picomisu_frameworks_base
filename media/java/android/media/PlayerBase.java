@@ -89,6 +89,8 @@ public abstract class PlayerBase {
     private float mPanMultiplierR = 1.0f;
     @GuardedBy("mLock")
     private float mVolMultiplier = 1.0f;
+    @GuardedBy("mLock")
+    private float mExtVol = 1.0f;
 
     /**
      * Constructor. Must be given audio attributes, as they are required for AppOps.
@@ -216,8 +218,8 @@ public abstract class PlayerBase {
         final float finalLeftVol, finalRightVol;
         final boolean isRestricted;
         synchronized (mLock) {
-            finalLeftVol = mVolMultiplier * mLeftVolume * mPanMultiplierL;
-            finalRightVol = mVolMultiplier * mRightVolume * mPanMultiplierR;
+            finalLeftVol = mVolMultiplier * mLeftVolume * mPanMultiplierL * mExtVol;
+            finalRightVol = mVolMultiplier * mRightVolume * mPanMultiplierR * mExtVol;
             isRestricted = isRestricted_sync();
         }
         playerSetVolume(isRestricted /*muting*/, finalLeftVol, finalRightVol);
@@ -226,6 +228,17 @@ public abstract class PlayerBase {
     void setVolumeMultiplier(float vol) {
         synchronized (mLock) {
             this.mVolMultiplier = vol;
+        }
+        updatePlayerVolume();
+    }
+
+    /**
+     * Sets the PICO extra volume factor applied by the audio service on top of the player
+     * volume, e.g. to mute background players.
+     */
+    private void setExtVolume(float vol) {
+        synchronized (mLock) {
+            mExtVol = vol;
         }
         updatePlayerVolume();
     }
@@ -524,6 +537,14 @@ public abstract class PlayerBase {
             final PlayerBase pb = mWeakPB.get();
             if (pb != null) {
                 pb.playerApplyVolumeShaper(configuration, operation);
+            }
+        }
+
+        @Override
+        public void setExtVolume(float vol) {
+            final PlayerBase pb = mWeakPB.get();
+            if (pb != null) {
+                pb.setExtVolume(vol);
             }
         }
     }
