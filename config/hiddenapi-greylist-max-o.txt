@@ -55279,7 +55279,6 @@ Landroid/os/LocaleList;->writeToProto(Landroid/util/proto/ProtoOutputStream;J)V
 Landroid/os/Looper;-><init>(Z)V
 Landroid/os/Looper;->dump(Landroid/util/Printer;Ljava/lang/String;Landroid/os/Handler;)V
 Landroid/os/Looper;->mSlowDeliveryThresholdMs:J
-Landroid/os/Looper;->mSlowDispatchThresholdMs:J
 Landroid/os/Looper;->mThread:Ljava/lang/Thread;
 Landroid/os/Looper;->mTraceTag:J
 Landroid/os/Looper;->prepare(Z)V

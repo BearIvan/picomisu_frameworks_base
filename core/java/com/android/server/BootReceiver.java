@@ -16,6 +16,8 @@
 
 package com.android.server;
 
+import android.app.IBootReceiverSmtEx;
+import android.app.SysFwBridge;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -117,8 +119,14 @@ public class BootReceiver extends BroadcastReceiver {
     private static final String METRIC_SYSTEM_SERVER = "shutdown_system_server";
     private static final String METRIC_SHUTDOWN_TIME_START = "begin_shutdown";
 
+    // Smartisan crash/restart log extension (factory PICO OS 5.13.7).
+    private static final int DROPBOX_FILE_MAX_SIZE = 10 * 1024 * 1024;
+    private static final String TAG_TRUNCATED = "[[TRUNCATED]]\n";
+    private static IBootReceiverSmtEx mSmtEx = null;
+
     @Override
     public void onReceive(final Context context, Intent intent) {
+        mSmtEx = SysFwBridge.getFactory().getBootReceiver();
         // Log boot events in the background to avoid blocking the main thread with I/O
         new Thread() {
             @Override
@@ -211,6 +219,7 @@ public class BootReceiver extends BroadcastReceiver {
         }
 
         HashMap<String, Long> timestamps = readTimestamps();
+        mSmtEx.logBootEvents(ctx, timestamps, headers);
 
         if (SystemProperties.getLong("ro.runtime.firstboot", 0) == 0) {
             if (StorageManager.inCryptKeeperBounce()) {
@@ -237,6 +246,7 @@ public class BootReceiver extends BroadcastReceiver {
             addAuditErrorsToDropBox(db, timestamps, headers, -LOG_SIZE, "SYSTEM_AUDIT");
         } else {
             if (db != null) db.addText("SYSTEM_RESTART", headers);
+            mSmtEx.addLogToRestart(headers, DROPBOX_FILE_MAX_SIZE, TAG_TRUNCATED);
         }
         // log always available fs_stat last so that logcat collecting tools can wait until
         // fs_stat to get all file system metrics.
@@ -248,9 +258,10 @@ public class BootReceiver extends BroadcastReceiver {
         // Scan existing tombstones (in case any new ones appeared)
         File[] tombstoneFiles = TOMBSTONE_DIR.listFiles();
         for (int i = 0; tombstoneFiles != null && i < tombstoneFiles.length; i++) {
-            if (tombstoneFiles[i].isFile()) {
+            if (tombstoneFiles[i].isFile()
+                    && mSmtEx.checkIfCrashBelongsCurVer(tombstoneFiles[i])) {
                 addFileToDropBox(db, timestamps, headers, tombstoneFiles[i].getPath(),
-                        LOG_SIZE, "SYSTEM_TOMBSTONE");
+                        0, "SYSTEM_TOMBSTONE");
             }
         }
 
@@ -264,8 +275,9 @@ public class BootReceiver extends BroadcastReceiver {
                 HashMap<String, Long> timestamps = readTimestamps();
                 try {
                     File file = new File(TOMBSTONE_DIR, path);
-                    if (file.isFile() && file.getName().startsWith("tombstone_")) {
-                        addFileToDropBox(db, timestamps, headers, file.getPath(), LOG_SIZE,
+                    if (file.isFile() && file.getName().startsWith("tombstone_")
+                            && mSmtEx.checkIfCrashBelongsCurVer(file)) {
+                        addFileToDropBox(db, timestamps, headers, file.getPath(), 0,
                                 TAG_TOMBSTONE);
                     }
                 } catch (IOException e) {
@@ -300,8 +312,20 @@ public class BootReceiver extends BroadcastReceiver {
 
         timestamps.put(filename, fileTime);
 
+        try {
+            if ((maxSize == 0 || maxSize > DROPBOX_FILE_MAX_SIZE)
+                    && file.length() > DROPBOX_FILE_MAX_SIZE) {
+                maxSize = DROPBOX_FILE_MAX_SIZE;
+            }
+        } catch (Exception e) {
+            maxSize = 1024 * 1024;
+        }
 
-        String fileContents = FileUtils.readTextFile(file, maxSize, "[[TRUNCATED]]\n");
+        String fileContents = FileUtils.readTextFile(file, maxSize, TAG_TRUNCATED);
+        if (mSmtEx.addMoreInfoToNativeCarsh(tag, headers, fileContents, filename, maxSize,
+                footers)) {
+            return;
+        }
         String text = headers + fileContents + footers;
         // Create an additional report for system server native crashes, with a special tag.
         if (tag.equals(TAG_TOMBSTONE) && fileContents.contains(">>> system_server <<<")) {

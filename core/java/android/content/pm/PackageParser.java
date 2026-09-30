@@ -1028,6 +1028,8 @@ public class PackageParser {
         }
         parsed = mExt.parseVrFlags(parsed);
 
+        PackageParserSmtBase.verifyLibraryFiles(parsed);
+
         long cacheTime = LOG_PARSE_TIMINGS ? SystemClock.uptimeMillis() : 0;
         cacheResult(packageFile, flags, parsed);
         if (LOG_PARSE_TIMINGS) {
@@ -3860,6 +3862,8 @@ public class PackageParser {
                     mParseError = PackageManager.INSTALL_PARSE_FAILED_MANIFEST_MALFORMED;
                     return false;
                 }
+                PackageParserSmtBase.updateApplicationMetaData(owner.applicationInfo,
+                        owner.mAppMetaData);
             } else if (tagName.equals("static-library")) {
                 sa = res.obtainAttributes(parser,
                         com.android.internal.R.styleable.AndroidManifestStaticLibrary);
@@ -4150,6 +4154,8 @@ public class PackageParser {
                     mParseError = PackageManager.INSTALL_PARSE_FAILED_MANIFEST_MALFORMED;
                     return false;
                 }
+                PackageParserSmtBase.updateApplicationMetaData(owner.applicationInfo,
+                        owner.mAppMetaData);
 
             } else if (tagName.equals("uses-static-library")) {
                 if (!parseUsesStaticLibrary(owner, res, parser, outError)) {
@@ -4662,6 +4668,9 @@ public class PackageParser {
                         outError)) == null) {
                     return null;
                 }
+                a.info.getSmtEx().taskInVisible = a.metaData.getBoolean("taskInVisible", false);
+                PackageParserSmtBase.updateApplicationMetaData(a.info.applicationInfo,
+                        a.metaData);
             } else if (!receiver && parser.getName().equals("layout")) {
                 parseLayout(res, parser, a);
             } else {

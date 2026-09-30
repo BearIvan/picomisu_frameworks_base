@@ -17,16 +17,21 @@ package com.android.server.lights;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.PowerManager;
+import android.os.Process;
+import android.os.RemoteException;
 import android.os.Trace;
 import android.provider.Settings;
 import android.util.Slog;
 import android.view.SurfaceControl;
 
+import com.android.internal.app.IBatteryStatsOptEx;
 import com.android.server.SystemService;
+import com.android.server.am.BatteryStatsService;
 
 public class LightsService extends SystemService {
     static final String TAG = "LightsService";
@@ -60,6 +65,27 @@ public class LightsService extends SystemService {
         @Override
         public void setBrightness(int brightness) {
             setBrightness(brightness, BRIGHTNESS_MODE_USER);
+        }
+
+        @Override
+        public void setBrightnessAnimSmt(int brightness, int time) {
+            int uid = Binder.getCallingUid();
+            if (uid != Process.SYSTEM_UID) {
+                Slog.w(TAG, "setBrightnessAnim faild ! uid not is 1000 uid: " + uid);
+                return;
+            }
+            pxrHmdServiceSetBrightnessAnim_native(brightness, time);
+        }
+
+        @Override
+        public int getBrightnessSmt() {
+            int uid = Binder.getCallingUid();
+            if (uid != Process.SYSTEM_UID) {
+                Slog.w(TAG, "getBrightness faild ! uid not is 1000 uid: " + uid);
+                return -1;
+            }
+            int brightness = -1;
+            return pxrHmdServiceGetBrightness_native(brightness);
         }
 
         @Override
@@ -105,6 +131,17 @@ public class LightsService extends SystemService {
         public void setFlashing(int color, int mode, int onMS, int offMS) {
             synchronized (this) {
                 setLightLocked(color, mode, onMS, offMS, BRIGHTNESS_MODE_USER);
+                if (LightsManager.LIGHT_ID_NOTIFICATIONS == mId) {
+                    try {
+                        if (mBatteryStatsOptEx != null) {
+                            mBatteryStatsOptEx.noteNotificationOn();
+                        } else {
+                            Slog.e(TAG, "mBatteryStatsOptEx is null when noteNotificationOn");
+                        }
+                    } catch (RemoteException ex) {
+                        Slog.e(TAG, "RemoteException when setFlashing: " + ex);
+                    }
+                }
             }
         }
 
@@ -129,6 +166,17 @@ public class LightsService extends SystemService {
         public void turnOff() {
             synchronized (this) {
                 setLightLocked(0, LIGHT_FLASH_NONE, 0, 0, 0);
+                if (LightsManager.LIGHT_ID_NOTIFICATIONS == mId) {
+                    try {
+                        if (mBatteryStatsOptEx != null) {
+                            mBatteryStatsOptEx.noteNotificationOff();
+                        } else {
+                            Slog.e(TAG, "mBatteryStatsOptEx is null when noteNotificationOff");
+                        }
+                    } catch (RemoteException ex) {
+                        Slog.e(TAG, "RemoteException when turnOff: " + ex);
+                    }
+                }
             }
         }
 
@@ -219,6 +267,13 @@ public class LightsService extends SystemService {
 
     @Override
     public void onBootPhase(int phase) {
+        if (phase == PHASE_SYSTEM_SERVICES_READY) {
+            try {
+                mBatteryStatsOptEx = BatteryStatsService.getService().getIBatteryStatsOptEx();
+            } catch (RemoteException ex) {
+                Slog.e(TAG, "RemoteException when setFlashing: " + ex);
+            }
+        }
     }
 
     private int getVrDisplayMode() {
@@ -248,6 +303,13 @@ public class LightsService extends SystemService {
         }
     };
 
+    private IBatteryStatsOptEx mBatteryStatsOptEx;
+
     static native void setLight_native(int light, int color, int mode,
             int onMS, int offMS, int brightnessMode);
+
+    // PICO HMD service (libhmdserviceclient.pxr.so) display brightness.
+    public static native void pxrHmdServiceSetBrightness_native(float brightness);
+    private static native void pxrHmdServiceSetBrightnessAnim_native(int brightness, int time);
+    private static native int pxrHmdServiceGetBrightness_native(int brightness);
 }

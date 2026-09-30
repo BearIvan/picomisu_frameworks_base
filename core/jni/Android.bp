@@ -39,6 +39,7 @@ cc_library_shared {
         "com_google_android_gles_jni_GLImpl.cpp", // TODO: .arm
         "android_app_Activity.cpp",
         "android_app_ActivityThread.cpp",
+        "android_app_ActivityThreadSmtBase.cpp",
         "android_app_NativeActivity.cpp",
         "android_app_admin_SecurityLog.cpp",
         "android_opengl_EGL14.cpp",
@@ -308,6 +309,7 @@ cc_library_shared {
         "libdl_android",
         "libstatslog",
         "server_configurable_flags",
+        "libswitchstate",
     ],
 
     generated_sources: ["android_util_StatsLogInternal.cpp"],

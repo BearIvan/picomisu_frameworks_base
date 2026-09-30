@@ -29,6 +29,7 @@ import static android.app.usage.UsageStatsManager.STANDBY_BUCKET_WORKING_SET;
 
 import android.app.usage.AppStandbyInfo;
 import android.app.usage.UsageStatsManager;
+import android.os.PowerAdvisorInternal;
 import android.os.SystemClock;
 import android.util.ArrayMap;
 import android.util.AtomicFile;
@@ -40,6 +41,7 @@ import android.util.Xml;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.FastXmlSerializer;
 import com.android.internal.util.IndentingPrintWriter;
+import com.android.server.LocalServices;
 
 import libcore.io.IoUtils;
 
@@ -106,6 +108,8 @@ public class AppIdleHistory {
 
     private boolean mScreenOn;
 
+    private PowerAdvisorInternal mPowerAdvisorInternal;
+
     static class AppUsageHistory {
         // Last used time using elapsed timebase
         long lastUsedElapsedTime;
@@ -142,6 +146,7 @@ public class AppIdleHistory {
         mElapsedSnapshot = elapsedRealtime;
         mScreenOnSnapshot = elapsedRealtime;
         mStorageDir = storageDir;
+        mPowerAdvisorInternal = LocalServices.getService(PowerAdvisorInternal.class);
         readScreenOnTime();
     }
 
@@ -487,6 +492,10 @@ public class AppIdleHistory {
 
         long screenOnDelta = getScreenOnTime(elapsedRealtime) - appUsageHistory.lastUsedScreenTime;
         long elapsedDelta = getElapsedTime(elapsedRealtime) - appUsageHistory.lastUsedElapsedTime;
+
+        // Smartisan: the power advisor extends the elapsed time since the last use of the app.
+        elapsedDelta = getElapsedTime(elapsedRealtime) - appUsageHistory.lastUsedElapsedTime
+                + mPowerAdvisorInternal.getAdjustUsedElapsedTime(userId, packageName);
 
         if (DEBUG) Slog.d(TAG, packageName
                 + " lastUsedScreen=" + appUsageHistory.lastUsedScreenTime

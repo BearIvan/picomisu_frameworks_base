@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <bionic_malloc.h>
+#include <switchstate/SwitchState.h>
 
 namespace android {
 
@@ -44,6 +45,21 @@ static void android_app_ActivityThread_initZygoteChildHeapProfiling(JNIEnv* env,
     android_mallopt(M_INIT_ZYGOTE_CHILD_PROFILING, nullptr, 0);
 }
 
+// Smartisan function tracking hook (factory PICO OS 5.13.7): an empty function in the factory
+// libandroid_runtime.
+static void android_app_ActivityThread_sysHookInit(JNIEnv* env, jobject clazz) {
+}
+
+// Smartisan per-process switch state (factory libswitchstate).
+static void android_app_ActivityThread_setSwitchState(JNIEnv* env, jobject clazz, jint type,
+        jint state) {
+    if (state >= 1) {
+        SwitchState::enable(type);
+    } else {
+        SwitchState::disable(type);
+    }
+}
+
 static JNINativeMethod gActivityThreadMethods[] = {
     // ------------ Regular JNI ------------------
     { "nPurgePendingResources",        "()V",
@@ -51,7 +67,11 @@ static JNINativeMethod gActivityThreadMethods[] = {
     { "nDumpGraphicsInfo",        "(Ljava/io/FileDescriptor;)V",
       (void*) android_app_ActivityThread_dumpGraphics },
     { "nInitZygoteChildHeapProfiling",        "()V",
-      (void*) android_app_ActivityThread_initZygoteChildHeapProfiling }
+      (void*) android_app_ActivityThread_initZygoteChildHeapProfiling },
+    { "nSetSwitchState",        "(II)V",
+      (void*) android_app_ActivityThread_setSwitchState },
+    { "nSysHookInit",        "()V",
+      (void*) android_app_ActivityThread_sysHookInit }
 };
 
 int register_android_app_ActivityThread(JNIEnv* env) {

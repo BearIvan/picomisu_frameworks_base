@@ -69,6 +69,13 @@ public final class MemInfoReader {
     }
 
     /**
+     * Amount of RAM available for starting new applications without swapping (MemAvailable).
+     */
+    public long getAvailableSizeKb() {
+        return mInfos[Debug.MEMINFO_AVAILABLE];
+    }
+
+    /**
      * Total amount of RAM available to the kernel.
      */
     public long getTotalSizeKb() {
@@ -88,7 +95,8 @@ public final class MemInfoReader {
      */
     public long getCachedSizeKb() {
         return mInfos[Debug.MEMINFO_BUFFERS] + mInfos[Debug.MEMINFO_SLAB_RECLAIMABLE]
-                + mInfos[Debug.MEMINFO_CACHED] - mInfos[Debug.MEMINFO_MAPPED];
+                + mInfos[Debug.MEMINFO_CACHED] + mInfos[Debug.MEMINFO_GFX_CACHED]
+                - mInfos[Debug.MEMINFO_MAPPED];
     }
 
     /**
@@ -96,8 +104,7 @@ public final class MemInfoReader {
      */
     public long getKernelUsedSizeKb() {
         return mInfos[Debug.MEMINFO_SHMEM] + mInfos[Debug.MEMINFO_SLAB_UNRECLAIMABLE]
-                + mInfos[Debug.MEMINFO_VM_ALLOC_USED] + mInfos[Debug.MEMINFO_PAGE_TABLES]
-                + mInfos[Debug.MEMINFO_KERNEL_STACK];
+                + mInfos[Debug.MEMINFO_VM_ALLOC_USED] + mInfos[Debug.MEMINFO_PAGE_TABLES];
     }
 
     public long getSwapTotalSizeKb() {
@@ -115,5 +122,11 @@ public final class MemInfoReader {
     @UnsupportedAppUsage
     public long[] getRawInfo() {
         return mInfos;
+    }
+
+    private MemInfoReaderSmtEx mSmtEx = new MemInfoReaderSmtEx(this);
+
+    public MemInfoReaderSmtEx getSmtEx() {
+        return mSmtEx;
     }
 }

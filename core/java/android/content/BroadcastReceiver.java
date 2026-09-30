@@ -21,6 +21,7 @@ import android.app.ActivityManager;
 import android.app.ActivityThread;
 import android.app.IActivityManager;
 import android.app.QueuedWork;
+import android.app.SysMonitorFwBridge;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -276,7 +277,9 @@ public abstract class BroadcastReceiver {
                         // but we still need to tell the activity manager we are done.
                         am.finishReceiver(mToken, 0, null, null, false, mFlags);
                     }
+                    SysMonitorFwBridge.getFactory().getAnrLogger().notesBDtrack(null, mFlags, 4);
                 } catch (RemoteException ex) {
+                    SysMonitorFwBridge.getFactory().getAnrLogger().notesBDtrack(null, mFlags, 5);
                 }
             }
         }

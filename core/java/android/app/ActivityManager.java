@@ -4057,6 +4057,36 @@ public class ActivityManager {
                 }
             };
 
+    /** @hide */
+    public static final int PRIORITY_HIGH_LEVEL = 1;
+    /** @hide */
+    public static final int PRIORITY_MIDDLE_LEVEL = 2;
+    /** @hide */
+    public static final int CANCLE_PACKAGE_OR_PROCESS_PRIORITY = 0;
+    /** @hide */
+    public static final int PACKAGE_HIGH_PRIORITY = 1;
+    /** @hide */
+    public static final int PROCESS_HIGH_PRIORITY = 2;
+    /** @hide */
+    public static final int PREVIOUS_PROCESS_HIGH_PRIORITY = 10;
+    /** @hide */
+    public static final int CANCLE_PREVIOUS_PROCESS_PRIORITY = 11;
+
+    private static final ActivityManagerMonitorEx sActivityManagerMonitorEx =
+            new ActivityManagerMonitorEx();
+    private static final ActivityManagerSmtBase sActivityManagerSmtEx =
+            new ActivityManagerSmtBase();
+
+    /** @hide */
+    public static ActivityManagerMonitorEx getMonitorEx() {
+        return sActivityManagerMonitorEx;
+    }
+
+    /** @hide */
+    public static ActivityManagerSmtBase getSmtEx() {
+        return sActivityManagerSmtEx;
+    }
+
     private static void dumpService(PrintWriter pw, FileDescriptor fd, String name, String[] args) {
         pw.print("DUMP OF SERVICE "); pw.print(name); pw.println(":");
         IBinder service = ServiceManager.checkService(name);

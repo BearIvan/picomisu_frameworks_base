@@ -89,6 +89,7 @@ public class BinderCallsStats implements BinderInternal.Observer {
     private boolean mAddDebugEntries = false;
     private boolean mTrackDirectCallingUid = DEFAULT_TRACK_DIRECT_CALLING_UID;
     private boolean mTrackScreenInteractive = DEFAULT_TRACK_SCREEN_INTERACTIVE;
+    private String mProcessName = "system_server";
 
     private CachedDeviceState.Readonly mDeviceState;
     private CachedDeviceState.TimeInStateStopwatch mBatteryStopwatch;
@@ -102,6 +103,11 @@ public class BinderCallsStats implements BinderInternal.Observer {
 
     public BinderCallsStats(Injector injector) {
         this.mRandom = injector.getRandomGenerator();
+    }
+
+    /** Smartisan: name of the process whose binder calls are tracked (app binder stats). */
+    public void setProcessName(String processName) {
+        mProcessName = processName;
     }
 
     public void setDeviceState(@NonNull CachedDeviceState.Readonly deviceState) {

@@ -677,6 +677,11 @@ public final class SystemServer {
         mPowerManagerService = mSystemServiceManager.startService(PowerManagerService.class);
         traceEnd();
 
+        // Smartisan: publish PowerAdvisorInternal (used by usage stats and the sys services).
+        traceBeginAndSlog("StartSmartisanPowerAdvisor");
+        SysOptBridge.getFactory().startSmartisanPowerAdvisor(mSystemServiceManager);
+        traceEnd();
+
         traceBeginAndSlog("StartThermalManager");
         mSystemServiceManager.startService(ThermalManagerService.class);
         traceEnd();

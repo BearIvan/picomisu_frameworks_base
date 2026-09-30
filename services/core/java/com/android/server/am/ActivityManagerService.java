@@ -9550,6 +9550,11 @@ public class ActivityManagerService extends IActivityManager.Stub
             sb.append("Process: ").append(processName).append("\n");
             sb.append("PID: ").append(process.pid).append("\n");
             sb.append("UID: ").append(process.uid).append("\n");
+            MemInfoReader memInfo = new MemInfoReader();
+            memInfo.getSmtEx().readMemInfoFast();
+            sb.append("ram_free_size: ").append(stringifyKBSize(
+                    memInfo.getSmtEx().getCachedSizeFastKb()
+                            + memInfo.getSmtEx().getFreeSizeFastKb())).append("\n");
             int flags = process.info.flags;
             IPackageManager pm = AppGlobals.getPackageManager();
             sb.append("Flags: 0x").append(Integer.toHexString(flags)).append("\n");
@@ -17693,6 +17698,11 @@ public class ActivityManagerService extends IActivityManager.Stub
     @Override
     public IActivityManagerSmtEx getISmtEx() {
         return mSmtEx.getISmtEx();
+    }
+
+    /** Smartisan extension of the activity manager (factory PICO OS 5.13.7). */
+    public ActivityManagerServiceSmtBase getSmtEx() {
+        return mSmtEx;
     }
 
     @Override

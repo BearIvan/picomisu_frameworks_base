@@ -17,6 +17,7 @@
 package android.view;
 
 import android.annotation.UnsupportedAppUsage;
+import android.app.SysMonitorFwBridge;
 import android.os.Looper;
 import android.os.MessageQueue;
 import android.util.Log;
@@ -154,6 +155,8 @@ public abstract class InputEventReceiver {
                 int seq = mSeqMap.valueAt(index);
                 mSeqMap.removeAt(index);
                 nativeFinishInputEvent(mReceiverPtr, seq, handled);
+                SysMonitorFwBridge.getFactory().getAnrLogger().notesInputTrack(-1,
+                        event.getSequenceNumber(), 2);
             }
         }
         event.recycleIfNeededAfterDispatch();
@@ -185,6 +188,8 @@ public abstract class InputEventReceiver {
     @SuppressWarnings("unused")
     @UnsupportedAppUsage
     private void dispatchInputEvent(int seq, InputEvent event) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesInputTrack(seq,
+                event.getSequenceNumber(), 0);
         mSeqMap.put(event.getSequenceNumber(), seq);
         onInputEvent(event);
     }

@@ -650,6 +650,11 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
 
     private int mDeviceOwnerUid = Process.INVALID_UID;
 
+    // Smartisan extension of the ActivityTaskManagerInternal, returned by
+    // LocalService.getSmtEx() (factory PICO OS 5.13.7).
+    private final ActivityTaskManagerInternalSmtBase mATInternalSmtEx =
+            new ActivityTaskManagerInternalSmtBase(this);
+
     private final class FontScaleSettingObserver extends ContentObserver {
         private final Uri mFontScaleUri = Settings.System.getUriFor(FONT_SCALE);
         private final Uri mHideErrorDialogsUri = Settings.Global.getUriFor(HIDE_ERROR_DIALOGS);
@@ -6118,6 +6123,11 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
     }
 
     final class LocalService extends ActivityTaskManagerInternal {
+        @Override
+        public ActivityTaskManagerInternalSmtBase getSmtEx() {
+            return mATInternalSmtEx;
+        }
+
         @Override
         public SleepToken acquireSleepToken(String tag, int displayId) {
             Preconditions.checkNotNull(tag);

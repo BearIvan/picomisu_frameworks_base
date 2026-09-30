@@ -280,6 +280,17 @@ public final class PersistableBundle extends BaseBundle implements Cloneable, Pa
         }
     }
 
+    /**
+     * Reads the Parcel contents into this PersistableBundle, typically in order for
+     * it to be passed through an IBinder connection.
+     * @param parcel The parcel to overwrite this bundle from.
+     * @hide
+     */
+    public void readFromParcel(Parcel parcel) {
+        super.readFromParcelInner(parcel);
+        mFlags = FLAG_DEFUSABLE;
+    }
+
     /** @hide */
     public static PersistableBundle restoreFromXml(XmlPullParser in) throws IOException,
             XmlPullParserException {

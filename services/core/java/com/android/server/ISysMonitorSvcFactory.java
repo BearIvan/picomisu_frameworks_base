@@ -26,4 +26,8 @@ public interface ISysMonitorSvcFactory {
     default ITransferController getTransferController() {
         return new ITransferController() {};
     }
+
+    default ISysPerfMonitorService getSysPerfMonitorService() {
+        return new ISysPerfMonitorService() {};
+    }
 }

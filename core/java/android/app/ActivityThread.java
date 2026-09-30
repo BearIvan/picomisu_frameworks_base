@@ -105,6 +105,7 @@ import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.PersistableBundle;
 import android.os.Process;
+import android.os.ProcessSmtEx;
 import android.os.RemoteCallback;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -290,6 +291,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     @UnsupportedAppUsage
     static volatile IPackageManager sPackageManager;
 
+    private final ActivityThreadMonitorEx mMonitorEx = new ActivityThreadMonitorEx(this);
     // Smartisan extension state; initialized before mAppThread, whose Smartisan part uses it.
     private final ActivityThreadSmtBase mSmtEx = new ActivityThreadSmtBase(this);
     @UnsupportedAppUsage
@@ -793,6 +795,13 @@ public final class ActivityThread extends ClientTransactionHandler {
         @Nullable
         ContentCaptureOptions contentCaptureOptions;
 
+        private final ActivityThreadSmtBase.AppBindDataSmtEx mAppBindDataSmtEx =
+                new ActivityThreadSmtBase.AppBindDataSmtEx();
+
+        ActivityThreadSmtBase.AppBindDataSmtEx getSmtEx() {
+            return mAppBindDataSmtEx;
+        }
+
         @Override
         public String toString() {
             return "AppBindData{appInfo=" + appInfo + "}";
@@ -920,6 +929,8 @@ public final class ActivityThread extends ClientTransactionHandler {
         public final void scheduleReceiver(Intent intent, ActivityInfo info,
                 CompatibilityInfo compatInfo, int resultCode, String data, Bundle extras,
                 boolean sync, int sendingUser, int processState) {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesBDtrack(info.name,
+                    intent.getFlags(), 0);
             updateProcessState(processState, false);
             ReceiverData r = new ReceiverData(intent, resultCode, data, extras,
                     sync, false, mAppThread.asBinder(), sendingUser);
@@ -951,6 +962,7 @@ public final class ActivityThread extends ClientTransactionHandler {
 
         public final void scheduleCreateService(IBinder token,
                 ServiceInfo info, CompatibilityInfo compatInfo, int processState) {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(info.name, token, 0);
             updateProcessState(processState, false);
             CreateServiceData s = new CreateServiceData();
             s.token = token;
@@ -962,6 +974,7 @@ public final class ActivityThread extends ClientTransactionHandler {
 
         public final void scheduleBindService(IBinder token, Intent intent,
                 boolean rebind, int processState) {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, token, 1);
             updateProcessState(processState, false);
             BindServiceData s = new BindServiceData();
             s.token = token;
@@ -975,6 +988,7 @@ public final class ActivityThread extends ClientTransactionHandler {
         }
 
         public final void scheduleUnbindService(IBinder token, Intent intent) {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, token, 2);
             BindServiceData s = new BindServiceData();
             s.token = token;
             s.intent = intent;
@@ -983,6 +997,7 @@ public final class ActivityThread extends ClientTransactionHandler {
         }
 
         public final void scheduleServiceArgs(IBinder token, ParceledListSlice args) {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, token, 3);
             List<ServiceStartArgs> list = args.getList();
 
             for (int i = 0; i < list.size(); i++) {
@@ -999,6 +1014,7 @@ public final class ActivityThread extends ClientTransactionHandler {
         }
 
         public final void scheduleStopService(IBinder token) {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, token, 4);
             sendMessage(H.STOP_SERVICE, token);
         }
 
@@ -1126,6 +1142,8 @@ public final class ActivityThread extends ClientTransactionHandler {
         public void scheduleRegisteredReceiver(IIntentReceiver receiver, Intent intent,
                 int resultCode, String dataStr, Bundle extras, boolean ordered,
                 boolean sticky, int sendingUser, int processState) throws RemoteException {
+            SysMonitorFwBridge.getFactory().getAnrLogger().notesBDtrack(receiver.toString(),
+                    intent.getFlags(), 1);
             updateProcessState(processState, false);
             receiver.performReceive(intent, resultCode, dataStr, extras, ordered,
                     sticky, sendingUser);
@@ -1716,6 +1734,19 @@ public final class ActivityThread extends ClientTransactionHandler {
         private ActivityThreadSmtBase.ApplicationThreadEx mApplicationThreadEx =
                 mSmtEx.new ApplicationThreadEx(this);
 
+        public ActivityThreadSmtBase.ApplicationThreadEx getEx() {
+            return mApplicationThreadEx;
+        }
+
+        @Override
+        public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+                throws RemoteException {
+            if (mApplicationThreadEx.onTransactEx(code, data, reply, flags)) {
+                return true;
+            }
+            return super.onTransact(code, data, reply, flags);
+        }
+
         @Override
         public void scheduleActivityTimeout(String reason) {
             try {
@@ -2080,6 +2111,9 @@ public final class ActivityThread extends ClientTransactionHandler {
                     break;
                 case PURGE_RESOURCES:
                     schedulePurgeIdler();
+                    break;
+                default:
+                    getSmtEx().handleMessage(msg);
                     break;
             }
             Object obj = msg.obj;
@@ -3806,6 +3840,8 @@ public final class ActivityThread extends ClientTransactionHandler {
 
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
     private void handleReceiver(ReceiverData data) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesBDtrack(null,
+                data.intent.getFlags(), 2);
         // If we are getting ready to gc after going to the background, well
         // we are back active so skip it.
         unscheduleGcIdler();
@@ -3989,6 +4025,7 @@ public final class ActivityThread extends ClientTransactionHandler {
 
     @UnsupportedAppUsage
     private void handleCreateService(CreateServiceData data) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, data.token, 5);
         // If we are getting ready to gc after going to the background, well
         // we are back active so skip it.
         unscheduleGcIdler();
@@ -4022,6 +4059,8 @@ public final class ActivityThread extends ClientTransactionHandler {
             try {
                 ActivityManager.getService().serviceDoneExecuting(
                         data.token, SERVICE_DONE_EXECUTING_ANON, 0, 0);
+                SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null,
+                        data.token, 10);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -4035,6 +4074,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     }
 
     private void handleBindService(BindServiceData data) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, data.token, 6);
         Service s = mServices.get(data.token);
         if (DEBUG_SERVICE)
             Slog.v(TAG, "handleBindService s=" + s + " rebind=" + data.rebind);
@@ -4051,6 +4091,8 @@ public final class ActivityThread extends ClientTransactionHandler {
                         s.onRebind(data.intent);
                         ActivityManager.getService().serviceDoneExecuting(
                                 data.token, SERVICE_DONE_EXECUTING_ANON, 0, 0);
+                        SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null,
+                                data.token, 11);
                     }
                 } catch (RemoteException ex) {
                     throw ex.rethrowFromSystemServer();
@@ -4066,6 +4108,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     }
 
     private void handleUnbindService(BindServiceData data) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, data.token, 7);
         Service s = mServices.get(data.token);
         if (s != null) {
             try {
@@ -4080,6 +4123,8 @@ public final class ActivityThread extends ClientTransactionHandler {
                         ActivityManager.getService().serviceDoneExecuting(
                                 data.token, SERVICE_DONE_EXECUTING_ANON, 0, 0);
                     }
+                    SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null,
+                            data.token, 12);
                 } catch (RemoteException ex) {
                     throw ex.rethrowFromSystemServer();
                 }
@@ -4142,6 +4187,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     }
 
     private void handleServiceArgs(ServiceArgsData data) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, data.token, 8);
         Service s = mServices.get(data.token);
         if (s != null) {
             try {
@@ -4162,6 +4208,8 @@ public final class ActivityThread extends ClientTransactionHandler {
                 try {
                     ActivityManager.getService().serviceDoneExecuting(
                             data.token, SERVICE_DONE_EXECUTING_START, data.startId, res);
+                    SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null,
+                            data.token, 13);
                 } catch (RemoteException e) {
                     throw e.rethrowFromSystemServer();
                 }
@@ -4176,6 +4224,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     }
 
     private void handleStopService(IBinder token) {
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null, token, 9);
         Service s = mServices.remove(token);
         if (s != null) {
             try {
@@ -4193,6 +4242,8 @@ public final class ActivityThread extends ClientTransactionHandler {
                 try {
                     ActivityManager.getService().serviceDoneExecuting(
                             token, SERVICE_DONE_EXECUTING_STOP, 0, 0);
+                    SysMonitorFwBridge.getFactory().getAnrLogger().notesServiceTrack(null,
+                            token, 14);
                 } catch (RemoteException e) {
                     throw e.rethrowFromSystemServer();
                 }
@@ -6228,6 +6279,11 @@ public final class ActivityThread extends ClientTransactionHandler {
         android.ddm.DdmHandleAppName.setAppName(data.processName,
                                                 UserHandle.myUserId());
         VMRuntime.setProcessPackageName(data.appInfo.packageName);
+        if (!Build.IS_DEBUGGABLE || ActivityThreadSmtBase.DEBUG_LOG_CONTROL) {
+            ProcessSmtEx.setIsDebugApp((data.appInfo.getSmtEx().smartisanFlag
+                    & data.appInfo.getSmtEx().SMARTISAN_FLAG_APP_DEBUG) != 0
+                    && !ActivityThreadSmtBase.DEBUG_LOG_CONTROL);
+        }
 
         // Pass data directory path to ART. This is used for caching information and
         // should be set before any application code is loaded.
@@ -6603,6 +6659,23 @@ public final class ActivityThread extends ClientTransactionHandler {
                                            pkg_name,
                                            bindApp_dur,
                                            pkgDir);
+        }
+
+        if (appContext != null) {
+            if (data.appInfo.getSmtEx().funcTracking == 1) {
+                Log.d("sys_hook", "hook activity thread : "
+                        + mInitialApplication.getPackageName());
+                nSysHookInit();
+            }
+        }
+
+        SysMonitorFwBridge.getFactory().getAnrLogger().monitorLooper();
+        if ((data.appInfo.getSmtEx().mBinderStatFlags & 0xff) == 1) {
+            getSmtEx().setBinderCallsStats(data.processName,
+                    data.appInfo.getSmtEx().mBinderStatFlags >> 16);
+        }
+        if (data.appInfo != null && data.appInfo.getSmtEx().isPrefetch) {
+            mSmtEx.handleBindApplication(data.appInfo.getSmtEx().isPrefetch);
         }
     }
 
@@ -7478,4 +7551,16 @@ public final class ActivityThread extends ClientTransactionHandler {
     private native void nPurgePendingResources();
     private native void nDumpGraphicsInfo(FileDescriptor fd);
     private native void nInitZygoteChildHeapProfiling();
+    private native void nSysHookInit();
+    protected native void nSetSwitchState(int type, int state);
+
+    /** @hide */
+    public ActivityThreadSmtBase getSmtEx() {
+        return mSmtEx;
+    }
+
+    /** @hide */
+    public ActivityThreadMonitorEx getMonitorEx() {
+        return mMonitorEx;
+    }
 }

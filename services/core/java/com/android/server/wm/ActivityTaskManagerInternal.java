@@ -572,4 +572,7 @@ public abstract class ActivityTaskManagerInternal {
 
     /** Set all associated companion app that belongs to an userId. */
     public abstract void setCompanionAppPackages(int userId, Set<String> companionAppPackages);
+
+    /** Smartisan extension of the activity task manager internal (factory PICO OS 5.13.7). */
+    public abstract ActivityTaskManagerInternalSmtBase getSmtEx();
 }

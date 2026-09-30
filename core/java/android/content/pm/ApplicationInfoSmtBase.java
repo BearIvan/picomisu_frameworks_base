@@ -190,7 +190,7 @@ public class ApplicationInfoSmtBase {
     public List<String> prefetchPackVersions = new ArrayList<>();
     public int uidGroupID = -1;
     public int perfToolType = 0;
-    public Map<String, Long> smtProcessMemInfo = new HashMap<>(0);
+    public Map<String, Integer> smtProcessMemInfo = new HashMap<>(0);
     public int beKilledType = TYPE_NONE;
     public long beKilledTime;
     public int killedTimes;

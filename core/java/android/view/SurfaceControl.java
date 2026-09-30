@@ -327,6 +327,14 @@ public final class SurfaceControl implements Parcelable {
      */
     public static final int FX_SURFACE_MASK = 0x000F0000;
 
+    /**
+     * Surface creation flag (PICO): the surface is not eligible for the VR single-layer
+     * composition of SurfaceFlinger. Set for the packages and virtual displays of
+     * {@code AppCompositionWhiteList.xml}.
+     * @hide
+     */
+    public static final int SKIP_SINGLE_LAYER_COMPOSITION = 0x00100000;
+
     /* flags used with setFlags() (keep in sync with ISurfaceComposer.h) */
 
     /**

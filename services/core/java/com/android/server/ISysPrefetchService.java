@@ -18,4 +18,7 @@ public interface ISysPrefetchService {
 
     default void updatePrefetchApps(List<String> needPrefetchApps, int flag) {
     }
+
+    default void removeAlivePrefetch(String processName) {
+    }
 }

@@ -2447,6 +2447,8 @@ public class PackageManagerService extends IPackageManager.Stub
         mPackageManagerServiceSmtBase = new PackageManagerServiceSmtBase(this,
                 mPackageManagerServiceMonitorEx);
 
+        mPackageManagerServiceSmtBase.SmartisanOSInit();
+
         if (mSdkVersion <= 0) {
             Slog.w(TAG, "**** ro.build.version.sdk not set!");
         }
@@ -9302,6 +9304,12 @@ public class PackageManagerService extends IPackageManager.Stub
             }
         } else {
             scanFlags &= ~SCAN_CHECK_ONLY;
+        }
+
+        if (pkg != null && pkg.applicationInfo != null) {
+            getSmtEx().updateSmartisanFlagValue(pkg.applicationInfo, pkg);
+        } else {
+            Slog.e(TAG, "scanPackageLI pkg: " + pkg.packageName + " applicationInfo null");
         }
 
         // Scan the parent
@@ -17410,6 +17418,13 @@ public class PackageManagerService extends IPackageManager.Stub
         try {
             pkg = pp.parsePackage(tmpPackageFile, parseFlags);
             DexMetadataHelper.validatePackageDexMetadata(pkg);
+
+            if (pkg != null && pkg.applicationInfo != null) {
+                getSmtEx().updateSmartisanFlagValue(pkg.applicationInfo, pkg);
+            } else {
+                Slog.e(TAG, "installPackageLI pkg: " + pkg.packageName
+                        + " applicationInfo null");
+            }
         } catch (PackageParserException e) {
             throw new PrepareFailure("Failed parse during installPackageLI", e);
         } finally {
@@ -25742,6 +25757,10 @@ public class PackageManagerService extends IPackageManager.Stub
         } finally {
             Binder.restoreCallingIdentity(ident);
         }
+    }
+
+    public PackageManagerServiceSmtBase getSmtEx() {
+        return mPackageManagerServiceSmtBase;
     }
 
     /**

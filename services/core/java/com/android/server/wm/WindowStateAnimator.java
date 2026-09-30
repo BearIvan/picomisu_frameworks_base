@@ -67,6 +67,8 @@ import android.view.animation.AnimationUtils;
 
 import com.android.server.policy.WindowManagerPolicy;
 
+import smartisanos.os.PeroptWhiteListParser;
+
 import java.io.PrintWriter;
 
 /**
@@ -446,6 +448,10 @@ class WindowStateAnimator {
 
         int flags = SurfaceControl.HIDDEN;
         final WindowManager.LayoutParams attrs = w.mAttrs;
+
+        if (PeroptWhiteListParser.isSkipSingleLayerComposition(attrs.packageName)) {
+            flags |= SurfaceControl.SKIP_SINGLE_LAYER_COMPOSITION;
+        }
 
         if (mService.isSecureLocked(w)) {
             flags |= SurfaceControl.SECURE;

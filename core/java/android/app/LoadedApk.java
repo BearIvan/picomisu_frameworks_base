@@ -1510,6 +1510,10 @@ public final class LoadedApk {
 
             public final Runnable getRunnable() {
                 return () -> {
+                    if (mRegistered && mOrdered) {
+                        SysMonitorFwBridge.getFactory().getAnrLogger().notesBDtrack(null,
+                                mCurIntent.getFlags(), 3);
+                    }
                     final BroadcastReceiver receiver = mReceiver;
                     final boolean ordered = mOrdered;
 

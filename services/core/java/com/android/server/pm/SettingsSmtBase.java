@@ -4,6 +4,7 @@
 package com.android.server.pm;
 
 import android.util.SparseArray;
+import android.util.SparseIntArray;
 
 import java.util.HashSet;
 
@@ -15,6 +16,11 @@ import java.util.HashSet;
  * @hide
  */
 public class SettingsSmtBase {
+    protected static final String TAG = "SettingsSmtEx";
+
+    /** Uids whose tasks persist (queried by PackageManagerServiceMonitorEx.isTaskPersist). */
+    static final SparseIntArray mAllTaskPersistUids = new SparseIntArray();
+
     /** Per user: packages whose tasks persist (Smartisan task-persist configuration). */
     final SparseArray<HashSet<String>> mAllTaskPersistPackages = new SparseArray<>();
     protected Settings mSettings;

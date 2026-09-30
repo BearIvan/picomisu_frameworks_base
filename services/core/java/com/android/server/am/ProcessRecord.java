@@ -264,6 +264,8 @@ class ProcessRecord implements WindowProcessListener {
     final ArraySet<Binder> mAllowBackgroundActivityStartsTokens = new ArraySet<>();
     // a set of UIDs of all bound clients
     private ArraySet<Integer> mBoundClientUids = new ArraySet<>();
+    // Smartisan monitor extension state of this process (factory PICO OS 5.13.7).
+    ProcessRecordMonitorEx mMonitorEx = new ProcessRecordMonitorEx(this);
     // Smartisan extension state of this process (factory PICO OS 5.13.7).
     ProcessRecordSmtBase mSmtEx = new ProcessRecordSmtBase(this);
 
@@ -1688,5 +1690,10 @@ class ProcessRecord implements WindowProcessListener {
     /** Smartisan extension state of this process (factory PICO OS 5.13.7). */
     public ProcessRecordSmtBase getSmtEx() {
         return mSmtEx;
+    }
+
+    /** Smartisan monitor extension state of this process (factory PICO OS 5.13.7). */
+    public ProcessRecordMonitorEx getMonitorEx() {
+        return mMonitorEx;
     }
 }

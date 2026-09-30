@@ -288,8 +288,9 @@ public class DeviceIdleController extends SystemService
     private Intent mLightIdleIntent;
     private AnyMotionDetector mAnyMotionDetector;
     private final AppStateTracker mAppStateTracker;
-    private boolean mLightEnabled;
-    private boolean mDeepEnabled;
+    // Protected in the factory: set by DeviceIdleControllerSmtEx.setDozeMode().
+    protected boolean mLightEnabled;
+    protected boolean mDeepEnabled;
     private boolean mQuickDozeActivated;
     private boolean mQuickDozeActivatedWhileIdling;
     private boolean mForceIdle;
@@ -1759,6 +1760,14 @@ public class DeviceIdleController extends SystemService
     }
 
     public class LocalService {
+        // Smartisan extension of the local service (factory PICO OS 5.13.7).
+        private final DeviceIdleControllerSmtEx.LocalServiceSmtEx mLocalServiceSmtEx =
+                mSmtEx.new LocalServiceSmtEx(this);
+
+        public DeviceIdleControllerSmtEx.LocalServiceSmtEx getLocalServiceSmtEx() {
+            return mLocalServiceSmtEx;
+        }
+
         public void onConstraintStateChanged(IDeviceIdleConstraint constraint, boolean active) {
             synchronized (DeviceIdleController.this) {
                 onConstraintStateChangedLocked(constraint, active);
@@ -1955,6 +1964,14 @@ public class DeviceIdleController extends SystemService
                     }
                 }
             };
+
+    // Smartisan extension of the device idle controller (factory PICO OS 5.13.7).
+    private DeviceIdleControllerSmtEx mSmtEx = new DeviceIdleControllerSmtEx(this);
+
+    /** Smartisan extension of the device idle controller (factory PICO OS 5.13.7). */
+    public DeviceIdleControllerSmtEx getSmtEx() {
+        return mSmtEx;
+    }
 
     @VisibleForTesting DeviceIdleController(Context context, Injector injector) {
         super(context);

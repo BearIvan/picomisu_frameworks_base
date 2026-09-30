@@ -15,4 +15,9 @@ public final class SmtSysLog {
     public static int fatal(String tag, String msg) {
         return Log.println_native(LOG_ID_SYSFATAL, Log.ERROR, tag, msg);
     }
+
+    public static int fatal(String tag, String msg, Throwable tr) {
+        return Log.println_native(LOG_ID_SYSFATAL, Log.ERROR, tag,
+                String.format("msg: %s \n Exception: %s", msg, Log.getStackTraceString(tr)));
+    }
 }

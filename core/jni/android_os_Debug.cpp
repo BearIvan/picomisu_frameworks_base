@@ -29,6 +29,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <iomanip>
 #include <string>
 #include <vector>
@@ -39,6 +40,7 @@
 #include <log/log.h>
 #include <utils/misc.h>
 #include <utils/String8.h>
+#include <utils/SystemClock.h>
 
 #include <nativehelper/JNIHelp.h>
 #include <nativehelper/ScopedUtfChars.h>
@@ -544,6 +546,8 @@ enum {
     MEMINFO_VMALLOC_USED,
     MEMINFO_PAGE_TABLES,
     MEMINFO_KERNEL_STACK,
+    MEMINFO_GFX_CACHED,
+    MEMINFO_AVAILABLE,
     MEMINFO_COUNT
 };
 
@@ -570,6 +574,10 @@ static void android_os_Debug_getMemInfo(JNIEnv *env, jobject clazz, jlongArray o
         jniThrowRuntimeException(env, "SysMemInfo read failed");
         return;
     }
+    // ReadMemInfo() resizes mem to the number of tags; the factory libmeminfo default tags end
+    // with "GFX_cached:" and "MemAvailable:" (MEMINFO_GFX_CACHED, MEMINFO_AVAILABLE). Keep the
+    // missing trailing entries at 0 when the libmeminfo in use does not have them.
+    mem.resize(MEMINFO_COUNT);
 
     jlong* outArray = env->GetLongArrayElements(out, 0);
     if (outArray != NULL) {
@@ -583,6 +591,116 @@ static void android_os_Debug_getMemInfo(JNIEnv *env, jobject clazz, jlongArray o
         }
     }
 
+    env->ReleaseLongArrayElements(out, outArray, 0);
+}
+
+// Smartisan: parses /proc/meminfo directly (without libmeminfo), including the ION and zram
+// physical usage lines of the factory kernel.
+static void android_os_Debug_getMemInfoFast(JNIEnv *env, jobject clazz, jlongArray out)
+{
+    char buffer[2048];
+    size_t numFound = 0;
+
+    if (out == NULL) {
+        jniThrowNullPointerException(env, "out == null");
+        return;
+    }
+
+    int fd = open("/proc/meminfo", O_RDONLY);
+
+    if (fd < 0) {
+        ALOGW("Unable to open /proc/meminfo: %s\n", strerror(errno));
+        return;
+    }
+
+    int len = read(fd, buffer, sizeof(buffer)-1);
+    close(fd);
+
+    if (len < 0) {
+        ALOGW("Empty /proc/meminfo");
+        return;
+    }
+    buffer[len] = 0;
+
+    static const char* const tags[] = {
+            "MemTotal:",
+            "MemFree:",
+            "Buffers:",
+            "Cached:",
+            "Shmem:",
+            "Slab:",
+            "SReclaimable:",
+            "SUnreclaim:",
+            "SwapTotal:",
+            "SwapFree:",
+            "ZRam:",
+            "Mapped:",
+            "VmallocUsed:",
+            "PageTables:",
+            "KernelStack:",
+            "ION_system:",
+            "ION_cached:",
+            "ZRAM_phy_used:",
+            NULL
+    };
+    static const int tagsLen[] = {
+            9,
+            8,
+            8,
+            7,
+            6,
+            5,
+            13,
+            11,
+            10,
+            9,
+            5,
+            7,
+            12,
+            11,
+            12,
+            11,
+            11,
+            14,
+            0
+    };
+    long mem[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    char* p = buffer;
+    while (*p && numFound < (sizeof(tagsLen) / sizeof(tagsLen[0]))) {
+        int i = 0;
+        while (tags[i]) {
+            if (strncmp(p, tags[i], tagsLen[i]) == 0) {
+                p += tagsLen[i];
+                while (*p == ' ') p++;
+                char* num = p;
+                while (*p >= '0' && *p <= '9') p++;
+                if (*p != 0) {
+                    *p = 0;
+                    p++;
+                }
+                mem[i] = atoll(num);
+                numFound++;
+                break;
+            }
+            i++;
+        }
+        while (*p && *p != '\n') {
+            p++;
+        }
+        if (*p) p++;
+    }
+
+    int maxNum = env->GetArrayLength(out);
+    if (maxNum > MEMINFO_COUNT) {
+        maxNum = MEMINFO_COUNT;
+    }
+    jlong* outArray = env->GetLongArrayElements(out, 0);
+    if (outArray != NULL) {
+        for (int i = 0; i < maxNum; i++) {
+            outArray[i] = mem[i];
+        }
+    }
     env->ReleaseLongArrayElements(out, outArray, 0);
 }
 
@@ -762,6 +880,74 @@ static jlong android_os_Debug_getFreeZramKb(JNIEnv* env, jobject clazz) {
     return zramFreeKb;
 }
 
+// Smartisan (factory PICO OS 5.13.7): QTimer clock of Debug.getTimeByQtimer(). The factory
+// libandroid_runtime uses the Qualcomm sensors_timeutil helper (function-static instance): the
+// ARM generic timer counter (CNTVCT) is scaled to nanoseconds with its frequency (CNTFRQ), and
+// the instance also records the elapsedRealtimeNano() offset of the counter when created.
+class sensors_timeutil {
+public:
+    static sensors_timeutil& get_instance() {
+        static sensors_timeutil inst;
+        return inst;
+    }
+
+    uint64_t qtimer_get_ticks() {
+#if defined(__aarch64__)
+        uint64_t val = 0;
+        asm volatile("mrs %0, cntvct_el0" : "=r" (val));
+        return val;
+#else
+        uint32_t lsb = 0, msb = 0;
+        asm volatile("mrrc p15, 1, %[lsb], %[msb], c14" : [lsb] "=r" (lsb), [msb] "=r" (msb));
+        return ((uint64_t) msb << 32) | lsb;
+#endif
+    }
+
+    uint64_t qtimer_get_freq() {
+#if defined(__aarch64__)
+        uint64_t val = 0;
+        asm volatile("mrs %0, cntfrq_el0" : "=r" (val));
+        return val;
+#else
+        uint32_t val = 0;
+        asm volatile("mrc p15, 0, %[val], c14, c0, 0" : [val] "=r" (val));
+        return val;
+#endif
+    }
+
+    uint64_t qtimer_ticks_to_ns(uint64_t ticks) {
+        return uint64_t(double(ticks) * (double(_nsec_per_sec) / double(_qtimer_freq)));
+    }
+
+    uint64_t qtimer_get_time_ns() {
+        return qtimer_ticks_to_ns(qtimer_get_ticks());
+    }
+
+private:
+    sensors_timeutil() :
+        _qtimer_freq(qtimer_get_freq()),
+        _realtime_ns(elapsedRealtimeNano())
+    {
+        _offset_ns = _realtime_ns.load() - qtimer_get_time_ns();
+    }
+
+public:
+    // Layout of the factory instance; only _qtimer_freq and _nsec_per_sec are read by
+    // getTimeByQtimer().
+    uint64_t _qtimer_freq;
+    const uint64_t _nsec_per_sec = 1000000000ull;
+    std::atomic<int64_t> _realtime_ns;
+    const int64_t _offset_update_interval_ns = 60000000000ll;
+    const int64_t _offset_max_error_ns = 10000;
+    const int _offset_retries = 20;
+    int64_t _offset_ns;
+};
+
+static jlong android_os_Debug_getTimeByQtimer(JNIEnv* env, jobject clazz)
+{
+    return (uint64_t) (sensors_timeutil::get_instance().qtimer_get_time_ns() * 0.000001);
+}
+
 /*
  * JNI registration.
  */
@@ -781,8 +967,12 @@ static const JNINativeMethod gMethods[] = {
             (void*) android_os_Debug_getPss },
     { "getPss",                 "(I[J[J)J",
             (void*) android_os_Debug_getPssPid },
+    { "getTimeByQtimer",        "()J",
+            (void*) android_os_Debug_getTimeByQtimer },
     { "getMemInfo",             "([J)V",
             (void*) android_os_Debug_getMemInfo },
+    { "getMemInfoFast",         "([J)V",
+            (void*) android_os_Debug_getMemInfoFast },
     { "dumpNativeHeap",         "(Ljava/io/FileDescriptor;)V",
             (void*) android_os_Debug_dumpNativeHeap },
     { "dumpNativeMallocInfo",   "(Ljava/io/FileDescriptor;)V",

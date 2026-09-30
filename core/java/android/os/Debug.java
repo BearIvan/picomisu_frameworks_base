@@ -1837,6 +1837,13 @@ public final class Debug
      */
     public static native long getPss(int pid, long[] outUssSwapPssRss, long[] outMemtrack);
 
+    /**
+     * Smartisan: the ARM generic timer (QTimer) counter converted to milliseconds, used by the
+     * sysmonitor looper observer to time message dispatches.
+     * @hide
+     */
+    public static native long getTimeByQtimer();
+
     /** @hide */
     public static final int MEMINFO_TOTAL = 0;
     /** @hide */
@@ -1868,7 +1875,11 @@ public final class Debug
     /** @hide */
     public static final int MEMINFO_KERNEL_STACK = 14;
     /** @hide */
-    public static final int MEMINFO_COUNT = 15;
+    public static final int MEMINFO_GFX_CACHED = 15;
+    /** @hide */
+    public static final int MEMINFO_AVAILABLE = 16;
+    /** @hide */
+    public static final int MEMINFO_COUNT = 17;
 
     /**
      * Retrieves /proc/meminfo.  outSizes is filled with fields
@@ -1877,6 +1888,13 @@ public final class Debug
      */
     @UnsupportedAppUsage
     public static native void getMemInfo(long[] outSizes);
+
+    /**
+     * Smartisan: parses /proc/meminfo directly; outSizes is filled with the MEMINFO_TOTAL ..
+     * MEMINFO_KERNEL_STACK fields followed by the ION system and ION cached sizes.
+     * @hide
+     */
+    public static native void getMemInfoFast(long[] outSizes);
 
     /**
      * Establish an object allocation limit in the current thread.

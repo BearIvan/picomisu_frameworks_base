@@ -979,6 +979,16 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
      */
     public WindowLayout windowLayout;
 
+    private final ActivityInfoSmtBase mSmtEx = new ActivityInfoSmtBase();
+
+    /**
+     * Returns the Smartisan activity extension used by PICO OS.
+     * @hide
+     */
+    public ActivityInfoSmtBase getSmtEx() {
+        return mSmtEx;
+    }
+
     private IExtActivityInfo mExt = new ExtActivityInfoImpl(this);
 
     public ActivityInfo() {
@@ -1008,6 +1018,7 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         colorMode = orig.colorMode;
         maxAspectRatio = orig.maxAspectRatio;
         minAspectRatio = orig.minAspectRatio;
+        mSmtEx.copyFrom(orig);
         mExt.copyFrom(orig);
     }
 
@@ -1242,6 +1253,7 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         dest.writeInt(colorMode);
         dest.writeFloat(maxAspectRatio);
         dest.writeFloat(minAspectRatio);
+        mSmtEx.writeToParcel(dest, flags);
         // The factory passes ActivityInfo.flags here; the extension ignores the value.
         mExt.writeToParcel(dest, flags);
     }
@@ -1365,6 +1377,7 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         colorMode = source.readInt();
         maxAspectRatio = source.readFloat();
         minAspectRatio = source.readFloat();
+        mSmtEx.readFromParcel(source);
         mExt.readFromParcel(source);
     }
 

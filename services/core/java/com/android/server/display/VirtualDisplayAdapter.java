@@ -45,6 +45,8 @@ import android.view.SurfaceControl;
 
 import com.android.internal.annotations.VisibleForTesting;
 
+import smartisanos.os.PeroptWhiteListParser;
+
 import java.io.PrintWriter;
 import java.util.Iterator;
 
@@ -99,6 +101,10 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             uniqueId = baseUniqueId + uniqueIndex;
         } else {
             uniqueId = UNIQUE_ID_PREFIX + ownerPackageName + ":" + uniqueId;
+        }
+        if (PeroptWhiteListParser.isSkipSingleLayerComposition(name)
+                || PeroptWhiteListParser.isSkipSingleLayerComposition(ownerPackageName)) {
+            flags |= SurfaceControl.SKIP_SINGLE_LAYER_COMPOSITION;
         }
         VirtualDisplayDevice device = new VirtualDisplayDevice(displayToken, appToken,
                 ownerUid, ownerPackageName, surface, flags, new Callback(callback, mHandler),

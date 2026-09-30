@@ -422,4 +422,12 @@ public class BoostFramework {
         }
         return ret;
     }
+
+    // Smartisan: DPerformance extension.
+    private final BoostFrameworkSmtBase mSmtEx = new BoostFrameworkSmtBase(this);
+
+    /** @hide */
+    public BoostFrameworkSmtBase getSmtEx() {
+        return mSmtEx;
+    }
 };

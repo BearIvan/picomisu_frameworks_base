@@ -4,14 +4,21 @@
 package com.android.server.pm;
 
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ApplicationInfoSmtBase;
 import android.content.pm.IPackageManagerSmtEx;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageParser;
 import android.os.Binder;
+import android.util.ArrayMap;
 import android.util.Log;
+import android.util.Slog;
 
 import com.android.server.SysOptBridge;
 import com.android.server.pm.dex.DexoptOptions;
+
+import smartisanos.os.PeroptWhiteListParser;
+
+import java.util.Map;
 
 /**
  * Smartisan extension of the {@link PackageManagerService}, whose
@@ -28,10 +35,52 @@ public class PackageManagerServiceSmtBase {
     protected PackageManagerService mPmService;
     protected PackageManagerServiceMonitorEx mPmServiceMonitorEx;
 
+    protected PeroptWhiteListParser mPeroptWhiteListParser;
+
     protected PackageManagerServiceSmtBase(PackageManagerService pmService,
             PackageManagerServiceMonitorEx pmServiceMonitorEx) {
         mPmService = pmService;
         mPmServiceMonitorEx = pmServiceMonitorEx;
+    }
+
+    protected void SmartisanOSInit() {
+        mPeroptWhiteListParser = PeroptWhiteListParser.getInstance();
+    }
+
+    protected void updateSmartisanFlagValue(ApplicationInfo info, PackageParser.Package pkg) {
+        if (mPeroptWhiteListParser != null) {
+            mPeroptWhiteListParser.updateSmartisanFlagValue(info, pkg);
+        } else {
+            Slog.e(TAG, "mPeroptWhiteListParser is null");
+        }
+    }
+
+    protected void updateSmartisanFlagValue(ApplicationInfoSmtBase infoSmtEx, String packageName) {
+        if (mPeroptWhiteListParser != null) {
+            mPeroptWhiteListParser.updateSmartisanFlagValue(infoSmtEx, packageName);
+        } else {
+            Slog.e(TAG, "mPeroptWhiteListParser is null");
+        }
+    }
+
+    public void updatePackagesKilledTime(String packageName, int type, long time) {
+        synchronized (mPmService.mPackages) {
+            PackageParser.Package pkg = mPmService.mPackages.get(packageName);
+            if (pkg != null && pkg.applicationInfo != null) {
+                ApplicationInfo info = pkg.applicationInfo;
+                info.getSmtEx().beKilledTime = time;
+                info.getSmtEx().beKilledType = type;
+                if (ApplicationInfoSmtBase.TYPE_BG_HIGH_CPU == type) {
+                    info.getSmtEx().killedTimes++;
+                } else {
+                    info.getSmtEx().killedTimes = 0;
+                }
+            }
+        }
+    }
+
+    public ArrayMap<String, PackageParser.Package> getPackageMap() {
+        return mPmService.mPackages;
     }
 
     public void updateAppTypeInfo(String packageName, int flag) {
@@ -138,12 +187,33 @@ public class PackageManagerServiceSmtBase {
         }
     }
 
+    public void updatePackagesInWhiteList(int type) {
+        synchronized (mPmService.mPackages) {
+            for (Map.Entry<String, PackageParser.Package> entry
+                    : mPmService.mPackages.entrySet()) {
+                String pkgName = entry.getKey();
+                PackageParser.Package pkg = entry.getValue();
+                if (pkg != null && pkg.applicationInfo != null) {
+                    PeroptWhiteListParser.updateFlagValueByType(pkg.applicationInfo, type);
+                }
+            }
+        }
+    }
+
     public void clearOverrideFlag(String packageName) {
         synchronized (mPmService.mPackages) {
             mPmService.mPackages.get(packageName).applicationInfo.getSmtEx().mOverrideClassSDK = 0;
             PackageSetting ps = mPmService.mSettings.mPackages.get(packageName);
             ps.pkg.applicationInfo.getSmtEx().mOverrideClassSDK = 0;
             mPmService.mSettings.mPackages.put(packageName, ps);
+        }
+    }
+
+    public void updateOverrideSdkClazzClose() {
+        synchronized (mPmService.mPackages) {
+            for (PackageParser.Package p : mPmService.mPackages.values()) {
+                p.applicationInfo.getSmtEx().mOverrideClassSDK = 0;
+            }
         }
     }
 

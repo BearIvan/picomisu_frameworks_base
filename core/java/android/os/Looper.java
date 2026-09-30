@@ -84,8 +84,10 @@ public final class Looper {
 
     /**
      * If set, the looper will show a warning log if a message dispatch takes longer than this.
+     * Protected as in the factory framework: {@link LooperSmtEx} sets it.
+     * @hide
      */
-    private long mSlowDispatchThresholdMs;
+    protected long mSlowDispatchThresholdMs;
 
     /**
      * If set, the looper will show a warning log if a message delivery (actual delivery time -
@@ -294,9 +296,16 @@ public final class Looper {
         return myLooper().mQueue;
     }
 
+    private LooperSmtEx mSmtEx = new LooperSmtEx(this);
+
     private Looper(boolean quitAllowed) {
         mQueue = new MessageQueue(quitAllowed);
         mThread = Thread.currentThread();
+    }
+
+    /** @hide */
+    public LooperSmtEx getSmtEx() {
+        return mSmtEx;
     }
 
     /**

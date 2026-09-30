@@ -80,6 +80,7 @@ import android.os.Handler;
 import android.os.IDeviceIdleController;
 import android.os.Looper;
 import android.os.Message;
+import android.os.PowerAdvisorInternal;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.RemoteException;
@@ -170,6 +171,8 @@ public class AppStandbyController {
     /** Keeps the history and state for each app. */
     @GuardedBy("mAppIdleLock")
     private AppIdleHistory mAppIdleHistory;
+
+    private PowerAdvisorInternal mPowerAdvisorInternal;
 
     @GuardedBy("mPackageAccessListeners")
     private ArrayList<AppIdleStateChangeListener>
@@ -339,6 +342,7 @@ public class AppStandbyController {
         synchronized (mAppIdleLock) {
             mAppIdleHistory = new AppIdleHistory(mInjector.getDataSystemDirectory(),
                     mInjector.elapsedRealtime());
+            mPowerAdvisorInternal = LocalServices.getService(PowerAdvisorInternal.class);
         }
 
         IntentFilter packageFilter = new IntentFilter();
@@ -927,6 +931,9 @@ public class AppStandbyController {
                         (prevBucketReason & REASON_MAIN_MASK) != REASON_MAIN_USAGE;
                 maybeInformListeners(event.mPackage, userId, elapsedRealtime,
                         appHistory.currentBucket, reason, userStartedInteracting);
+
+                // Smartisan: report the usage event to the power advisor.
+                mPowerAdvisorInternal.reportEvent(event.mEventType, event.mPackage, userId);
 
                 if (previouslyIdle) {
                     notifyBatteryStats(event.mPackage, userId, false);

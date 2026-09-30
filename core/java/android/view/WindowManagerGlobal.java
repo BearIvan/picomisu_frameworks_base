@@ -174,6 +174,13 @@ public final class WindowManagerGlobal {
         }
     }
 
+    /**
+     * Smartisan: the monitor stats of this process were switched on or off (application thread
+     * transaction NOTIFY_MONITOR_STATS_CHANGED). Empty in the factory framework.
+     */
+    public void notifyMonitorStatsChanged(boolean open) {
+    }
+
     @UnsupportedAppUsage
     public static IWindowManager getWindowManagerService() {
         synchronized (WindowManagerGlobal.class) {

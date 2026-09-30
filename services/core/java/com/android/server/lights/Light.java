@@ -49,6 +49,17 @@ public abstract class Light {
      */
     public abstract void setBrightness(int brightness, int brightnessMode);
 
+    /**
+     * Smartisan: set the HMD display brightness through the PICO HMD service, animated over
+     * {@code time}.
+     */
+    public abstract void setBrightnessAnimSmt(int brightness, int time);
+
+    /**
+     * Smartisan: read the HMD display brightness from the PICO HMD service.
+     */
+    public abstract int getBrightnessSmt();
+
     public abstract void setColor(int color);
     public abstract void setFlashing(int color, int mode, int onMS, int offMS);
     public abstract void pulse();

@@ -36,6 +36,7 @@ import android.annotation.UnsupportedAppUsage;
 import android.app.ActivityManager;
 import android.app.ActivityThread;
 import android.app.ResourcesManager;
+import android.app.SysMonitorFwBridge;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.Context;
@@ -7699,6 +7700,8 @@ public final class ViewRootImpl implements ViewParent,
     private void deliverInputEvent(QueuedInputEvent q) {
         Trace.asyncTraceBegin(Trace.TRACE_TAG_VIEW, "deliverInputEvent",
                 q.mEvent.getSequenceNumber());
+        SysMonitorFwBridge.getFactory().getAnrLogger().notesInputTrack(-1,
+                q.mEvent.getSequenceNumber(), 1);
         if (mInputEventConsistencyVerifier != null) {
             mInputEventConsistencyVerifier.onInputEvent(q.mEvent, 0);
         }

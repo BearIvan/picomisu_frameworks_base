@@ -537,6 +537,9 @@ public final class ProcessList {
         }
     }
 
+    // Smartisan extension of the process list (factory PICO OS 5.13.7).
+    private ProcessListSmtBase mSmtEx = new ProcessListSmtBase(this);
+
     final class KillHandler extends Handler {
         static final int KILL_PROCESS_GROUP_MSG = 4000;
 
@@ -566,6 +569,11 @@ public final class ProcessList {
         minfo.readMemInfo();
         mTotalMemMb = minfo.getTotalSize()/(1024*1024);
         updateOomLevels(0, 0, false);
+    }
+
+    /** Smartisan extension of the process list (factory PICO OS 5.13.7). */
+    public ProcessListSmtBase getSmtEx() {
+        return mSmtEx;
     }
 
     void init(ActivityManagerService service, ActiveUids activeUids) {

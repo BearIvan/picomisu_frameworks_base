@@ -19,7 +19,9 @@ import dalvik.system.BaseDexClassLoader;
 public class SysOptBridge {
     private static String TAG = "SysOptBridge";
     private static String SYSOPT_COMMON_CLASS_NAME = "com.android.server.am.SysSvsFactoryImpl";
+    private static String SYSOPT_MULTIPLAT_CLASS_NAME = "com.android.server.MultiPlatFactoryImpl";
     private static ISysSvsFactory sISysSvsFactory;
+    private static IMultiPlatSvsFactory sIMultiPlatSvsFactory;
 
     public static ISysSvsFactory getFactory() {
         if (sISysSvsFactory == null) {
@@ -40,5 +42,30 @@ public class SysOptBridge {
             }
         }
         return sISysSvsFactory;
+    }
+
+    /**
+     * Returns the multi-platform service factory, or null (as in the factory) when
+     * {@code com.android.server.MultiPlatFactoryImpl} cannot be loaded.
+     */
+    public static IMultiPlatSvsFactory getMultiPlatFactory() {
+        if (sIMultiPlatSvsFactory == null) {
+            synchronized (IMultiPlatSvsFactory.class) {
+                if (sIMultiPlatSvsFactory == null) {
+                    try {
+                        BaseDexClassLoader loader =
+                                (BaseDexClassLoader) SysOptBridge.class.getClassLoader();
+                        sIMultiPlatSvsFactory = (IMultiPlatSvsFactory) loader.loadClass(
+                                SYSOPT_MULTIPLAT_CLASS_NAME).newInstance();
+                        Slog.i(TAG, "SysOptBridge IMultiPlatSvsFactory: instance: "
+                                + sIMultiPlatSvsFactory);
+                    } catch (Exception e) {
+                        Slog.e(TAG, "SysOptBridge IMultiPlatSvsFactory getInstance error: "
+                                + e.toString());
+                    }
+                }
+            }
+        }
+        return sIMultiPlatSvsFactory;
     }
 }

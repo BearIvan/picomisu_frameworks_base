@@ -80,4 +80,27 @@ public class ActivityManagerServiceSysMoEx extends IActivityManagerSysMoEx.Stub 
         }
         return "";
     }
+
+    /** Observer of the system CPU load state (e.g. the idle dex2oat of the package manager). */
+    public interface CpuStateObserver {
+        enum CPU_USAGE_STATE {
+            CPU_NORMAL,
+            CPU_BUSY
+        }
+
+        enum NOTIFY_FREQUENCY {
+            EVERY_TIME,
+            ONLY_CHANGE
+        }
+
+        void onCpuState(CPU_USAGE_STATE state, long timestamp);
+
+        NOTIFY_FREQUENCY getNotifyRequest();
+    }
+
+    /** Source of {@link CpuStateObserver} notifications. */
+    public interface CpuStateProvider {
+        default void registerCpuStateObserver(CpuStateObserver observer) {}
+        default void unregisterCpuStateObserver(CpuStateObserver observer) {}
+    }
 }

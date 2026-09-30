@@ -17,6 +17,7 @@ Landroid/accounts/IAccountManagerResponse$Stub$Proxy;->mRemote:Landroid/os/IBind
 Landroid/accounts/IAccountManagerResponse$Stub;-><init>()V
 Landroid/accounts/IAccountManagerResponse$Stub;->asInterface(Landroid/os/IBinder;)Landroid/accounts/IAccountManagerResponse;
 Landroid/app/ActivityManagerNative;-><init>()V
+Landroid/app/ActivityManagerSmtBase;->IPrefetchManagerSingleton:Landroid/util/Singleton;
 Landroid/app/ActivityThread$AppBindData;-><init>()V
 Landroid/app/ActivityThread$CreateServiceData;-><init>()V
 Landroid/app/ActivityThread$H;-><init>(Landroid/app/ActivityThread;)V

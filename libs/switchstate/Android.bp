@@ -1,0 +1,12 @@
+// Copyright 2026 Picomisu contributors
+// SPDX-License-Identifier: Apache-2.0
+// Per-process switch state bits (factory PICO OS 5.13.7 /system/lib*/libswitchstate.so,
+// reconstructed from its three exported functions). ActivityThread.nSetSwitchState
+// sets them; Smartisan native libraries read them with SwitchState::get.
+cc_library_shared {
+    name: "libswitchstate",
+    srcs: ["SwitchState.cpp"],
+    export_include_dirs: ["include"],
+    shared_libs: ["liblog"],
+    cflags: ["-Wall", "-Werror"],
+}

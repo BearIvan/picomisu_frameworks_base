@@ -46,9 +46,12 @@ public class ActivityManagerServiceSmtBase {
     private IActivityManagerSmtEx mIActivityManagerSmtEx = this.new IActivityManagerSmtExBase();
     /** Prefetched (pre-started) application processes: pid to package name. */
     public HashMap<Integer, String> mPrefetchApps = new HashMap<>();
+    /** Prefetched (pre-started) application processes by pid. */
+    ActivityManagerService.PidMap mPrefetchPidsSelf;
 
     protected ActivityManagerServiceSmtBase(ActivityManagerService ams) {
         mActivityManagerService = ams;
+        mPrefetchPidsSelf = mActivityManagerService.new PidMap();
         mTransferService = SysMonitorSvcBridge.getFactory().getTransferController();
         mStrictModeFlags = SystemProperties.getInt("persist.sys.strictmode.flags", 0);
     }
@@ -317,6 +320,16 @@ public class ActivityManagerServiceSmtBase {
             pids.addAll(mPrefetchApps.keySet());
             return pids.stream().mapToInt(Integer::intValue).toArray();
         }
+    }
+
+    public void removePrefetchApp(int pid) {
+        synchronized (mPrefetchApps) {
+            mPrefetchApps.remove(pid);
+        }
+    }
+
+    public int getPrefetchSize() {
+        return mActivityManagerService.mProcessList.getSmtEx().mPrefetchProcess.size();
     }
 
     public void freezePrefetchApp() {

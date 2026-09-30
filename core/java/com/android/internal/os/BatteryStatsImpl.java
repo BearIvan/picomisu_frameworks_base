@@ -20,6 +20,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.UnsupportedAppUsage;
 import android.app.ActivityManager;
+import android.app.SysFwBridge;
 import android.bluetooth.BluetoothActivityEnergyInfo;
 import android.bluetooth.UidTraffic;
 import android.content.BroadcastReceiver;
@@ -6863,7 +6864,7 @@ public class BatteryStatsImpl extends BatteryStats {
             return null;
         }
 
-        private void addProcStateTimesMs(int procState, long[] cpuTimesMs, boolean onBattery) {
+        public void addProcStateTimesMs(int procState, long[] cpuTimesMs, boolean onBattery) {
             if (mProcStateTimeMs == null) {
                 mProcStateTimeMs = new LongSamplingCounterArray[NUM_PROCESS_STATE];
             }
@@ -6876,7 +6877,7 @@ public class BatteryStatsImpl extends BatteryStats {
             mProcStateTimeMs[procState].addCountLocked(cpuTimesMs, onBattery);
         }
 
-        private void addProcStateScreenOffTimesMs(int procState, long[] cpuTimesMs,
+        public void addProcStateScreenOffTimesMs(int procState, long[] cpuTimesMs,
                 boolean onBatteryScreenOff) {
             if (mProcStateScreenOffTimeMs == null) {
                 mProcStateScreenOffTimeMs = new LongSamplingCounterArray[NUM_PROCESS_STATE];
@@ -12095,6 +12096,13 @@ public class BatteryStatsImpl extends BatteryStats {
                     });
                 }
                 doWrite = true;
+
+                // Smartisan: let the battery stats extension collect the stats before reset.
+                String str = level + "|" + oldStatus + "|" + mDischargeCurrentLevel + "|"
+                        + getHighDischargeAmountSinceCharge() + "|"
+                        + mHistoryBuffer.dataSize();
+                getBSImplOptEx().collectBeforeReset(this, str);
+
                 resetAllStatsLocked();
                 if (chargeUAh > 0 && level > 0) {
                     // Only use the reported coulomb charge value if it is supported and reported.
@@ -15036,5 +15044,13 @@ public class BatteryStatsImpl extends BatteryStats {
         pw.println(mNumAllUidCpuTimeReads);
         pw.print("UIDs removed since the later of device start or stats reset: ");
         pw.println(mNumUidsRemoved);
+
+        // Smartisan: battery stats extension power log.
+        getBSImplOptEx().dumpPowerLog(pw);
+    }
+
+    // Smartisan battery stats extension of the optional sys framework JAR (factory PICO OS).
+    private IBatteryStatsImplOptEx getBSImplOptEx() {
+        return SysFwBridge.getFactory().getBatteryStatsImpl();
     }
 }
