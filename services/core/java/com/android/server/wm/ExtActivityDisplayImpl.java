@@ -84,9 +84,17 @@ public class ExtActivityDisplayImpl {
     }
 
     public void onDisplayChanged() {
-        // Factory: a screen-on state change re-sends the requested orientation of a 2D app
-        // display (handleResizeVirtualDisplay); virtual display resizing is not ported yet.
-        mDisplayState = mBase.mDisplay.getState();
+        // Factory: when a 2D app display turns on, its requested orientation is sent to
+        // SystemExt again (handleResizeVirtualDisplay, forced).
+        final int displayState = mBase.mDisplay.getState();
+        if (mDisplayState == displayState) {
+            return;
+        }
+        mDisplayState = displayState;
+        if (isScreenOn() && mBase.mDisplayContent != null) {
+            mService.getActivityStartController().getExt().handleResizeVirtualDisplay(
+                    mBase.mDisplayContent, mReqOrientation, true);
+        }
     }
 
     public boolean isScreenOn() {

@@ -3223,6 +3223,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             final MergedConfiguration mergedConfiguration =
                     new MergedConfiguration(mWmService.mRoot.getConfiguration(),
                     getMergedOverrideConfiguration());
+            // PICO (factory): 2D app windows get their process-based merged configuration.
+            mWmService.mAtmService.getActivityStartController().getExt()
+                    .onReportResized(this, mergedConfiguration);
 
             setLastReportedMergedConfiguration(mergedConfiguration);
 

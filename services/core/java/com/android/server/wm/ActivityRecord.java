@@ -3269,7 +3269,11 @@ public final class ActivityRecord extends ConfigurationContainer {
         // Update last reported values.
         final Configuration newMergedOverrideConfig = getMergedOverrideConfiguration();
 
-        setLastReportedConfiguration(mAtmService.getGlobalConfiguration(), newMergedOverrideConfig);
+        // PICO (factory): a 2D app activity reports its 2D app sized configuration.
+        final Configuration picoGlobalConfig =
+                mAtmService.getActivityStartController().getExt().getGlobalConfiguration(this);
+        setLastReportedConfiguration(picoGlobalConfig != null ? picoGlobalConfig
+                : mAtmService.getGlobalConfiguration(), newMergedOverrideConfig);
 
         if (mState == INITIALIZING) {
             // No need to relaunch or schedule new config for activity that hasn't been launched
@@ -3483,9 +3487,13 @@ public final class ActivityRecord extends ConfigurationContainer {
                             + " callers=" + Debug.getCallers(6));
             forceNewConfig = false;
             mStackSupervisor.activityRelaunchingLocked(this);
+            // PICO (factory): a 2D app activity relaunches with its 2D app sized configuration.
+            final Configuration picoGlobalConfig =
+                    mAtmService.getActivityStartController().getExt().getGlobalConfiguration(this);
             final ClientTransactionItem callbackItem = ActivityRelaunchItem.obtain(pendingResults,
                     pendingNewIntents, configChangeFlags,
-                    new MergedConfiguration(mAtmService.getGlobalConfiguration(),
+                    new MergedConfiguration(picoGlobalConfig != null ? picoGlobalConfig
+                            : mAtmService.getGlobalConfiguration(),
                             getMergedOverrideConfiguration()),
                     preserveWindow);
             final ActivityLifecycleItem lifecycleItem;

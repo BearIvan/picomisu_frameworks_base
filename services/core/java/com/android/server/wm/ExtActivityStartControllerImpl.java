@@ -13,6 +13,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.res.Configuration;
 import android.os.Binder;
 import android.os.Debug;
 import android.os.Handler;
@@ -24,8 +25,12 @@ import android.os.UserHandle;
 import android.pico.utils.Features;
 import android.pico.utils.PicoUtils;
 import android.text.TextUtils;
+import android.util.MergedConfiguration;
 import android.util.Slog;
 import android.view.Display;
+import android.view.DisplayInfo;
+
+import com.android.server.am.ActivityManagerService;
 
 import java.util.ArrayList;
 
@@ -36,9 +41,14 @@ import java.util.ArrayList;
  * or defer it (deferred starts are replayed on its 1003/1006 answer). 2D activities run on
  * virtual displays the app creates; task and display changes are reported to it.
  *
- * Not ported yet: the 2D app configuration adjustment (getGlobalConfiguration,
- * onWindowProcessControllerInit, onDisplayConfigurationChanged, onReportResized), virtual display
- * resizing and the Smartisan single-3D-app pending launch notification.
+ * 2D apps that use the new configuration solution (PicoUtils.usingNewConfigurationSolution) get a
+ * process configuration sized from their 2D app metadata (getGlobalConfiguration,
+ * onWindowProcessControllerInit, onDisplayConfigurationChanged, onReportResized), and an
+ * orientation request on a 2D app display asks SystemExt to resize the virtual display
+ * (handleResizeVirtualDisplay).
+ *
+ * Not ported yet: startActivityFromRecents and the Smartisan single-3D-app pending launch
+ * notification.
  */
 public class ExtActivityStartControllerImpl {
     private static final String TAG = "ActivityStartControllerExt";
@@ -63,6 +73,7 @@ public class ExtActivityStartControllerImpl {
     private final Handler mHandler;
     private final SystemExt mSystemExt;
     private ActivityManager.RunningTaskInfo mDefaultDisplayTopTaskInfo = null;
+    private final Configuration mTmpConfiguration = new Configuration();
     private final ArrayList<PendingActivityLaunch> mPendingOnCheckingActivityLaunches =
             new ArrayList<>();
 
@@ -467,6 +478,142 @@ public class ExtActivityStartControllerImpl {
         return Features.isPvr2DEnabled() && sourceRecord != null
                 && startActivity.info.getExt().isVrActivity()
                         != sourceRecord.info.getExt().isVrActivity();
+    }
+
+    /** Portrait (orientation 1) or landscape size of the 2D app, with its density, into config. */
+    private static void adjustTo2dAppConfiguration(Configuration config, ApplicationInfo info,
+            int orientation) {
+        final int width = orientation == 1 ? info.getExt().get2dAppPortraitWidth()
+                : info.getExt().get2dAppLandscapeWidth();
+        final int height = orientation == 1 ? info.getExt().get2dAppPortraitHeight()
+                : info.getExt().get2dAppLandscapeHeight();
+        PicoUtils.adjustConfiguration(config, info.getExt().get2dAppDensity(), width, height);
+    }
+
+    /**
+     * Global configuration reported to a 2D app activity (ActivityRecord
+     * ensureActivityConfiguration / relaunchActivityLocked): its process configuration, or the
+     * global configuration sized for the 2D app. Null means the normal global configuration.
+     */
+    public Configuration getGlobalConfiguration(ActivityRecord activityRecord) {
+        if (!Features.isAdjustConfigurationEnabled()) {
+            return null;
+        }
+        final ApplicationInfo info = activityRecord.info.applicationInfo;
+        if (!PicoUtils.usingNewConfigurationSolution(info)
+                || activityRecord.info.getExt().isVrActivity()) {
+            return null;
+        }
+        if (activityRecord.app != null) {
+            return activityRecord.app.getConfiguration();
+        }
+        mTmpConfiguration.setTo(mService.getGlobalConfiguration());
+        adjustTo2dAppConfiguration(mTmpConfiguration, info, info.getExt().get2dAppOrientation());
+        Slog.i(TAG, "getGlobalConfiguration: " + activityRecord + "," + mTmpConfiguration);
+        return mTmpConfiguration;
+    }
+
+    /**
+     * WindowProcessController creation: a 2D app process starts with the global configuration
+     * sized for the 2D app. Returns false when the normal global configuration applies.
+     */
+    public boolean onWindowProcessControllerInit(WindowProcessController app) {
+        if (!Features.isAdjustConfigurationEnabled()) {
+            return false;
+        }
+        final ApplicationInfo info = app.mInfo;
+        if (!PicoUtils.usingNewConfigurationSolution(info) || info.getExt().isVrApp()) {
+            return false;
+        }
+        mTmpConfiguration.setTo(mService.getGlobalConfiguration());
+        adjustTo2dAppConfiguration(mTmpConfiguration, info, info.getExt().get2dAppOrientation());
+        app.onConfigurationChanged(mTmpConfiguration);
+        Slog.i(TAG, "onWindowProcessControllerInit: " + info + "," + mTmpConfiguration);
+        return true;
+    }
+
+    /**
+     * DisplayContent.onConfigurationChanged of a 2D app display: the processes of its activities
+     * get their configuration re-sized for the display's current orientation.
+     */
+    public void onDisplayConfigurationChanged(DisplayContent displayContent) {
+        if (!Features.isAdjustConfigurationEnabled() || displayContent.mAcitvityDisplay == null
+                || !displayContent.getDisplay().getExt().isVr2dDisplay()) {
+            return;
+        }
+        final ArrayList<WindowProcessController> apps = new ArrayList<>();
+        final ActivityDisplay activityDisplay = displayContent.mAcitvityDisplay;
+        for (int stackNdx = activityDisplay.getChildCount() - 1; stackNdx >= 0; stackNdx--) {
+            final ActivityStack stack = activityDisplay.getChildAt(stackNdx);
+            for (int taskNdx = stack.getChildCount() - 1; taskNdx >= 0; taskNdx--) {
+                final ArrayList<ActivityRecord> activities = stack.getChildAt(taskNdx).mActivities;
+                for (int activityNdx = activities.size() - 1; activityNdx >= 0; activityNdx--) {
+                    final ActivityRecord r = activities.get(activityNdx);
+                    if (r.app != null && PicoUtils.usingNewConfigurationSolution(r.appInfo)
+                            && !apps.contains(r.app)) {
+                        apps.add(r.app);
+                    }
+                }
+            }
+        }
+        if (apps.isEmpty()) {
+            return;
+        }
+        final DisplayInfo displayInfo = displayContent.getDisplayInfo();
+        final int orientation = displayInfo.logicalWidth > displayInfo.logicalHeight ? 0 : 1;
+        for (WindowProcessController app : apps) {
+            final ApplicationInfo info = app.mInfo;
+            mTmpConfiguration.setTo(app.getConfiguration());
+            adjustTo2dAppConfiguration(mTmpConfiguration, info, orientation);
+            app.onConfigurationChanged(mTmpConfiguration);
+            Slog.i(TAG, "onDisplayConfigurationChanged: " + info + "," + mTmpConfiguration);
+        }
+    }
+
+    /**
+     * WindowState.reportResized: a 2D app window gets its own merged configuration (process
+     * configuration plus overrides) instead of the root configuration.
+     */
+    public void onReportResized(WindowState w, MergedConfiguration mergedConfiguration) {
+        if (!Features.isAdjustConfigurationEnabled()) {
+            return;
+        }
+        final WindowState parentWindow = w.getParentWindow();
+        final Session session = parentWindow != null ? parentWindow.mSession : w.mSession;
+        if (session.mPid == ActivityManagerService.MY_PID || session.mPid < 0) {
+            return;
+        }
+        final WindowProcessController app =
+                mService.getProcessController(session.mPid, session.mUid);
+        if (app == null || PicoUtils.isSystemApp(app.mInfo)
+                || !PicoUtils.usingNewConfigurationSolution(app.mInfo)) {
+            return;
+        }
+        w.getMergedConfiguration(mergedConfiguration);
+    }
+
+    /**
+     * DisplayContent.updateOrientationFromAppTokens on a 2D app display: instead of rotating, a
+     * changed requested orientation (or a forced update) asks SystemExt to resize the virtual
+     * display while the display is on and has an activity. Returns true when the display is a 2D
+     * app display (the rotation update is skipped).
+     */
+    public boolean handleResizeVirtualDisplay(DisplayContent displayContent, int reqOrientation,
+            boolean forceUpdate) {
+        if (!Features.isResizeVirtualDisplayEnabled() || displayContent.mAcitvityDisplay == null
+                || !displayContent.getDisplay().getExt().isVr2dDisplay()) {
+            return false;
+        }
+        final ExtActivityDisplayImpl displayExt = displayContent.mAcitvityDisplay.getExt();
+        if (reqOrientation != displayExt.getReqOrientation() || forceUpdate) {
+            displayExt.setReqOrientation(reqOrientation);
+            if (displayExt.isScreenOn()
+                    && displayContent.mAcitvityDisplay.topRunningActivity() != null) {
+                mSystemExt.notifyResizeVirtualDisplay(displayContent.getDisplayId(),
+                        reqOrientation);
+            }
+        }
+        return true;
     }
 
     private static boolean sameStartActivity(ActivityRecord one, ActivityRecord another) {

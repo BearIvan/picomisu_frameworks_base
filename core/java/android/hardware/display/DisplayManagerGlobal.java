@@ -138,6 +138,9 @@ public final class DisplayManagerGlobal {
                 }
 
                 info = mDm.getDisplayInfo(displayId);
+                // PICO (factory ExtDisplayManagerGlobalImpl.adjustDisplayInfo): a 2D app that
+                // uses the new configuration solution sees display 0 with its 2D app size.
+                android.pico.utils.PicoUtils.updateDisplayInfo(displayId, info);
                 if (info == null) {
                     return null;
                 }

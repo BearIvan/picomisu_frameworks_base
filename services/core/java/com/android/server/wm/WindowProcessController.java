@@ -194,6 +194,12 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
         mLastReportedConfiguration = new Configuration();
         mDisplayId = INVALID_DISPLAY;
         if (atm != null) {
+            // PICO (factory): a 2D app process starts with a configuration sized for the app.
+            final ActivityStartController startController = atm.getActivityStartController();
+            if (startController != null
+                    && startController.getExt().onWindowProcessControllerInit(this)) {
+                return;
+            }
             onConfigurationChanged(atm.getGlobalConfiguration());
         }
     }

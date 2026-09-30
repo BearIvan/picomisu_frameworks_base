@@ -1323,6 +1323,14 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
     private boolean updateOrientationFromAppTokens(boolean forceUpdate) {
         final int req = getOrientation();
+        // PICO (factory): a 2D app display does not rotate; SystemExt resizes the virtual
+        // display for the requested orientation instead.
+        final ActivityStartController startController =
+                mWmService.mAtmService.getActivityStartController();
+        if (startController != null && startController.getExt()
+                .handleResizeVirtualDisplay(this, req, forceUpdate)) {
+            return false;
+        }
         if (req != mLastOrientation || forceUpdate) {
             mLastOrientation = req;
             mDisplayRotation.setCurrentOrientation(req);
@@ -2070,6 +2078,14 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         // update as a result of the config change.
         if (mPinnedStackControllerLocked != null && !hasPinnedStack()) {
             mPinnedStackControllerLocked.onDisplayInfoChanged(getDisplayInfo());
+        }
+
+        // PICO (factory): 2D app processes on this display get a configuration sized for the
+        // display's new orientation.
+        final ActivityStartController startController =
+                mWmService.mAtmService.getActivityStartController();
+        if (startController != null) {
+            startController.getExt().onDisplayConfigurationChanged(this);
         }
     }
 
