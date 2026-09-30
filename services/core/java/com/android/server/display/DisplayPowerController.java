@@ -1589,6 +1589,10 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         // immediately adapt to it.
         mScreenBrightnessForVr = getScreenBrightnessForVrSetting();
         sendUpdatePowerState();
+        // PICO (factory): the brightness setting also goes to the HMD panels through the PICO
+        // HMD service (0..1).
+        com.android.server.lights.LightsService.pxrHmdServiceSetBrightness_native(
+                mPendingScreenBrightnessSetting / 255.0f);
     }
 
     private float getAutoBrightnessAdjustmentSetting() {

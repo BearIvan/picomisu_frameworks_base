@@ -2252,6 +2252,9 @@ public final class DisplayManagerService extends SystemService {
             try {
                 synchronized (mSyncRoot) {
                     mDisplayPowerController.setTemporaryBrightness(brightness);
+                    // PICO (factory): the brightness slider drives the HMD panels directly.
+                    com.android.server.lights.LightsService.pxrHmdServiceSetBrightness_native(
+                            brightness / 255.0f);
                 }
             } finally {
                 Binder.restoreCallingIdentity(token);
