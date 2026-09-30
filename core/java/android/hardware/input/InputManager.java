@@ -884,6 +884,8 @@ public final class InputManager {
             throw new IllegalArgumentException("mode is invalid");
         }
 
+        // PICO: route a panel app's injected BACK key to its own display.
+        mExt.adjustInjectInputEventIfNeeded(event, mode);
         try {
             return mIm.injectInputEvent(event, mode);
         } catch (RemoteException ex) {

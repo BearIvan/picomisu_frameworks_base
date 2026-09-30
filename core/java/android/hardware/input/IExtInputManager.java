@@ -3,11 +3,13 @@
 package android.hardware.input;
 
 import android.view.InputDevice;
+import android.view.InputEvent;
 
 import com.pico.util.IExtBase;
 
 /**
- * PICO input manager extension: virtual input device standing in for the VR input devices.
+ * PICO input manager extension: virtual input device standing in for the VR input devices and
+ * the display of injected events.
  * @hide
  */
 public interface IExtInputManager extends IExtBase {
@@ -19,6 +21,9 @@ public interface IExtInputManager extends IExtBase {
     int DEVICE_HEAD_CONTROL_HANDLE_MIN = 100000;
     /** Joystick input device. */
     int DEVICE_JOYSTICK = 10003;
+
+    /** Called by {@link InputManager#injectInputEvent} before the event goes to the service. */
+    void adjustInjectInputEventIfNeeded(InputEvent event, int mode);
 
     default InputDevice getVirtualInputDeviceIfNeed(int id) {
         return null;

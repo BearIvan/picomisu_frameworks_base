@@ -7761,6 +7761,17 @@ public class WindowManagerService extends IWindowManager.Stub
         if (isDown || isMouseEvent) {
             syncInputTransactions();
         }
+        // PICO (factory): injected motion events without a display (or for display 0) go to the
+        // top focused display, which is the focused 2D panel's virtual display in VR.
+        if (android.pico.utils.Features.isPvr2DEnabled() && ev instanceof MotionEvent) {
+            final int evDisplayId = ev.getDisplayId();
+            final int topFocusedDisplayId = mRoot.getExt().getTopFocusedDisplayId();
+            if ((evDisplayId == DEFAULT_DISPLAY || evDisplayId == INVALID_DISPLAY)
+                    && topFocusedDisplayId != INVALID_DISPLAY) {
+                ev.setDisplayId(topFocusedDisplayId);
+                Slog.i(TAG, "inject MotionEvent : " + ev);
+            }
+        }
         final boolean result =
                 LocalServices.getService(InputManagerInternal.class).injectInputEvent(ev, mode);
         if (isUp) {

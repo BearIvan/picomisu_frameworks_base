@@ -155,6 +155,14 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
     RootWindowContainer(WindowManagerService service) {
         super(service);
         mHandler = new MyHandler(service.mH.getLooper());
+        mExt = new ExtRootWindowContainerImpl(this);
+    }
+
+    /** PICO VR state of the root (factory ExtRootWindowContainerImpl). */
+    private final ExtRootWindowContainerImpl mExt;
+
+    ExtRootWindowContainerImpl getExt() {
+        return mExt;
     }
 
     void setRootActivityContainer(RootActivityContainer container) {
@@ -196,10 +204,7 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
             mWmService.mPolicy.setTopFocusedDisplay(topFocusedDisplayId);
             if (DEBUG_FOCUS_LIGHT) Slog.v(TAG_WM, "New topFocusedDisplayId="
                     + topFocusedDisplayId);
-            if (mWmService.mAtmService.getActivityStartController() != null) {
-                mWmService.mAtmService.getActivityStartController().getExt().getSystemExt()
-                        .notifyFocusDisplayChanged(topFocusedDisplayId);
-            }
+            mExt.onTopFocusedDisplayIdChanged(topFocusedDisplayId);
         }
         return changed;
     }
