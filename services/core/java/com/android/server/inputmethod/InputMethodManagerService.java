@@ -76,6 +76,7 @@ import android.os.IBinder;
 import android.os.IInterface;
 import android.os.LocaleList;
 import android.os.Message;
+import android.hardware.display.DisplayManager;
 import android.os.Parcel;
 import android.os.Process;
 import android.os.RemoteException;
@@ -1443,6 +1444,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
     public InputMethodManagerService(Context context) {
         mIPackageManager = AppGlobals.getPackageManager();
         mContext = context;
+        sPicoContext = context;
         mRes = context.getResources();
         mHandler = new Handler(this);
         // Note: SettingsObserver doesn't register observers in its constructor.
@@ -2216,6 +2218,9 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
      * @return The ID of the display where the IME should be shown.
      */
     static int computeImeDisplayIdForTarget(int displayId, @NonNull ImeDisplayValidator checker) {
+        if (android.pico.utils.Features.isPvr2DEnabled() && sPicoContext != null) {
+            return computePicoImeDisplayId(sPicoContext, displayId);
+        }
         if (displayId == DEFAULT_DISPLAY || displayId == INVALID_DISPLAY) {
             return FALLBACK_DISPLAY_ID;
         }
@@ -2223,6 +2228,62 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         // Show IME window on fallback display when the display doesn't support system decorations
         // or the display is virtual and isn't owned by system for security concern.
         return checker.displayCanShowIme(displayId) ? displayId : FALLBACK_DISPLAY_ID;
+    }
+
+    /** Context for the static PICO IME display lookup. */
+    private static Context sPicoContext;
+
+    /**
+     * PICO VR (factory ExtInputMethodManagerServiceImpl.computeImeDisplayIdForTargetInner): the
+     * IME of a 2D app display (listed by SystemExt in Settings.System "app_display_id_list") runs
+     * on the SystemExt input method display ("ime_for_2d_app_display_id"); otherwise the
+     * default display.
+     */
+    private static int computePicoImeDisplayId(Context context, int displayId) {
+        try {
+            final ContentResolver cr = context.getContentResolver();
+            final int imeDisplayId = Settings.System.getInt(cr, "ime_for_2d_app_display_id", -1);
+            if (imeDisplayId == -1) {
+                return DEFAULT_DISPLAY;
+            }
+            final DisplayManager dm = context.getSystemService(DisplayManager.class);
+            final String list = Settings.System.getString(cr, "app_display_id_list");
+            if (dm.getDisplay(imeDisplayId) != null && list != null) {
+                for (String id : list.split(";")) {
+                    if (!id.isEmpty() && Integer.parseInt(id) == displayId) {
+                        return imeDisplayId;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return DEFAULT_DISPLAY;
+    }
+
+    /**
+     * PICO VR (factory dispatchImeVisibleStatusToNS): tells SystemExt on which display the IME
+     * target window is (-1 when the IME hides), so it places the keyboard panel.
+     */
+    private static void dispatchImeVisibleStatusToNS(int displayId) {
+        if (!android.pico.utils.Features.isPvr2DEnabled()) {
+            return;
+        }
+        try {
+            final IBinder ns = ServiceManager.checkService("native_shell");
+            if (ns != null && ns.isBinderAlive()) {
+                final Parcel data = Parcel.obtain();
+                try {
+                    data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+                    data.writeInt(displayId);
+                    ns.transact(400001, data, null, IBinder.FLAG_ONEWAY);
+                } finally {
+                    data.recycle();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -2803,6 +2864,10 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
                     resultReceiver));
             mInputShown = true;
             com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(true);
+            if (mCurFocusedWindow != null) {
+                dispatchImeVisibleStatusToNS(
+                        mWindowManagerInternal.getDisplayIdForWindow(mCurFocusedWindow));
+            }
             if (mHaveConnection && !mVisibleBound) {
                 bindCurrentInputMethodServiceLocked(
                         mCurIntent, mVisibleConnection, IME_VISIBLE_BIND_FLAGS);
@@ -2905,6 +2970,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         }
         mInputShown = false;
         com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(false);
+        dispatchImeVisibleStatusToNS(-1);
         mShowRequested = false;
         mShowExplicitlyRequested = false;
         mShowForced = false;
