@@ -50,6 +50,21 @@ java_defaults {
 
         ":framework-javastream-protos",
 
+        // PICO OS 5.13.7 interfaces reconstructed by tools/reconstruct-pico-aidl.py.
+        "core/java/com/pico/api/app/IApiLayer.aidl",
+        "core/java/com/pico/api/app/IAppSession.aidl",
+        "core/java/com/pvr/IPvrCallback.aidl",
+        "core/java/com/pvr/IPvrCallbackNative.aidl",
+        "core/java/com/pvr/IPvrManagerService.aidl",
+        "core/java/com/pvr/ISysDataSyncService.aidl",
+        "core/java/com/pvr/configuration/IConfigServiceInterface.aidl",
+        "core/java/com/pxr/bluetooth/IBluetoothPxr.aidl",
+        "core/java/com/pxr/bluetooth/IBluetoothPxrDeviceCallback.aidl",
+        "core/java/com/pxr/net/ILinkLayerQualityListener.aidl",
+        "core/java/com/pxr/net/INetworkQualityListener.aidl",
+        "core/java/com/pxr/net/IPxrNetworkManager.aidl",
+        "core/java/com/pxr/pxrapi/IScreenCaptureInterface.aidl",
+
         "core/java/android/accessibilityservice/IAccessibilityServiceConnection.aidl",
         "core/java/android/accessibilityservice/IAccessibilityServiceClient.aidl",
         "core/java/android/accounts/IAccountManager.aidl",
