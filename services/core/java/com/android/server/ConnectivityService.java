@@ -5766,6 +5766,21 @@ public class ConnectivityService extends IConnectivityManager.Stub
         for (RouteInfo route : routeDiff.added) {
             if (route.hasGateway() == false) continue;
             if (VDBG || DDBG) log("Adding Route [" + route + "] to network " + netId);
+            // PICO: publish the IPv4 gateway of the Wi-Fi network in net.gateway (reset to
+            // "0" by ClientModeImpl when Wi-Fi leaves L2ConnectedState).
+            if (route.getGateway() instanceof Inet4Address) {
+                synchronized (mNetworkForNetId) {
+                    final NetworkAgentInfo network = mNetworkForNetId.get(netId);
+                    if (network.networkInfo.getType() == ConnectivityManager.TYPE_WIFI) {
+                        try {
+                            SystemProperties.set("net.gateway",
+                                    route.getGateway().getHostAddress());
+                        } catch (Exception e) {
+                            Slog.wtf(TAG, "set net.gateway prop failed", e.fillInStackTrace());
+                        }
+                    }
+                }
+            }
             try {
                 mNMS.addRoute(netId, route);
             } catch (Exception e) {
