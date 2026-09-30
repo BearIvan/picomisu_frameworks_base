@@ -294,6 +294,8 @@ public final class FrameworkRuntimeProbe {
                 "audio-api-wire-scenarios");
         check(ShiftedAidlFixture.run(System.out) == ShiftedAidlFixture.EXPECTED_LINES,
                 "shifted-aidl-wire-scenarios");
+        check(AppendedAidlFixture.run(System.out) == AppendedAidlFixture.EXPECTED_LINES,
+                "appended-aidl-wire-scenarios");
         drawSoftwareRouting();
         direct.release();
         initial.release();

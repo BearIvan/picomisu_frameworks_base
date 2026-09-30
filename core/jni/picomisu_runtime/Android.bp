@@ -3,7 +3,8 @@
 java_library {
     name: "picomisu-framework-runtime-probe",
     srcs: ["FrameworkRuntimeProbe.java", "VrPolicyFixture.java", "PicoApiFixture.java",
-        "QcomApiFixture.java", "AudioApiFixture.java", "ShiftedAidlFixture.java"],
+        "QcomApiFixture.java", "AudioApiFixture.java", "ShiftedAidlFixture.java",
+        "AppendedAidlFixture.java"],
     libs: ["framework", "telephony-common"],
     // Produce DEX for the explicit runner without adding a JAR to the system image.
     installable: false,
