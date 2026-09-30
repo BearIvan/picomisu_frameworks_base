@@ -289,6 +289,7 @@ public final class FrameworkRuntimeProbe {
                 "vr-canvas-retains-original-surface-on-transfer");
         check(VrPolicyFixture.run(System.out) == VR_POLICY_LINES, "vr-policy-shared-scenarios");
         check(PicoApiFixture.run(System.out) == PicoApiFixture.EXPECTED_LINES, "pico-api-wire-scenarios");
+        check(QcomApiFixture.run(System.out) == QcomApiFixture.EXPECTED_LINES, "qcom-api-wire-scenarios");
         drawSoftwareRouting();
         direct.release();
         initial.release();

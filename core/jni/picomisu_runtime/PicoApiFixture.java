@@ -46,12 +46,16 @@ public final class PicoApiFixture {
         sRecorded = name + describe(args);
     }
 
+    private static final char[] DIGITS = "0123456789abcdef".toCharArray();
+
     static String hex(Parcel parcel) {
-        StringBuilder text = new StringBuilder();
-        for (byte b : parcel.marshall()) {
-            text.append(String.format("%02x", b & 0xff));
+        byte[] bytes = parcel.marshall();
+        char[] text = new char[bytes.length * 2];
+        for (int i = 0; i < bytes.length; ++i) {
+            text[2 * i] = DIGITS[(bytes[i] >> 4) & 0xf];
+            text[2 * i + 1] = DIGITS[bytes[i] & 0xf];
         }
-        return text.toString();
+        return new String(text);
     }
 
     static String describe(Object value) {
@@ -100,6 +104,9 @@ public final class PicoApiFixture {
             return bundle;
         }
         if (type == ComponentName.class) return new ComponentName("org.picomisu", "org.picomisu.C" + index);
+        if (type == byte[].class) return new byte[] {(byte) index, (byte) 0x5a};
+        // Out arrays must be non-null: Parcel.readXxxArray(null) aborts in native code.
+        if (type.isArray()) return java.lang.reflect.Array.newInstance(type.getComponentType(), 2);
         return null;
     }
 
