@@ -14,18 +14,62 @@
  * limitations under the License.
  */
 
+#include <GLES2/gl2.h>
+#include <binder/IInterface.h>
+#include <binder/Parcel.h>
 #include <cutils/compiler.h>
+#include <gui/BufferItem.h>
 #include <gui/BufferQueue.h>
 #include <math/mat4.h>
 #include <system/window.h>
 
+#include <utils/Timers.h>
 #include <utils/Trace.h>
+
+#include <stddef.h>
+#include <unistd.h>
 
 #include "Matrix.h"
 #include "SurfaceTexture.h"
 #include "ImageConsumer.h"
+#include "ImageManagerExt.h"
 
 namespace android {
+
+// PICO: the factory libpxrguiex accesses these fields at fixed offsets (the frame callback and
+// its argument, set by setOnFrameAvailableCallbackAndTextureIdExt, are ConsumerBase fields).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+struct SurfaceTextureLayout {
+#if defined(__LP64__)
+    static_assert(offsetof(SurfaceTexture, mPicoFrameCallback) == 1672, "");
+    static_assert(offsetof(SurfaceTexture, mPicoFrameCallbackArgument) == 1680, "");
+    static_assert(offsetof(SurfaceTexture, mCurrentCrop) == 1684, "");
+    static_assert(offsetof(SurfaceTexture, mEGLConsumer) == 1856, "");
+    static_assert(offsetof(SurfaceTexture, mImageConsumer) == 3336, "");
+    static_assert(offsetof(SurfaceTexture, mHasAcquiredTexture) == 4872, "");
+    static_assert(offsetof(SurfaceTexture, mIsProtectedContent) == 4873, "");
+    static_assert(offsetof(SurfaceTexture, mTexNameCount) == 4876, "");
+    static_assert(offsetof(SurfaceTexture, mTexNames) == 4880, "");
+    static_assert(offsetof(SurfaceTexture, mFromVrCompositor) == 4964, "");
+#else
+    static_assert(offsetof(SurfaceTexture, mPicoFrameCallback) == 1068, "");
+    static_assert(offsetof(SurfaceTexture, mPicoFrameCallbackArgument) == 1072, "");
+    static_assert(offsetof(SurfaceTexture, mCurrentCrop) == 1076, "");
+    static_assert(offsetof(SurfaceTexture, mHasAcquiredTexture) == 2776, "");
+    static_assert(offsetof(SurfaceTexture, mIsProtectedContent) == 2777, "");
+    static_assert(offsetof(SurfaceTexture, mTexNameCount) == 2780, "");
+    static_assert(offsetof(SurfaceTexture, mTexNames) == 2784, "");
+    static_assert(offsetof(SurfaceTexture, mFromVrCompositor) == 2868, "");
+#endif
+};
+#pragma clang diagnostic pop
+
+// PICO: private IGraphicBufferConsumer transaction handled by BufferQueueConsumer::onTransact.
+static constexpr uint32_t kPicoConsumerConfiguration = 10000;
+
+// PICO: ImageManagerExt latency logs are printed above this duration.
+static constexpr float kSlowCallMs = 0.3f;
 
 // Macros for including the SurfaceTexture name in log messages
 #define SFT_LOGV(x, ...) ALOGV("[%s] " x, mName.string(), ##__VA_ARGS__)
@@ -99,6 +143,22 @@ status_t SurfaceTexture::setDefaultBufferSize(uint32_t w, uint32_t h) {
 status_t SurfaceTexture::updateTexImage() {
     ATRACE_CALL();
     SFT_LOGV("updateTexImage");
+    if (ImageManagerExt::mDebugPerformance && mFromVrCompositor) {
+        nsecs_t start = systemTime(SYSTEM_TIME_MONOTONIC);
+        Mutex::Autolock lock(mMutex);
+        if (mAbandoned) {
+            SFT_LOGE("updateTexImage: SurfaceTexture is abandoned!");
+            return NO_INIT;
+        }
+        status_t err = mEGLConsumer.updateTexImage(*this);
+        float dt = (systemTime(SYSTEM_TIME_MONOTONIC) - start) * 1e-6f;
+        if (dt > kSlowCallMs) {
+            ALOGI("ImageManagerExt updateTexImage: dt = %0.3fms, w*h = %d*%d", dt, mDefaultWidth,
+                  mDefaultHeight);
+        }
+        return err;
+    }
+
     Mutex::Autolock lock(mMutex);
 
     if (mAbandoned) {
@@ -107,6 +167,122 @@ status_t SurfaceTexture::updateTexImage() {
     }
 
     return mEGLConsumer.updateTexImage(*this);
+}
+
+status_t SurfaceTexture::acquireTexture(int* texName) {
+    if (ImageManagerExt::mDebugPerformance) {
+        nsecs_t start = systemTime(SYSTEM_TIME_MONOTONIC);
+        Mutex::Autolock lock(mMutex);
+        if (mAbandoned) {
+            SFT_LOGE("acquireTexture: SurfaceTexture is abandoned!");
+            return NO_INIT;
+        }
+        status_t err = mEGLConsumer.acquireTexture(*this, texName);
+        float dt = (systemTime(SYSTEM_TIME_MONOTONIC) - start) * 1e-6f;
+        if (dt > kSlowCallMs) {
+            ALOGI("ImageManagerExt acquireTexture: dt = %0.3fms, w*h = %d*%d", dt, mDefaultWidth,
+                  mDefaultHeight);
+        }
+        return err;
+    }
+
+    Mutex::Autolock lock(mMutex);
+    if (mAbandoned) {
+        SFT_LOGE("acquireTexture: SurfaceTexture is abandoned!");
+        return NO_INIT;
+    }
+    return mEGLConsumer.acquireTexture(*this, texName);
+}
+
+void SurfaceTexture::releaseTexture(int texName, int fenceFd) {
+    Mutex::Autolock lock(mMutex);
+    if (mAbandoned) {
+        if (fenceFd != -1) {
+            close(fenceFd);
+        }
+        SFT_LOGE("releaseTexture: SurfaceTexture is abandoned!");
+        return;
+    }
+    mEGLConsumer.releaseTexture(*this, texName, fenceFd);
+}
+
+void SurfaceTexture::setTexName(int* texNames, int count) {
+    // As in the factory, count is not checked against MAX_TEX_NAMES.
+    mTexNameCount = count;
+    if (ImageManagerExt::mDebug) {
+        ALOGI("ImageManagerExt setTexName  size %d, surface id %d", count,
+              mEGLConsumer.getClientId());
+    }
+    for (int i = 0; i < count; i++) {
+        if (ImageManagerExt::mDebug) {
+            ALOGI("ImageManagerExt setTexName texName %d, surface id %d", texNames[i],
+                  mEGLConsumer.getClientId());
+        }
+        mTexNames[i].texName = texNames[i];
+        mTexNames[i].slot = BufferQueue::INVALID_BUFFER_SLOT;
+        mTexNames[i].acquired = false;
+        mTexNames[i].freed = false;
+    }
+    setFromVrCompositor(true);
+}
+
+int SurfaceTexture::createFence() {
+    EGLDisplay dpy = eglGetCurrentDisplay();
+    EGLSyncKHR sync = eglCreateSyncKHR(dpy, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
+    if (sync == EGL_NO_SYNC_KHR) {
+        ALOGE("syncForReleaseLocked: error creating EGL fence: %#x", eglGetError());
+        return UNKNOWN_ERROR;
+    }
+    glFlush();
+    int fenceFd = eglDupNativeFenceFDANDROID(dpy, sync);
+    eglDestroySyncKHR(dpy, sync);
+    if (fenceFd == EGL_NO_NATIVE_FENCE_FD_ANDROID) {
+        ALOGE("syncForReleaseLocked: error dup'ing native fence fd: %#x", eglGetError());
+        return UNKNOWN_ERROR;
+    }
+    return fenceFd;
+}
+
+void SurfaceTexture::setFromVrCompositor(bool fromVrCompositor) {
+    if (mFromVrCompositor == fromVrCompositor) {
+        return;
+    }
+    mFromVrCompositor = fromVrCompositor;
+    if (fromVrCompositor) {
+        if (ImageManagerExt::mHasBeenInit) {
+            ImageManagerExt::getInstance().initThread();
+        }
+        // Tell the BufferQueue (BufferQueueConsumer::onTransact) that its consumer is a VR
+        // compositor, and allow 3 acquired buffers.
+        sp<IBinder> binder = IInterface::asBinder(mConsumer);
+        Parcel data, reply;
+        data.writeInterfaceToken(String16("android.gui.IGraphicBufferConsumer"));
+        data.writeInt32(mEGLConsumer.getClientId());
+        data.writeInt32(ImageManagerExt::mDebug);
+        binder->transact(kPicoConsumerConfiguration, data, &reply, 0);
+        mConsumer->setMaxAcquiredBufferCount(3);
+    }
+    mEGLConsumer.setFromVrCompositor(fromVrCompositor);
+}
+
+String8 SurfaceTexture::getName() {
+    return mName;
+}
+
+void SurfaceTexture::onFrameAvailable(const BufferItem& item) {
+    if (item.mGraphicBuffer != nullptr) {
+        Mutex::Autolock lock(mMutex);
+        mEGLConsumer.onBufferQueued(item.mGraphicBuffer);
+    }
+    ConsumerBase::onFrameAvailable(item);
+}
+
+void SurfaceTexture::onFrameReplaced(const BufferItem& item) {
+    if (item.mGraphicBuffer != nullptr) {
+        Mutex::Autolock lock(mMutex);
+        mEGLConsumer.onBufferQueued(item.mGraphicBuffer);
+    }
+    ConsumerBase::onFrameReplaced(item);
 }
 
 status_t SurfaceTexture::releaseTexImage() {
@@ -444,6 +620,22 @@ std::shared_ptr<FenceTime> SurfaceTexture::getCurrentFenceTime() const {
 }
 
 void SurfaceTexture::freeBufferLocked(int slotIndex) {
+    // PICO: defer the release of the cached image, and mark a texture name still bound to the
+    // freed slot so that releaseTexture does not release it again.
+    if (mSlots[slotIndex].mGraphicBuffer != nullptr) {
+        mEGLConsumer.onFreeBufferLockedExt(mSlots[slotIndex].mGraphicBuffer->getId());
+    }
+    for (uint32_t i = 0; i < mTexNameCount; i++) {
+        TexNameSlot& texSlot = mTexNames[i];
+        if (texSlot.acquired && !texSlot.freed && texSlot.slot == slotIndex) {
+            if (ImageManagerExt::mDebug) {
+                ALOGI("ImageManagerExt onFreeBufferLocked slot %d , texName %d, surface id %d",
+                      slotIndex, texSlot.texName, mEGLConsumer.getClientId());
+            }
+            texSlot.freed = true;
+            break;
+        }
+    }
     SFT_LOGV("freeBufferLocked: slotIndex=%d", slotIndex);
     if (slotIndex == mCurrentTexture) {
         mCurrentTexture = BufferQueue::INVALID_BUFFER_SLOT;
@@ -459,6 +651,12 @@ void SurfaceTexture::abandonLocked() {
     SFT_LOGV("abandonLocked");
     mEGLConsumer.onAbandonLocked();
     ConsumerBase::abandonLocked();
+    if (ImageManagerExt::mDebug) {
+        ALOGI("ImageManagerExt onAbandonLocked  surface id %d", mEGLConsumer.getClientId());
+    }
+    for (uint32_t i = 0; i < mTexNameCount; i++) {
+        mTexNames[i].acquired = false;
+    }
 }
 
 status_t SurfaceTexture::setConsumerUsageBits(uint64_t usage) {

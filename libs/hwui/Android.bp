@@ -70,6 +70,8 @@ cc_defaults {
         "libandroidfw",
         "libcrypto",
         "libsync",
+        "libbinder",
+        "libprocessgroup",
     ],
     static_libs: [
         "libEGL_blobCache",
@@ -190,6 +192,7 @@ cc_defaults {
         "service/GraphicsStatsService.cpp",
         "surfacetexture/EGLConsumer.cpp",
         "surfacetexture/ImageConsumer.cpp",
+        "surfacetexture/ImageManagerExt.cpp",
         "surfacetexture/SurfaceTexture.cpp",
         "thread/CommonPool.cpp",
         "utils/Blur.cpp",

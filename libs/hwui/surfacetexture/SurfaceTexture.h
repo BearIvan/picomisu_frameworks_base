@@ -272,6 +272,63 @@ public:
      */
     void detachFromView();
 
+    /**
+     * PICO VR compositor extension, used by the public PICO library libpxrguiex (which holds
+     * a raw SurfaceTexture* and accesses fields of this class directly; see the layout asserts
+     * at the end of this file).
+     *
+     * setTexName gives the GL texture names that acquireTexture may bind (at most
+     * MAX_TEX_NAMES, not checked, as in the factory) and switches to VR compositor mode.
+     */
+    void setTexName(int* texNames, int count);
+
+    /**
+     * acquireTexture acquires the next queued buffer and binds its EGLImage (created ahead of
+     * time on the ImageManagerExt thread) to a free texture name, returned in *texName (-1 when
+     * none was bound). Returns 6 when no new frame can be bound yet.
+     */
+    status_t acquireTexture(int* texName);
+
+    /**
+     * releaseTexture releases the buffer bound to texName; fenceFd (or -1) is a release fence
+     * whose ownership is taken.
+     */
+    void releaseTexture(int texName, int fenceFd);
+
+    /**
+     * createFence returns a native fence fd for the GL commands issued so far on the current
+     * EGL display, or UNKNOWN_ERROR.
+     */
+    static int createFence();
+
+    /**
+     * setFromVrCompositor switches the VR compositor mode (EGLImages are managed by
+     * ImageManagerExt; the BufferQueue is told through the PICO consumer transaction 10000).
+     */
+    void setFromVrCompositor(bool fromVrCompositor);
+
+    String8 getName();
+
+    void onFrameAvailable(const BufferItem& item) override;
+    void onFrameReplaced(const BufferItem& item) override;
+
+    // Inline as in the factory (not exported): the producer disconnected, drop its images.
+    void onDisconnect() override {
+        mHasAcquiredTexture = false;
+        mIsProtectedContent = false;
+        Mutex::Autolock lock(mMutex);
+        mEGLConsumer.onDisconnect();
+    }
+
+    enum { MAX_TEX_NAMES = 7 };
+
+    struct TexNameSlot {
+        int texName;
+        int slot;
+        bool acquired;
+        bool freed;
+    };
+
 protected:
     /**
      * abandonLocked overrides the ConsumerBase method to clear
@@ -444,8 +501,29 @@ protected:
      */
     ImageConsumer mImageConsumer;
 
+public:
+    /**
+     * PICO: set once a frame was latched by updateTexImage/acquireTexture (cleared on
+     * producer disconnect), and whether that frame is protected content. Read by libpxrguiex.
+     */
+    bool mHasAcquiredTexture = false;
+    bool mIsProtectedContent = false;
+
+protected:
+    /**
+     * PICO: the texture names given by setTexName and the buffer slot bound to each.
+     */
+    uint32_t mTexNameCount = 1;
+    TexNameSlot mTexNames[MAX_TEX_NAMES] = {};
+
+    /**
+     * PICO: VR compositor mode, see setFromVrCompositor.
+     */
+    bool mFromVrCompositor = false;
+
     friend class ImageConsumer;
     friend class EGLConsumer;
+    friend struct SurfaceTextureLayout;  // factory layout checks in SurfaceTexture.cpp
 };
 
 // ----------------------------------------------------------------------------

@@ -21,9 +21,16 @@
 
 #include <gui/BufferQueueDefs.h>
 
+#include <gui/BufferItem.h>
 #include <ui/FenceTime.h>
 #include <ui/GraphicBuffer.h>
 #include <utils/Mutex.h>
+
+#include <map>
+#include <mutex>
+#include <unordered_map>
+
+#include "ImageManagerExt.h"
 
 namespace android {
 
@@ -32,10 +39,51 @@ class SurfaceTexture;
 /*
  * EGLConsumer implements the parts of SurfaceTexture that deal with
  * textures attached to an GL context.
+ *
+ * PICO: when the SurfaceTexture is fed by a VR compositor (setFromVrCompositor), the EGLImages of
+ * the queued buffers are created ahead of time by the ImageManagerExt thread (this class is its
+ * ImageManagerListener) and acquireTexture/releaseTexture bind them to the texture names given
+ * by SurfaceTexture::setTexName.
  */
-class EGLConsumer {
+class EGLConsumer : public ImageManagerListener {
 public:
     EGLConsumer();
+    virtual ~EGLConsumer();
+
+    // ImageManagerListener, called on the ImageManagerExt thread.
+    int getClientId() override;
+    status_t cacheExternalTextureBufferInternal(EGLDisplay display,
+                                                const sp<GraphicBuffer>& buffer) override;
+    void unbindExternalTextureBufferInternal(uint64_t bufferId) override;
+
+    void setFromVrCompositor(bool fromVrCompositor);
+
+    /**
+     * onBufferQueued caches the EGLImage of a newly queued buffer on the ImageManagerExt
+     * thread and drops the images of buffers freed more than 500 ms ago.
+     */
+    void onBufferQueued(const sp<GraphicBuffer>& buffer);
+
+    /**
+     * onFreeBufferLockedExt marks the cached image of a freed buffer for deferred release.
+     */
+    void onFreeBufferLockedExt(uint64_t bufferId);
+
+    /**
+     * onDisconnect releases all images cached for the producer that disconnected.
+     */
+    void onDisconnect();
+
+    /**
+     * acquireTexture acquires the next queued buffer and binds its cached EGLImage to a free
+     * texture name of SurfaceTexture::setTexName, returned in *texName (-1 if none).
+     */
+    status_t acquireTexture(SurfaceTexture& st, int* texName);
+
+    /**
+     * releaseTexture releases the buffer bound to texName, with an optional release fence.
+     */
+    void releaseTexture(SurfaceTexture& st, int texName, int fenceFd);
 
     /**
      * updateTexImage acquires the most recently queued buffer, and sets the
@@ -241,6 +289,13 @@ protected:
     static const uint64_t DEFAULT_USAGE_FLAGS = GraphicBuffer::USAGE_HW_TEXTURE;
 
     /**
+     * PICO: mEglImageMap keeps the EglImages of up to 5 recently acquired buffers with the
+     * gralloc usage bits 32..35 == 1, keyed by buffer id, so that re-acquiring such a buffer
+     * reuses its EGLImage.
+     */
+    std::map<uint64_t, sp<EglImage>> mEglImageMap;
+
+    /**
      * mCurrentTextureImage is the EglImage/buffer of the current texture. It's
      * possible that this buffer is not associated with any buffer slot, so we
      * must track it separately in order to support the getCurrentBuffer method.
@@ -306,6 +361,45 @@ protected:
      */
     static sp<GraphicBuffer> sReleasedTexImageBuffer;
     sp<EglImage> mReleasedTexImage;
+
+    /**
+     * PICO: VR compositor mode (see SurfaceTexture::setFromVrCompositor).
+     */
+    bool mFromVrCompositor;
+
+    /**
+     * PICO: process-unique id of this consumer (ImageManagerListener client id).
+     */
+    int mSurfaceId;
+
+    /**
+     * PICO: ImageId tracks a buffer whose EGLImage was requested from ImageManagerExt.
+     */
+    struct ImageId {
+        uint64_t id;
+        bool pendingFree;
+        nsecs_t freeTime;
+    };
+    std::unordered_map<uint64_t, ImageId> mImageIds;
+
+    /**
+     * PICO: EGLImages created by the ImageManagerExt thread, keyed by buffer id, guarded by
+     * mEglImageCacheMutex.
+     */
+    std::unordered_map<uint64_t, sp<EglImage>> mEglImageCache;
+    std::mutex mEglImageCacheMutex;
+    std::mutex mMutexExt;  // present in the factory layout, unused
+
+    /**
+     * PICO: a buffer acquired by acquireTexture that could not be bound yet (fence not
+     * signalled, image not cached yet, or no free texture name) and is retried first.
+     */
+    bool mHasPendingItem;
+    BufferItem mPendingItem;
 };
+
+#if defined(__LP64__)
+static_assert(sizeof(EGLConsumer) == 1480, "factory arm64 sizeof(EGLConsumer)");
+#endif
 
 }  // namespace android

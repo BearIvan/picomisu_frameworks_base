@@ -1,0 +1,39 @@
+// Copyright 2026 Picomisu contributors
+// SPDX-License-Identifier: Apache-2.0
+
+// On-device check of the PICO SurfaceTexture/ImageManagerExt extension of libhwui through the
+// factory public library libpxrguiex.so (dlopen'ed at run time).
+cc_test {
+    name: "hwui_pxrguiex_test",
+    gtest: false,
+    srcs: ["pxrguiex_test.cpp"],
+    compile_multilib: "both",
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+        lib64: {
+            suffix: "64",
+        },
+    },
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-parameter",
+        "-DEGL_EGLEXT_PROTOTYPES",
+        "-DGL_GLEXT_PROTOTYPES",
+    ],
+    shared_libs: [
+        "libEGL",
+        "libGLESv2",
+        "libbinder",
+        "libcutils",
+        "libdl",
+        "libgui",
+        "libhwui",
+        "liblog",
+        "libnativewindow",
+        "libui",
+        "libutils",
+    ],
+}

@@ -29,7 +29,10 @@
 
 #include <utils/Log.h>
 #include <utils/String8.h>
+#include <utils/Timers.h>
 #include <utils/Trace.h>
+
+#include <atomic>
 
 #define PROT_CONTENT_EXT_STR "EGL_EXT_protected_content"
 #define EGL_PROTECTED_CONTENT_EXT 0x32C0
@@ -82,7 +85,364 @@ static bool hasEglProtectedContent() {
     return hasIt;
 }
 
-EGLConsumer::EGLConsumer() : mEglDisplay(EGL_NO_DISPLAY), mEglContext(EGL_NO_CONTEXT) {}
+// PICO: ImageManagerListener client ids, starting at 1.
+static std::atomic<int> sNextSurfaceId(1);
+
+// PICO: acquireTexture result when no new frame can be bound yet (the acquired buffer, if any,
+// is kept as mPendingItem and retried by the next call). libpxrguiex tests for this value.
+static constexpr status_t ACQUIRE_TEXTURE_NOT_READY = 6;
+
+// PICO: cached images of buffers freed more than this long ago are released on the next queue.
+static constexpr nsecs_t kImageReleaseDelay = 500000000;  // 500 ms
+
+EGLConsumer::EGLConsumer()
+        : mEglDisplay(EGL_NO_DISPLAY)
+        , mEglContext(EGL_NO_CONTEXT)
+        , mFromVrCompositor(false)
+        , mSurfaceId(sNextSurfaceId++)
+        , mHasPendingItem(false) {}
+
+EGLConsumer::~EGLConsumer() {
+    if (mFromVrCompositor) {
+        ImageManagerExt::getInstance().removeImageManagerListener(this);
+    }
+}
+
+int EGLConsumer::getClientId() {
+    return mSurfaceId;
+}
+
+void EGLConsumer::setFromVrCompositor(bool fromVrCompositor) {
+    if (mFromVrCompositor == fromVrCompositor) {
+        return;
+    }
+    mFromVrCompositor = fromVrCompositor;
+    if (fromVrCompositor) {
+        ImageManagerExt::getInstance().addImageManagerListener(this);
+    }
+}
+
+void EGLConsumer::onDisconnect() {
+    mEglImageMap.clear();
+    if (!mFromVrCompositor) {
+        return;
+    }
+    if (mHasPendingItem) {
+        mHasPendingItem = false;
+        mPendingItem = BufferItem();
+    }
+    for (const auto& entry : mImageIds) {
+        if (ImageManagerExt::mDebug) {
+            ALOGI("ImageManagerExt onDisconnect: %" PRIu64 ", s = %d", entry.second.id,
+                  mSurfaceId);
+        }
+        ImageManagerExt::getInstance().releaseAsync(mSurfaceId, entry.second.id, nullptr);
+    }
+    mImageIds.clear();
+}
+
+void EGLConsumer::onFreeBufferLockedExt(uint64_t bufferId) {
+    if (!mFromVrCompositor) {
+        return;
+    }
+    auto it = mImageIds.find(bufferId);
+    if (it == mImageIds.end() || it->second.pendingFree) {
+        return;
+    }
+    it->second.pendingFree = true;
+    it->second.freeTime = systemTime(SYSTEM_TIME_MONOTONIC);
+    if (ImageManagerExt::mDebug) {
+        ALOGI("ImageManagerExt pending free : %" PRIu64 ", s = %d", bufferId, mSurfaceId);
+    }
+}
+
+void EGLConsumer::onBufferQueued(const sp<GraphicBuffer>& buffer) {
+    if (!mFromVrCompositor) {
+        return;
+    }
+    uint64_t id = buffer->getId();
+    auto found = mImageIds.find(id);
+    if (found != mImageIds.end()) {
+        found->second.pendingFree = false;
+    } else {
+        ImageId imageId;
+        imageId.id = id;
+        imageId.pendingFree = false;
+        imageId.freeTime = 0;
+        mImageIds.emplace(id, imageId);
+        if (ImageManagerExt::mDebug) {
+            ALOGI("ImageManagerExt onBufferQueued and cache image : %" PRIu64
+                  ", s = %d, size = %d",
+                  id, mSurfaceId, static_cast<int>(mImageIds.size()));
+        }
+        ImageManagerExt::getInstance().cacheAsync(mSurfaceId, buffer, nullptr);
+    }
+
+    nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+    for (auto it = mImageIds.begin(); it != mImageIds.end();) {
+        if (it->second.pendingFree && now - it->second.freeTime > kImageReleaseDelay) {
+            if (ImageManagerExt::mDebug) {
+                ALOGI("ImageManagerExt onBufferQueued and erase image: %" PRIu64
+                      ", s = %d, size = %d",
+                      it->second.id, mSurfaceId, static_cast<int>(mImageIds.size()));
+            }
+            ImageManagerExt::getInstance().releaseAsync(mSurfaceId, it->second.id, nullptr);
+            it = mImageIds.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+status_t EGLConsumer::cacheExternalTextureBufferInternal(EGLDisplay display,
+                                                         const sp<GraphicBuffer>& buffer) {
+    if (buffer == nullptr) {
+        return BAD_VALUE;
+    }
+    mEglImageCacheMutex.lock();
+    if (mEglImageCache.find(buffer->getId()) != mEglImageCache.end()) {
+        mEglImageCacheMutex.unlock();
+        return NO_ERROR;
+    }
+    mEglImageCacheMutex.unlock();
+
+    sp<EglImage> image = new EglImage(buffer);
+    if (ImageManagerExt::mDebug) {
+        ALOGI("ImageManagerExt Cache image begin: %" PRIu64 ", s = %d", buffer->getId(),
+              mSurfaceId);
+    }
+    if (image->createIfNeeded(display, false) != NO_ERROR) {
+        ALOGE("ImageManagerExt Failed to create image. size=%ux%u st=%u usage=%#" PRIx64
+              " fmt=%d",
+              buffer->getWidth(), buffer->getHeight(), buffer->getStride(), buffer->getUsage(),
+              buffer->getPixelFormat());
+        return NO_INIT;
+    }
+
+    mEglImageCacheMutex.lock();
+    uint64_t id = buffer->getId();
+    if (mEglImageCache.find(id) != mEglImageCache.end()) {
+        mEglImageCacheMutex.unlock();
+        return NO_ERROR;
+    }
+    mEglImageCache.emplace(id, image);
+    mEglImageCacheMutex.unlock();
+    if (ImageManagerExt::mDebug) {
+        ALOGI("ImageManagerExt Cache image end: %" PRIu64 ", s = %d", buffer->getId(),
+              mSurfaceId);
+    }
+    return NO_ERROR;
+}
+
+void EGLConsumer::unbindExternalTextureBufferInternal(uint64_t bufferId) {
+    mEglImageCacheMutex.lock();
+    if (mEglImageCache.find(bufferId) == mEglImageCache.end()) {
+        mEglImageCacheMutex.unlock();
+        ALOGE("ImageManagerExt Failed to find image : %" PRIu64 ", s = %d", bufferId,
+              mSurfaceId);
+        return;
+    }
+    if (ImageManagerExt::mDebug) {
+        ALOGI("ImageManagerExt Destroying image : %" PRIu64 ", s = %d", bufferId, mSurfaceId);
+    }
+    mEglImageCache.erase(bufferId);
+    mEglImageCacheMutex.unlock();
+}
+
+status_t EGLConsumer::acquireTexture(SurfaceTexture& st, int* texName) {
+    status_t err = checkAndUpdateEglStateLocked(st);
+    if (err != NO_ERROR) {
+        *texName = -1;
+        return err;
+    }
+
+    BufferItem item;
+    if (mHasPendingItem) {
+        item = mPendingItem;
+        mHasPendingItem = false;
+        if (ImageManagerExt::mDebug) {
+            const sp<GraphicBuffer>& buffer = st.mSlots[item.mSlot].mGraphicBuffer;
+            ALOGI("ImageManagerExt using pending : %" PRIu64 ", w*h = %d*%d , slot = %d, %d",
+                  buffer->getId(), buffer->getWidth(), buffer->getHeight(), item.mSlot,
+                  mSurfaceId);
+        }
+        mPendingItem = BufferItem();
+    } else {
+        err = st.acquireBufferLocked(&item, 0);
+        if (err != NO_ERROR) {
+            if (err == BufferQueue::NO_BUFFER_AVAILABLE) {
+                err = NO_ERROR;
+            } else if (err == 4) {
+                // Factory: compares with 4, not BufferQueue::PRESENT_LATER (3), so PRESENT_LATER
+                // takes the error path below.
+                err = ACQUIRE_TEXTURE_NOT_READY;
+            } else {
+                EGC_LOGE("updateTexImage: acquire failed: %s (%d)", strerror(-err), err);
+            }
+            *texName = -1;
+            return err;
+        }
+    }
+
+    int slot = item.mSlot;
+    if (item.mFence->wait(0) == -ETIME) {
+        // Not ready yet: keep the buffer and retry it on the next call.
+        mHasPendingItem = true;
+        mPendingItem = item;
+        if (ImageManagerExt::mDebug) {
+            ALOGI("ImageManagerExt wait for fence, slot = %d, %d", slot, mSurfaceId);
+        }
+        return ACQUIRE_TEXTURE_NOT_READY;
+    }
+
+    const sp<GraphicBuffer>& slotBuffer = st.mSlots[slot].mGraphicBuffer;
+    sp<EglImage> image;
+    mEglImageCacheMutex.lock();
+    auto cached = mEglImageCache.find(slotBuffer->getId());
+    if (cached == mEglImageCache.end()) {
+        mEglImageCacheMutex.unlock();
+        // The ImageManagerExt thread has not created the image yet: request it and retry.
+        onBufferQueued(slotBuffer);
+        mHasPendingItem = true;
+        mPendingItem = item;
+        if (ImageManagerExt::mDebug) {
+            ALOGI("ImageManagerExt has pending : %" PRIu64 ", w*h = %d*%d, slot = %d, %d",
+                  slotBuffer->getId(), slotBuffer->getWidth(), slotBuffer->getHeight(), slot,
+                  mSurfaceId);
+        }
+        *texName = -1;
+        return ACQUIRE_TEXTURE_NOT_READY;
+    }
+    image = cached->second;
+    mEglImageCacheMutex.unlock();
+
+    if (st.mOpMode != SurfaceTexture::OpMode::attachedToGL) {
+        EGC_LOGE(
+                "updateAndRelease: EGLConsumer is not attached to an OpenGL "
+                "ES context");
+        st.releaseBufferLocked(slot, st.mSlots[slot].mGraphicBuffer, mEglDisplay, EGL_NO_SYNC_KHR);
+        *texName = -1;
+        return INVALID_OPERATION;
+    }
+
+    err = checkAndUpdateEglStateLocked(st);
+    if (err != NO_ERROR) {
+        st.releaseBufferLocked(slot, st.mSlots[slot].mGraphicBuffer, mEglDisplay, EGL_NO_SYNC_KHR);
+        *texName = -1;
+        return err;
+    }
+
+    st.mCurrentTexture = slot;
+    st.mCurrentCrop = item.mCrop;
+    st.mCurrentTransform = item.mTransform;
+    st.mCurrentScalingMode = item.mScalingMode;
+    st.mCurrentTimestamp = item.mTimestamp;
+    st.mCurrentDataSpace = item.mDataSpace;
+    st.mCurrentFence = item.mFence;
+    st.mCurrentFenceTime = item.mFenceTime;
+    st.mCurrentFrameNumber = item.mFrameNumber;
+    st.computeCurrentTransformMatrixLocked();
+
+    if (!st.mHasAcquiredTexture) {
+        st.mHasAcquiredTexture = true;
+    }
+    st.mIsProtectedContent =
+            (st.mSlots[slot].mGraphicBuffer->getUsage() & GRALLOC_USAGE_PROTECTED) != 0;
+
+    for (uint32_t i = 0; i < st.mTexNameCount; i++) {
+        SurfaceTexture::TexNameSlot& texSlot = st.mTexNames[i];
+        if (texSlot.acquired || texSlot.freed) {
+            continue;
+        }
+        texSlot.slot = slot;
+        texSlot.acquired = true;
+        int tex = texSlot.texName;
+        if (ImageManagerExt::mDebug) {
+            int acquiredCount = 0;
+            for (uint32_t j = 0; j < st.mTexNameCount; j++) {
+                acquiredCount += st.mTexNames[j].acquired;
+            }
+            ALOGI("ImageManagerExt new slot %d , w*h = %d*%d, texName %d, acquiredCount %d, "
+                  "surface id %d",
+                  slot, slotBuffer->getWidth(), slotBuffer->getHeight(), tex, acquiredCount,
+                  mSurfaceId);
+        }
+        *texName = tex;
+
+        GLenum error;
+        while ((error = glGetError()) != GL_NO_ERROR) {
+            EGC_LOGW("bindTextureImage: clearing GL error: %#04x", error);
+        }
+        glBindTexture(st.mTexTarget, tex);
+        image->bindToTextureTarget(st.mTexTarget);
+        return NO_ERROR;
+    }
+
+    // Every texture name is in use: keep the buffer for the next call.
+    mHasPendingItem = true;
+    mPendingItem = item;
+    *texName = -1;
+    ALOGI("ImageManagerExt: acquire failed due to no curTexName surface id %d", mSurfaceId);
+    return NO_ERROR;
+}
+
+void EGLConsumer::releaseTexture(SurfaceTexture& st, int texName, int fenceFd) {
+    int slot = BufferQueue::INVALID_BUFFER_SLOT;
+    for (uint32_t i = 0; i < st.mTexNameCount; i++) {
+        SurfaceTexture::TexNameSlot& texSlot = st.mTexNames[i];
+        if (texSlot.acquired && texSlot.texName == texName) {
+            texSlot.acquired = false;
+            if (texSlot.freed) {
+                // The buffer was freed while bound (freeBufferLocked): nothing to release.
+                texSlot.freed = false;
+            } else {
+                slot = texSlot.slot;
+            }
+            break;
+        }
+    }
+
+    if (ImageManagerExt::mDebug) {
+        int acquiredCount = 0;
+        for (uint32_t j = 0; j < st.mTexNameCount; j++) {
+            acquiredCount += st.mTexNames[j].acquired;
+        }
+        ALOGI("ImageManagerExt release slot %d , texName %d, fenceFd %d, acquiredCount %d, "
+              "surface id %d",
+              slot, texName, fenceFd, acquiredCount, mSurfaceId);
+    }
+
+    if (slot == BufferQueue::INVALID_BUFFER_SLOT) {
+        if (fenceFd != -1) {
+            close(fenceFd);
+        }
+        return;
+    }
+
+    if (st.mSlots[slot].mGraphicBuffer == nullptr) {
+        if (fenceFd != -1) {
+            close(fenceFd);
+        }
+        ALOGE("ImageManagerExt release slot without graphicBuffer, slot %d , surface id %d", slot,
+              mSurfaceId);
+        return;
+    }
+
+    if (fenceFd != -1) {
+        sp<Fence> fence(new Fence(fenceFd));
+        status_t err = st.addReleaseFenceLocked(slot, st.mSlots[slot].mGraphicBuffer, fence);
+        if (err != OK) {
+            EGC_LOGE("syncForReleaseLocked: error adding release fence: %s (%d)", strerror(-err),
+                     err);
+        }
+    }
+
+    status_t err = st.releaseBufferLocked(slot, st.mSlots[slot].mGraphicBuffer, mEglDisplay,
+                                          EGL_NO_SYNC_KHR);
+    if (err < NO_ERROR) {
+        EGC_LOGE("updateAndRelease: failed to release buffer: %s (%d)", strerror(-err), err);
+    }
+}
 
 status_t EGLConsumer::updateTexImage(SurfaceTexture& st) {
     // Make sure the EGL state is the same as in previous calls.
@@ -116,6 +476,14 @@ status_t EGLConsumer::updateTexImage(SurfaceTexture& st) {
         glBindTexture(st.mTexTarget, st.mTexName);
         return err;
     }
+
+    // PICO: record that a frame was latched and whether it is protected content.
+    if (!st.mHasAcquiredTexture) {
+        st.mHasAcquiredTexture = true;
+    }
+    const sp<GraphicBuffer>& buffer = st.mSlots[item.mSlot].mGraphicBuffer;
+    st.mIsProtectedContent =
+            buffer != nullptr && (buffer->getUsage() & GRALLOC_USAGE_PROTECTED) != 0;
 
     // Bind the new buffer to the GL texture, and wait until it's ready.
     return bindTextureImageLocked(st);
@@ -210,11 +578,33 @@ sp<GraphicBuffer> EGLConsumer::getDebugTexImageBuffer() {
 }
 
 void EGLConsumer::onAcquireBufferLocked(BufferItem* item, SurfaceTexture& st) {
+    // PICO: in VR compositor mode the images come from the ImageManagerExt cache.
+    if (mFromVrCompositor) {
+        return;
+    }
     // If item->mGraphicBuffer is not null, this buffer has not been acquired
     // before, so any prior EglImage created is using a stale buffer. This
     // replaces any old EglImage with a new one (using the new buffer).
     int slot = item->mSlot;
     if (item->mGraphicBuffer != nullptr || mEglSlots[slot].mEglImage.get() == nullptr) {
+        // PICO: buffers with the gralloc usage bits 32..35 == 1 reuse the EglImage of their
+        // last acquisition (up to 5 remembered buffers). As in the factory, the usage is read
+        // through item->mGraphicBuffer also when it is null (a slot re-acquired after its
+        // EglImage was dropped), which faults.
+        if ((item->mGraphicBuffer->getUsage() & 0xf00000000ULL) == 0x100000000ULL) {
+            auto it = mEglImageMap.find(item->mGraphicBuffer->getId());
+            if (it != mEglImageMap.end() &&
+                item->mGraphicBuffer->handle == it->second->graphicBuffer()->handle) {
+                mEglSlots[slot].mEglImage = it->second;
+                return;
+            }
+            mEglSlots[slot].mEglImage = new EglImage(st.mSlots[slot].mGraphicBuffer);
+            if (mEglImageMap.size() >= 5) {
+                mEglImageMap.erase(mEglImageMap.begin());
+            }
+            mEglImageMap[item->mGraphicBuffer->getId()] = mEglSlots[slot].mEglImage;
+            return;
+        }
         mEglSlots[slot].mEglImage = new EglImage(st.mSlots[slot].mGraphicBuffer);
     }
 }
@@ -361,6 +751,11 @@ status_t EGLConsumer::bindTextureImageLocked(SurfaceTexture& st) {
             EGC_LOGE("bindTextureImage: error binding external image: %#04x", error);
             return UNKNOWN_ERROR;
         }
+    }
+
+    // PICO: a VR compositor waits on the acquire fence itself.
+    if (mFromVrCompositor) {
+        return NO_ERROR;
     }
 
     // Wait for the new buffer to be ready.
@@ -595,10 +990,31 @@ status_t EGLConsumer::doGLFenceWaitLocked(SurfaceTexture& st) const {
 
 void EGLConsumer::onFreeBufferLocked(int slotIndex) {
     mEglSlots[slotIndex].mEglImage.clear();
+    // PICO: drop a pending acquireTexture buffer of the freed slot.
+    if (mFromVrCompositor && mHasPendingItem && mPendingItem.mSlot == slotIndex) {
+        mHasPendingItem = false;
+        mPendingItem = BufferItem();
+    }
 }
 
 void EGLConsumer::onAbandonLocked() {
     mCurrentTextureImage.clear();
+    mEglImageMap.clear();
+    if (!mFromVrCompositor) {
+        return;
+    }
+    if (mHasPendingItem) {
+        mHasPendingItem = false;
+        mPendingItem = BufferItem();
+    }
+    for (const auto& entry : mImageIds) {
+        if (ImageManagerExt::mDebug) {
+            ALOGI("ImageManagerExt onAbandonLocked: %" PRIu64 ", s = %d", entry.second.id,
+                  mSurfaceId);
+        }
+        ImageManagerExt::getInstance().releaseAsync(mSurfaceId, entry.second.id, nullptr);
+    }
+    mImageIds.clear();
 }
 
 EGLConsumer::EglImage::EglImage(sp<GraphicBuffer> graphicBuffer)
