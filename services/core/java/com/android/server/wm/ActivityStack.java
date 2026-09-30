@@ -5029,6 +5029,10 @@ public class ActivityStack extends ConfigurationContainer {
             mRootActivityContainer.resumeFocusedStacksTopActivities();
             EventLog.writeEvent(EventLogTags.AM_TASK_TO_FRONT, tr.userId, tr.taskId);
             mService.getTaskChangeNotificationController().notifyTaskMovedToFront(tr.getTaskInfo());
+            if (mDisplayId == DEFAULT_DISPLAY) {
+                // Factory ExtActivityDisplayImpl.onTaskMovedToFront on the default display.
+                com.android.server.api.ApiLayerService.getInstance().updateTopAppOnDefaultDisplay(tr.getTaskInfo());
+            }
         } finally {
             getDisplay().continueUpdateImeTarget();
         }

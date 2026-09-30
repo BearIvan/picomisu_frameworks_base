@@ -1446,6 +1446,8 @@ public final class PowerManagerService extends SystemService
         synchronized (mLock) {
             if (wakeUpNoUpdateLocked(eventTime, reason, details, uid, opPackageName, opUid)) {
                 updatePowerStateLocked();
+                com.android.server.api.ApiLayerService.getInstance().updatePowerState(
+                        com.android.server.api.ApiLayerService.POWER_STATE_WAKE_UP);
             }
         }
     }
@@ -1489,6 +1491,8 @@ public final class PowerManagerService extends SystemService
         synchronized (mLock) {
             if (goToSleepNoUpdateLocked(eventTime, reason, flags, uid)) {
                 updatePowerStateLocked();
+                com.android.server.api.ApiLayerService.getInstance().updatePowerState(
+                        com.android.server.api.ApiLayerService.POWER_STATE_GO_TO_SLEEP);
             }
         }
     }

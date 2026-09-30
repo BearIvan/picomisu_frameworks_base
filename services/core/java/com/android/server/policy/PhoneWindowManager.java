@@ -4586,6 +4586,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     @Override
     public void screenTurnedOff() {
         if (DEBUG_WAKEUP) Slog.i(TAG, "Screen turned off...");
+        // Factory SystemExt forwards ACTION_SCREEN_OFF to the PICO API layer.
+        com.android.server.api.ApiLayerService.getInstance().updateScreenState(false);
 
         updateScreenOffSleepToken(true);
         mDefaultDisplayPolicy.screenTurnedOff();
@@ -4630,6 +4632,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     // Called on the DisplayManager's DisplayPowerController thread.
     @Override
     public void screenTurnedOn() {
+        // Factory SystemExt forwards ACTION_SCREEN_ON to the PICO API layer.
+        com.android.server.api.ApiLayerService.getInstance().updateScreenState(true);
         synchronized (mLock) {
             if (mKeyguardDelegate != null) {
                 mKeyguardDelegate.onScreenTurnedOn();

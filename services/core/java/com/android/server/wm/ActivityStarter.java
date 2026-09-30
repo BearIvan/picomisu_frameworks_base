@@ -792,6 +792,8 @@ class ActivityStarter {
                     .getPendingRemoteAnimationRegistry()
                     .overrideOptionsIfNeeded(callingPackage, checkedOptions);
         }
+        // Factory ExtActivityStarterImpl.sendActivityStartingMsg.
+        com.android.server.api.ApiLayerService.getInstance().onActivityStarting(aInfo);
         if (mService.mController != null) {
             try {
                 // The Intent we give to the watcher has the extra data

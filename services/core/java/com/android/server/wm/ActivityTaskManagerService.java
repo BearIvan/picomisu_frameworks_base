@@ -836,6 +836,7 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         mConfigurationSeq = mTempConfig.seq = 1;
         mStackSupervisor = createStackSupervisor();
         mRootActivityContainer = new RootActivityContainer(this);
+        com.android.server.api.ApiLayerService.getInstance().setActivityTaskManagerService(mContext, this);
         mRootActivityContainer.onConfigurationChanged(mTempConfig);
 
         mTaskChangeNotificationController =

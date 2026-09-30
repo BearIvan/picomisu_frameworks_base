@@ -2802,6 +2802,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
                     MSG_SHOW_SOFT_INPUT, getImeShowFlags(), mCurMethod,
                     resultReceiver));
             mInputShown = true;
+            com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(true);
             if (mHaveConnection && !mVisibleBound) {
                 bindCurrentInputMethodServiceLocked(
                         mCurIntent, mVisibleConnection, IME_VISIBLE_BIND_FLAGS);
@@ -2903,6 +2904,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
             mVisibleBound = false;
         }
         mInputShown = false;
+        com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(false);
         mShowRequested = false;
         mShowExplicitlyRequested = false;
         mShowForced = false;

@@ -1220,6 +1220,17 @@ public class WindowManagerService extends IWindowManager.Stub
     @Override
     public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
             throws RemoteException {
+        if (code == com.android.server.api.ApiLayerService.CODE_GET_API_LAYER) {
+            // PICO API layer (factory ExtWindowManagerServiceImpl): the PICO SDK reads an int
+            // flag and the IApiLayer binder without an exception header.
+            data.enforceInterface("android.view.IWindowManager");
+            final IBinder apiLayer = com.android.server.api.ApiLayerService.getInstance().getApiLayer();
+            reply.writeInt(apiLayer != null ? 1 : 0);
+            if (apiLayer != null) {
+                reply.writeStrongBinder(apiLayer);
+            }
+            return true;
+        }
         try {
             return super.onTransact(code, data, reply, flags);
         } catch (RuntimeException e) {
