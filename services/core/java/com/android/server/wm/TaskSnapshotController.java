@@ -319,6 +319,11 @@ class TaskSnapshotController {
     }
 
     private boolean shouldDisableSnapshots() {
+        // PICO (factory): task snapshots are always disabled (no recents thumbnails or snapshot
+        // starting windows, also not on the 2D app virtual displays).
+        if (android.pico.utils.Features.isPvr2DEnabled()) {
+            return true;
+        }
         return mIsRunningOnWear || mIsRunningOnTv || mIsRunningOnIoT;
     }
 

@@ -2351,7 +2351,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     public StartingSurface addSplashScreen(IBinder appToken, String packageName, int theme,
             CompatibilityInfo compatInfo, CharSequence nonLocalizedLabel, int labelRes, int icon,
             int logo, int windowFlags, Configuration overrideConfig, int displayId) {
-        if (!SHOW_SPLASH_SCREENS) {
+        // PICO (factory): no splash screen windows; VR apps and 2D panels draw their own
+        // loading UI.
+        if (!SHOW_SPLASH_SCREENS || android.pico.utils.Features.isPvr2DEnabled()) {
             return null;
         }
         if (packageName == null) {
