@@ -547,6 +547,25 @@ public class HardwareRenderer {
     }
 
     /**
+     * PICO: an animation of {@code duration} ms starts; the RenderThread frame monitor
+     * (RenderMonitor) analyses its frames once it is over.
+     *
+     * @hide
+     */
+    public void doAnimation(long duration) {
+        nDoAnimation(mNativeProxy, duration);
+    }
+
+    /**
+     * PICO: switches the RenderThread frame monitor (RenderMonitor) on or off.
+     *
+     * @hide
+     */
+    public void notifyMonitorStatsChanged(boolean enable) {
+        nNotifyMonitorStatsChanged(mNativeProxy, enable);
+    }
+
+    /**
      * Change the HardwareRenderer's opacity. Will take effect on the next frame produced.
      *
      * <p>If the renderer is set to opaque it is the app's responsibility to ensure that the
@@ -1180,4 +1199,8 @@ public class HardwareRenderer {
     private static native void nAllocateBuffers(long nativeProxy);
 
     private static native void nSetForceDark(long nativeProxy, boolean enabled);
+
+    private static native void nNotifyMonitorStatsChanged(long nativeProxy, boolean enable);
+
+    private static native void nDoAnimation(long nativeProxy, long duration);
 }

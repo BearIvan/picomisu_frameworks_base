@@ -701,6 +701,13 @@ public final class ThreadedRenderer extends HardwareRenderer {
     }
 
     /**
+     * PICO: the view renderers ignore the monitor switch (the factory override is empty).
+     */
+    @Override
+    public void notifyMonitorStatsChanged(boolean enable) {
+    }
+
+    /**
      * Basic synchronous renderer. Currently only used to render the Magnifier, so use with care.
      * TODO: deduplicate against ThreadedRenderer.
      *

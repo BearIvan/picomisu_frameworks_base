@@ -564,6 +564,13 @@ static void destroy(JNIEnv* env, jclass clazz, jlong rendererPtr) {
     delete proxy;
 }
 
+// PICO: Surface.HwuiContext.notifyMonitorStatsChanged.
+static void notifyMonitorStatsChanged(JNIEnv* env, jclass clazz, jlong rendererPtr,
+        jboolean enable) {
+    RenderProxy* proxy = reinterpret_cast<RenderProxy*>(rendererPtr);
+    proxy->notifyMonitorStatsChanged(enable);
+}
+
 } // uirenderer
 
 // ----------------------------------------------------------------------------
@@ -610,6 +617,7 @@ static const JNINativeMethod gSurfaceMethods[] = {
     {"nHwuiSetSurface", "(JJ)V", (void*) hwui::setSurface },
     {"nHwuiDraw", "(J)V", (void*) hwui::draw },
     {"nHwuiDestroy", "(J)V", (void*) hwui::destroy },
+    {"nHwuiNotifyMonitorStatsChanged", "(JZ)V", (void*) hwui::notifyMonitorStatsChanged },
 };
 
 int register_android_view_Surface(JNIEnv* env)

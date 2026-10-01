@@ -1038,6 +1038,19 @@ static void android_view_ThreadedRenderer_preload(JNIEnv*, jclass) {
     RenderProxy::preload();
 }
 
+// PICO: RenderMonitor controls (HardwareRenderer.notifyMonitorStatsChanged / doAnimation).
+static void android_view_ThreadedRenderer_notifyMonitorStatsChanged(JNIEnv*, jobject,
+        jlong proxyPtr, jboolean enable) {
+    RenderProxy* proxy = reinterpret_cast<RenderProxy*>(proxyPtr);
+    proxy->notifyMonitorStatsChanged(enable);
+}
+
+static void android_view_ThreadedRenderer_doAnimation(JNIEnv*, jobject, jlong proxyPtr,
+        jlong duration) {
+    RenderProxy* proxy = reinterpret_cast<RenderProxy*>(proxyPtr);
+    proxy->doAnimation(duration);
+}
+
 // ----------------------------------------------------------------------------
 // FrameMetricsObserver
 // ----------------------------------------------------------------------------
@@ -1154,6 +1167,10 @@ static const JNINativeMethod gMethods[] = {
     { "nAllocateBuffers", "(J)V", (void*)android_view_ThreadedRenderer_allocateBuffers },
     { "nSetForceDark", "(JZ)V", (void*)android_view_ThreadedRenderer_setForceDark },
     { "preload", "()V", (void*)android_view_ThreadedRenderer_preload },
+    // PICO: RenderMonitor controls.
+    { "nNotifyMonitorStatsChanged", "(JZ)V",
+            (void*)android_view_ThreadedRenderer_notifyMonitorStatsChanged },
+    { "nDoAnimation", "(JJ)V", (void*)android_view_ThreadedRenderer_doAnimation },
 };
 
 static JavaVM* mJvm = nullptr;

@@ -960,6 +960,22 @@ public class Surface implements Parcelable {
         }
     }
 
+    /**
+     * PICO: switches the RenderThread frame monitor of the {@link #lockHardwareCanvas()}
+     * renderer on or off.
+     *
+     * @hide
+     */
+    public void notifyMonitorStatsChanged(boolean enable) {
+        try {
+            if (mHwuiContext != null) {
+                mHwuiContext.notifyMonitorStatsChanged(enable);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private final class HwuiContext {
         private final RenderNode mRenderNode;
         private long mHwuiRenderer;
@@ -1007,10 +1023,15 @@ public class Surface implements Parcelable {
         boolean isWideColorGamut() {
             return mIsWideColorGamut;
         }
+
+        void notifyMonitorStatsChanged(boolean enable) {
+            nHwuiNotifyMonitorStatsChanged(mHwuiRenderer, enable);
+        }
     }
 
     private static native long nHwuiCreate(long rootNode, long surface, boolean isWideColorGamut);
     private static native void nHwuiSetSurface(long renderer, long surface);
     private static native void nHwuiDraw(long renderer);
     private static native void nHwuiDestroy(long renderer);
+    private static native void nHwuiNotifyMonitorStatsChanged(long renderer, boolean enable);
 }
