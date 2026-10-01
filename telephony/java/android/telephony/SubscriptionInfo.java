@@ -505,6 +505,13 @@ public class SubscriptionInfo implements Parcelable {
     /**
      * @hide
      */
+    public void clearGroupUuid() {
+        this.mGroupUUID = null;
+    }
+
+    /**
+     * @hide
+     */
     public List<String> getEhplmns() {
         return mEhplmns == null ? Collections.emptyList() : Arrays.asList(mEhplmns);
     }
@@ -631,6 +638,13 @@ public class SubscriptionInfo implements Parcelable {
      */
     public String getCardString() {
         return this.mCardString;
+    }
+
+    /**
+     * @hide
+     */
+    public void clearCardString() {
+        this.mCardString = "";
     }
 
     /**
