@@ -3303,6 +3303,10 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub
                     && mActiveWindowId == windowId) {
                 mActiveWindowId = INVALID_WINDOW_ID;
             }
+            if (mWindowsForAccessibilityCallback != null) {
+                WindowManagerInternal wm = LocalServices.getService(WindowManagerInternal.class);
+                wm.computeWindowsForAccessibility();
+            }
         }
 
         public void updateWindowsLocked(List<WindowInfo> windows) {
@@ -3356,7 +3360,8 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub
                         window.setLayer(windowCount - 1 - window.getLayer());
 
                         final int windowId = window.getId();
-                        if (window.isFocused()) {
+                        if (window.isFocused() && mWindowManagerService.getTopFocusedDisplayId()
+                                == Display.DEFAULT_DISPLAY) {
                             mFocusedWindowId = windowId;
                             if (!mTouchInteractionInProgress) {
                                 mActiveWindowId = windowId;
