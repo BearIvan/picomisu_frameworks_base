@@ -206,7 +206,6 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
     }
 
     void onDisplayChanged() {
-        mExt.onDisplayChanged();
         // The window policy is responsible for stopping activities on the default display.
         final int displayId = mDisplay.getDisplayId();
         if (displayId != DEFAULT_DISPLAY) {
@@ -224,6 +223,7 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
             mDisplayContent.updateDisplayInfo();
             mService.mWindowManager.requestTraversal();
         }
+        mExt.onDisplayChanged();
     }
 
     @Override
