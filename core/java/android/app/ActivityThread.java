@@ -4491,7 +4491,7 @@ public final class ActivityThread extends ClientTransactionHandler {
         }
 
         if (r.isTopResumedActivity == onTop) {
-            throw new IllegalStateException("Activity top position already set to onTop=" + onTop);
+            // Factory PICO OS 5.13.7: a repeated top position change is not an error.
         }
 
         r.isTopResumedActivity = onTop;
