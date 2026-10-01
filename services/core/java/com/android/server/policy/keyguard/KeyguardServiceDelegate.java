@@ -58,6 +58,9 @@ public class KeyguardServiceDelegate {
 
     private DrawnListener mDrawnListenerWhenConnect;
 
+    // PICO (factory): PICO keyguard service selection.
+    private final IExtKeyguardServiceDelegate mExt = new ExtKeyguardServiceDelegateImpl(this);
+
     private static final class KeyguardState {
         KeyguardState() {
             reset();
@@ -138,8 +141,9 @@ public class KeyguardServiceDelegate {
         Intent intent = new Intent();
         final Resources resources = context.getApplicationContext().getResources();
 
-        final ComponentName keyguardComponent = ComponentName.unflattenFromString(
-                resources.getString(com.android.internal.R.string.config_keyguardComponent));
+        final ComponentName keyguardComponent = mExt.updateKeyguardStatus(mHandler, resources,
+                ComponentName.unflattenFromString(resources.getString(
+                        com.android.internal.R.string.config_keyguardComponent)));
         intent.addFlags(Intent.FLAG_DEBUG_TRIAGED_MISSING);
         intent.setComponent(keyguardComponent);
 
