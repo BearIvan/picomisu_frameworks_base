@@ -5890,7 +5890,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             // stop being matched by the updated agent.
             String diff = nai.networkCapabilities.describeImmutableDifferences(nc);
             if (!TextUtils.isEmpty(diff)) {
-                Slog.wtf(TAG, "BUG: " + nai + " lost immutable capabilities:" + diff);
+                loge("BUG: " + nai + "  lost immutable capabilities:" + diff);
             }
         }
 
