@@ -2955,6 +2955,16 @@ public class Notification implements Parcelable
     }
 
     /**
+     * Sets the token used for background operations for the pending intents associated with this
+     * notification. NotificationManagerService clears it on copies returned to apps.
+     *
+     * @hide
+     */
+    public void setAllowlistToken(@Nullable IBinder token) {
+        mWhitelistToken = token;
+    }
+
+    /**
      * @hide
      */
     public static void addFieldsFromContext(Context context, Notification notification) {
@@ -7565,7 +7575,7 @@ public class Notification implements Parcelable
              */
             public Message(@NonNull CharSequence text, long timestamp, @Nullable Person sender,
                     boolean remoteInputHistory) {
-                mText = text;
+                mText = safeCharSequence(text);
                 mTimestamp = timestamp;
                 mSender = sender;
                 mRemoteInputHistory = remoteInputHistory;
@@ -7679,7 +7689,7 @@ public class Notification implements Parcelable
                 bundle.putLong(KEY_TIMESTAMP, mTimestamp);
                 if (mSender != null) {
                     // Legacy listeners need this
-                    bundle.putCharSequence(KEY_SENDER, mSender.getName());
+                    bundle.putCharSequence(KEY_SENDER, safeCharSequence(mSender.getName()));
                     bundle.putParcelable(KEY_SENDER_PERSON, mSender);
                 }
                 if (mDataMimeType != null) {
