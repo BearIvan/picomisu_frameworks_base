@@ -239,10 +239,19 @@ public final class ProcessStats implements Parcelable {
 
     private static final Pattern sPageTypeRegex = Pattern.compile(
             "^Node\\s+(\\d+),.* zone\\s+(\\w+),.* type\\s+(\\w+)\\s+([\\s\\d]+?)\\s*$");
-    private final ArrayList<Integer> mPageTypeNodes = new ArrayList<>();
-    private final ArrayList<String> mPageTypeZones = new ArrayList<>();
-    private final ArrayList<String> mPageTypeLabels = new ArrayList<>();
-    private final ArrayList<int[]> mPageTypeSizes = new ArrayList<>();
+    // Smartisan (PICO OS 5.13.7): protected for ProcessStatsMonitorEx.
+    protected final ArrayList<Integer> mPageTypeNodes = new ArrayList<>();
+    protected final ArrayList<String> mPageTypeZones = new ArrayList<>();
+    protected final ArrayList<String> mPageTypeLabels = new ArrayList<>();
+    protected final ArrayList<int[]> mPageTypeSizes = new ArrayList<>();
+
+    // Smartisan system monitor extension (PICO OS 5.13.7).
+    private final ProcessStatsMonitorEx mProcessStatsMonitorEx = new ProcessStatsMonitorEx(this);
+
+    /** @hide */
+    public ProcessStatsMonitorEx getMonitorEx() {
+        return mProcessStatsMonitorEx;
+    }
 
     public ProcessStats(boolean running) {
         mRunning = running;

@@ -1419,4 +1419,9 @@ public final class ProcessState {
 
         proto.end(token);
     }
+
+    /** @hide */
+    public int getNumExcessiveCpu() {
+        return mNumExcessiveCpu;
+    }
 }
