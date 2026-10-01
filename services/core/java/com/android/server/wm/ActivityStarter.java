@@ -122,8 +122,10 @@ import android.util.Slog;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.HeavyWeightSwitcherActivity;
 import com.android.internal.app.IVoiceInteractor;
+import com.android.server.SysOptBridge;
 import com.android.server.am.EventLogTags;
 import com.android.server.am.PendingIntentRecord;
+import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.pm.InstantAppResolver;
 import com.android.server.wm.ActivityStackSupervisor.PendingActivityLaunch;
 import com.android.server.wm.LaunchParamsController.LaunchParams;
@@ -656,6 +658,13 @@ class ActivityStarter {
         final int userId = aInfo != null && aInfo.applicationInfo != null
                 ? UserHandle.getUserId(aInfo.applicationInfo.uid) : 0;
 
+        // Smartisan (factory): the process intercept may refuse the start.
+        if (err == ActivityManager.START_SUCCESS && aInfo != null && aInfo.applicationInfo != null
+                && !SysOptBridge.getFactory().getProcessIntercept().isActivityAllowStart(
+                        callingPackage, callingUid, aInfo, intent)) {
+            return ActivityManager.START_CANCELED;
+        }
+
         // PICO (factory): missing runtime permissions of listed VR apps are requested first.
         if (mExt.helpRequestPermission(aInfo, mService.mContext, userId)) {
             Slog.i(TAG, "need help app request permission.");
@@ -685,12 +694,12 @@ class ActivityStarter {
             }
         }
 
-        // PICO (factory): a prefetched app does not get the VR permission dialog (the factory
-        // also cancels the prefetch through the Smartisan WindowProcessController layer, which
-        // Source does not have; isPrefetch is only set by the absent sys services JAR).
+        // PICO (factory): a prefetched app does not get the VR permission dialog; Smartisan
+        // (factory): its prefetch is cancelled.
         if (mExt.isPrefetchAppRequestPermission(callerApp, aInfo)) {
             if (caller != null) {
                 Slog.w(TAG, "request vr permission from prefetch app need intercept!");
+                ((WindowProcessControllerSmtBase) callerApp.getSmtEx()).canclePrefetch();
             }
             return ActivityManager.START_SUCCESS;
         }
@@ -958,6 +967,32 @@ class ActivityStarter {
                 callingPackage, intent, resolvedType, aInfo, mService.getGlobalConfiguration(),
                 resultRecord, resultWho, requestCode, componentSpecified, voiceSession != null,
                 mSupervisor, checkedOptions, sourceRecord);
+        // Smartisan (factory): launch record and launch-time statistics.
+        if (intent != null) {
+            mService.getSmtEx().mAMS.getSmtEx().addPendingLaunchRecord(r);
+            r.getActivityRecordMonitorEx().launchTimeStatistics.setLaunchStartTime(
+                    intent.getSmtEx().getLaunchStartTime());
+        }
+        // Smartisan (factory): a prefetched app started for real is no longer prefetched.
+        if (r.info.applicationInfo.getSmtEx().isPrefetch) {
+            r.info.applicationInfo.getSmtEx().isPrefetch = false;
+            SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updateActivityLaunchTime(
+                    r.info.applicationInfo.getSmtUid(), r.info.packageName,
+                    r.shortComponentName, 0L, 41, 0L, 0L);
+        }
+        // Smartisan (factory): prefetch start requested by the caller.
+        if (intent.getSmtEx().getSmtIntExtra("prefetch_app", 0) == 1) {
+            intent.putExtra("prefetch_app", 1);
+            r.info.applicationInfo.getSmtEx().isPrefetch = true;
+        }
+        if (r.info.applicationInfo.getSmtEx().keepAliveForVr) {
+            r.info.applicationInfo.getSmtEx().keepAliveForVr = false;
+        }
+        if (aInfo != null) {
+            SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().perfettoDumpJudgement(
+                    aInfo.packageName, aInfo.applicationInfo.getSmtUid());
+            SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().notifyActivityStart();
+        }
         if (outActivity != null) {
             outActivity[0] = r;
         }
@@ -1568,6 +1603,22 @@ class ActivityStarter {
             return START_CANCELED;
         }
 
+        // Smartisan (factory): the started activity inherits the launch-time statistics of its
+        // source activity.
+        final IActivityLaunchTimeStatistics mStartLaunchTimeStatistics =
+                mStartActivity.getActivityRecordMonitorEx().launchTimeStatistics;
+        if (sourceRecord != null) {
+            final IActivityLaunchTimeStatistics sourceLaunchTimeStatistics =
+                    sourceRecord.getActivityRecordMonitorEx().launchTimeStatistics;
+            if (sourceLaunchTimeStatistics.getLaunchStartTime() != -1
+                    && sourceLaunchTimeStatistics.getLaunchType() != 0) {
+                mStartLaunchTimeStatistics.setLaunchStartTime(
+                        sourceLaunchTimeStatistics.getLaunchStartTime());
+                mStartLaunchTimeStatistics.setLaunchType(
+                        sourceLaunchTimeStatistics.getLaunchType());
+            }
+        }
+
         // PICO: the SystemExt app decides whether (and on which display) this start happens.
         if (android.pico.utils.Features.isPvr2DEnabled() && mController.getExt().interceptStart(
                 mRequest.caller, r, reusedActivity, sourceRecord, startFlags, false,
@@ -1629,6 +1680,15 @@ class ActivityStarter {
                 // state.
                 final ActivityRecord top = task.performClearTaskForReuseLocked(mStartActivity,
                         mLaunchFlags);
+                // Smartisan (factory): hot launch of the cleared-to activity.
+                if (top != null && mStartLaunchTimeStatistics.getLaunchStartTime() != -1) {
+                    mService.getSmtEx().mAMS.getSmtEx().addPendingLaunchRecord(top);
+                    final IActivityLaunchTimeStatistics topActivityLaunchTimeStatistics =
+                            top.getActivityRecordMonitorEx().launchTimeStatistics;
+                    topActivityLaunchTimeStatistics.setLaunchType(40);
+                    topActivityLaunchTimeStatistics.setLaunchStartTime(
+                            mStartLaunchTimeStatistics.getLaunchStartTime());
+                }
 
                 // The above code can remove {@code reusedActivity} from the task, leading to the
                 // the {@code ActivityRecord} removing its reference to the {@code TaskRecord}. The
@@ -1650,6 +1710,19 @@ class ActivityStarter {
 
             mRootActivityContainer.sendPowerHintForLaunchStartIfNeeded
                     (false /* forceSend */, reusedActivity);
+
+            // Smartisan (factory): the reused activity of the same package carries the launch.
+            final IActivityLaunchTimeStatistics reusedActivityLaunchTimeStatistics =
+                    reusedActivity.getActivityRecordMonitorEx().launchTimeStatistics;
+            if (mStartLaunchTimeStatistics.getLaunchStartTime() != -1
+                    && TextUtils.equals(reusedActivity.packageName, r.packageName)
+                    && reusedActivityLaunchTimeStatistics.getLaunchStartTime() == -1) {
+                mService.getSmtEx().mAMS.getSmtEx().addPendingLaunchRecord(reusedActivity);
+                reusedActivityLaunchTimeStatistics.setLaunchStartTime(
+                        mStartLaunchTimeStatistics.getLaunchStartTime());
+                reusedActivityLaunchTimeStatistics.setLaunchType(
+                        mStartLaunchTimeStatistics.getLaunchType());
+            }
 
             reusedActivity = setTargetStackAndMoveToFrontIfNeeded(reusedActivity);
 
@@ -1958,7 +2031,8 @@ class ActivityStarter {
                     }
                 }
             } else if (mOptions.getAvoidMoveToFront()) {
-                mDoResume = false;
+                // Smartisan (factory): a prefetched activity is still resumed.
+                mDoResume = r.info.applicationInfo.getSmtEx().isPrefetch;
                 mAvoidMoveToFront = true;
             }
         }
@@ -2176,6 +2250,23 @@ class ActivityStarter {
             intentActivity = null;
         }
 
+        // Smartisan (factory): the reused activity takes the prefetch / keep-alive-for-VR state of
+        // the started one.
+        if (mStartActivity != null && intentActivity != null) {
+            if (intentActivity.info.applicationInfo.getSmtEx().isPrefetch) {
+                SysMonitorSvcBridge.getFactory().getSysPerfMonitorService()
+                        .updateActivityLaunchTime(intentActivity.info.applicationInfo.getSmtUid(),
+                                intentActivity.info.packageName, intentActivity.shortComponentName,
+                                0L, 41, 0L, 0L);
+            }
+            intentActivity.info.applicationInfo.getSmtEx().isPrefetch =
+                    mStartActivity.info.applicationInfo.getSmtEx().isPrefetch;
+        }
+        if (mStartActivity != null && intentActivity != null) {
+            intentActivity.info.applicationInfo.getSmtEx().keepAliveForVr =
+                    mStartActivity.info.applicationInfo.getSmtEx().keepAliveForVr;
+        }
+
         return intentActivity;
     }
 
@@ -2187,6 +2278,14 @@ class ActivityStarter {
      */
     private ActivityRecord setTargetStackAndMoveToFrontIfNeeded(ActivityRecord intentActivity) {
         mTargetStack = intentActivity.getActivityStack();
+        // Smartisan (factory): a prefetched activity marks its stack; a real start of a
+        // prefetched stack moves its tasks to the fullscreen stack.
+        if (intentActivity.info.applicationInfo.getSmtEx().isPrefetch) {
+            mTargetStack.getActivityStackSmtBase().isPrefetch = true;
+        } else if (mTargetStack.getActivityStackSmtBase().isPrefetch) {
+            mService.moveTasksToFullscreenStack(mTargetStack.mStackId, true);
+            mTargetStack.getActivityStackSmtBase().isPrefetch = false;
+        }
         mTargetStack.mLastPausedActivity = null;
         // If the target task is not in the front, then we need to bring it to the front...
         // except...  well, with SINGLE_TASK_LAUNCH it's not entirely clear. We'd like to have
@@ -2205,7 +2304,9 @@ class ActivityStarter {
             differentTopTask = true;
         }
 
-        if (differentTopTask && !mAvoidMoveToFront) {
+        // Smartisan (factory): a prefetched stack is not brought to front.
+        if (differentTopTask && !mAvoidMoveToFront
+                && !mTargetStack.getActivityStackSmtBase().isPrefetch) {
             mStartActivity.intent.addFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT);
             if (mSourceRecord == null || (mSourceStack.getTopActivity() != null &&
                     mSourceStack.getTopActivity().getTaskRecord()
@@ -2283,15 +2384,21 @@ class ActivityStarter {
         }
         // Need to update mTargetStack because if task was moved out of it, the original stack may
         // be destroyed.
+        // Smartisan (factory): the prefetch mark follows the task to its stack.
+        final boolean isPrefetch = mTargetStack.getActivityStackSmtBase().isPrefetch;
         mTargetStack = intentActivity.getActivityStack();
+        mTargetStack.getActivityStackSmtBase().isPrefetch = isPrefetch;
         if (!mMovedToFront && mDoResume) {
             if (DEBUG_TASKS) Slog.d(TAG_TASKS, "Bring to front target: " + mTargetStack
                     + " from " + intentActivity);
             mTargetStack.moveToFront("intentActivityFound");
         }
 
-        mSupervisor.handleNonResizableTaskIfNeeded(intentActivity.getTaskRecord(),
-                WINDOWING_MODE_UNDEFINED, DEFAULT_DISPLAY, mTargetStack);
+        // Smartisan (factory): not for a prefetched activity.
+        if (!intentActivity.info.applicationInfo.getSmtEx().isPrefetch) {
+            mSupervisor.handleNonResizableTaskIfNeeded(intentActivity.getTaskRecord(),
+                    WINDOWING_MODE_UNDEFINED, DEFAULT_DISPLAY, mTargetStack);
+        }
 
         // If the caller has requested that the target task be reset, then do so.
         if ((mLaunchFlags & FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) != 0) {
@@ -2394,6 +2501,14 @@ class ActivityStarter {
         }
 
         mTargetStack = computeStackFocus(mStartActivity, true, mLaunchFlags, mOptions);
+        // Smartisan (factory): a prefetched activity marks its stack; a real start of a
+        // prefetched stack moves its tasks to the fullscreen stack.
+        if (mStartActivity.info.applicationInfo.getSmtEx().isPrefetch) {
+            mTargetStack.getActivityStackSmtBase().isPrefetch = true;
+        } else if (mTargetStack.getActivityStackSmtBase().isPrefetch) {
+            mService.moveTasksToFullscreenStack(mTargetStack.mStackId, true);
+            mTargetStack.getActivityStackSmtBase().isPrefetch = false;
+        }
 
         // Do no move the target stack to front yet, as we might bail if
         // isLockTaskModeViolation fails below.
