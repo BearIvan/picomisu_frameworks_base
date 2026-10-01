@@ -1886,7 +1886,9 @@ public final class OomAdjuster {
                         // do nothing if we already switched to RT
                         if (oldSchedGroup != ProcessList.SCHED_GROUP_TOP_APP) {
                             app.getWindowProcessController().onTopProcChanged();
-                            if (mService.mUseFifoUiScheduling) {
+                            // PICO OS 5.13.7: no SCHED_FIFO for VR engine apps
+                            if (mService.mUseFifoUiScheduling && (!app.info.getSmtEx().isVrApp
+                                    || app.info.getSmtEx().vrAppEngine == 0)) {
                                 // Switch UI pipeline for app to SCHED_FIFO
                                 app.savedPriority = Process.getThreadPriority(app.pid);
                                 mService.scheduleAsFifoPriority(app.pid, /* suppressLogs */true);
@@ -1914,11 +1916,18 @@ public final class OomAdjuster {
                                     }
                                 }
                             }
+                            // PICO OS 5.13.7 (Smartisan UI first)
+                            Process.setUIFirstSched(app.pid, 4);
+                            if (app.renderThreadTid != 0) {
+                                Process.setUIFirstSched(app.renderThreadTid, 4);
+                            }
                         }
                     } else if (oldSchedGroup == ProcessList.SCHED_GROUP_TOP_APP &&
                             curSchedGroup != ProcessList.SCHED_GROUP_TOP_APP) {
                         app.getWindowProcessController().onTopProcChanged();
-                        if (mService.mUseFifoUiScheduling) {
+                        // PICO OS 5.13.7: no SCHED_FIFO for VR engine apps
+                        if (mService.mUseFifoUiScheduling && (!app.info.getSmtEx().isVrApp
+                                || app.info.getSmtEx().vrAppEngine == 0)) {
                             try {
                                 // Reset UI pipeline to SCHED_OTHER
                                 setThreadScheduler(app.pid, SCHED_OTHER, 0);
@@ -1941,6 +1950,11 @@ public final class OomAdjuster {
 
                         if (app.renderThreadTid != 0) {
                             setThreadPriority(app.renderThreadTid, THREAD_PRIORITY_DISPLAY);
+                        }
+                        // PICO OS 5.13.7 (Smartisan UI first)
+                        Process.setUIFirstSched(app.pid, -1);
+                        if (app.renderThreadTid != 0) {
+                            Process.setUIFirstSched(app.renderThreadTid, -1);
                         }
                     }
                 } catch (Exception e) {

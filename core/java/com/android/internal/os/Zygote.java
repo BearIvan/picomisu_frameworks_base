@@ -533,6 +533,18 @@ public final class Zygote {
 
                     // TODO (chriswailes): Should this only be run for debug builds?
                     validateUsapCommand(args);
+
+                    // PICO OS 5.13.7 (Smartisan UI first): a USAP specialized for the top app
+                    // joins the top-app group right away.
+                    if (args.mTopApp) {
+                        Trace.setTracingEnabled(true, args.mRuntimeFlags);
+                        Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "setUIFirstSched");
+                        Process.setProcessGroup(pid, Process.THREAD_GROUP_TOP_APP);
+                        if (args.mUiFirst) {
+                            Process.setUIFirstSched(pid, 4);
+                        }
+                        Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    }
                     break;
                 } else {
                     Log.e("USAP", "Truncated command received.");

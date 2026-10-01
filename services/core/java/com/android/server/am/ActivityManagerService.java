@@ -8477,12 +8477,16 @@ public class ActivityManagerService extends IActivityManager.Stub
                     // promote to FIFO now
                     if (proc.getCurrentSchedulingGroup() == ProcessList.SCHED_GROUP_TOP_APP) {
                         if (DEBUG_OOM_ADJ) Slog.d("UI_FIFO", "Promoting " + tid + "out of band");
-                        if (mUseFifoUiScheduling) {
+                        // PICO OS 5.13.7: no SCHED_FIFO for VR engine apps
+                        if (mUseFifoUiScheduling && (!proc.info.getSmtEx().isVrApp
+                                || proc.info.getSmtEx().vrAppEngine == 0)) {
                             setThreadScheduler(proc.renderThreadTid,
                                 SCHED_FIFO | SCHED_RESET_ON_FORK, 1);
                         } else {
                             setThreadPriority(proc.renderThreadTid, TOP_APP_PRIORITY_BOOST);
                         }
+                        // PICO OS 5.13.7 (Smartisan UI first)
+                        Process.setUIFirstSched(proc.renderThreadTid, 4);
                     }
                 } else {
                     if (DEBUG_OOM_ADJ) {

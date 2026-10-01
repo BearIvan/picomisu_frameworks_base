@@ -107,6 +107,14 @@ class ZygoteArguments {
     boolean mUsapPoolStatusSpecified = false;
 
     /**
+     * PICO OS 5.13.7 (Smartisan UI first): from the --topapp= / --uifirst= extra arguments that
+     * ProcessList appends after the class name. As on the factory, only the first of the two is
+     * parsed.
+     */
+    boolean mTopApp = false;
+    boolean mUiFirst = false;
+
+    /**
      * from all --rlimit=r,c,m
      */
     ArrayList<int[]> mRLimits;
@@ -410,6 +418,21 @@ class ZygoteArguments {
                 mUsapPoolEnabled = Boolean.parseBoolean(arg.substring(arg.indexOf('=') + 1));
                 expectRuntimeArgs = false;
             } else {
+                // PICO OS 5.13.7: look for the UI first arguments after the class name.
+                if (curArg + 1 < args.length - 1) {
+                    for (int i = curArg + 1; i < args.length; i++) {
+                        String remainArg = args[i];
+                        if (remainArg.startsWith("--topapp=")) {
+                            mTopApp = Boolean.parseBoolean(
+                                    remainArg.substring(remainArg.indexOf('=') + 1));
+                            break;
+                        } else if (remainArg.startsWith("--uifirst=")) {
+                            mUiFirst = Boolean.parseBoolean(
+                                    remainArg.substring(remainArg.indexOf('=') + 1));
+                            break;
+                        }
+                    }
+                }
                 break;
             }
         }

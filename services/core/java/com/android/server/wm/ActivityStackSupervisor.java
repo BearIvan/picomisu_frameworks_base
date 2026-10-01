@@ -152,6 +152,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import java.util.Arrays;
+
+import smartisanos.util.FeatLog;
 import android.os.AsyncTask;
 
 // TODO: This class has become a dumping ground. Let's
@@ -198,6 +200,9 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
     static final int REPORT_PIP_MODE_CHANGED_MSG = FIRST_SUPERVISOR_STACK_MSG + 15;
     static final int REPORT_HOME_CHANGED_MSG = FIRST_SUPERVISOR_STACK_MSG + 16;
     static final int TOP_RESUMED_STATE_LOSS_TIMEOUT_MSG = FIRST_SUPERVISOR_STACK_MSG + 17;
+    // PICO OS 5.13.7 (Smartisan UI first): clears the UI first level of thread arg1. The factory
+    // handles it but never sends it.
+    static final int END_UI_FIRST_WHEN_LAUNCH_APP = FIRST_SUPERVISOR_STACK_MSG + 18;
 
     // Used to indicate that windows of activities should be preserved during the resize.
     static final boolean PRESERVE_WINDOWS = true;
@@ -751,6 +756,19 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
                     "realStartActivityLocked: Skipping start of r=" + r
                     + " some activities pausing...");
             return false;
+        }
+
+        // PICO OS 5.13.7 (Smartisan UI first): UI first level 4 for the launching process.
+        if (mService.getSmtEx().uiFirstSwitch) {
+            try {
+                Process.setUIFirstSched(proc.getPid(), 4);
+                if (Process.UI_FIRST_LOG_CONTROL) {
+                    FeatLog.d(TAG, "FEAT_UI_FIRST_WHEN_LAUNCH_APP", 0,
+                            "AMSOE UI first enabled tid = " + proc.getPid() + " pkname = "
+                            + proc.mInfo.packageName);
+                }
+            } catch (Exception e) {
+            }
         }
 
         final TaskRecord task = r.getTaskRecord();
@@ -2791,6 +2809,20 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
                         }
                     }
                     handleTopResumedStateReleased(true /* timeout */);
+                } break;
+                case END_UI_FIRST_WHEN_LAUNCH_APP: {
+                    // PICO OS 5.13.7 (Smartisan UI first)
+                    if (mService.getSmtEx().uiFirstSwitch) {
+                        final int tid = msg.arg1;
+                        try {
+                            Process.setUIFirstSched(tid, -1);
+                            if (Process.UI_FIRST_LOG_CONTROL) {
+                                FeatLog.d(TAG, "FEAT_UI_FIRST_WHEN_LAUNCH_APP", 0,
+                                        "AMSOE UI first disabled tid=" + tid);
+                            }
+                        } catch (Exception e) {
+                        }
+                    }
                 } break;
             }
         }

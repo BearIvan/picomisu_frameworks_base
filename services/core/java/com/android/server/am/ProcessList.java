@@ -1676,9 +1676,12 @@ public final class ProcessList {
                     "Posting procStart msg for " + app.toShortString());
             mService.mProcStartHandler.post(() -> {
                 try {
+                    // PICO OS 5.13.7 (Smartisan UI first)
+                    final boolean isActivity = "activity".equals(app.hostingRecord.getType());
                     final Process.ProcessStartResult startResult = startProcess(app.hostingRecord,
                             entryPoint, app, app.startUid, gids, runtimeFlags, mountExternal,
-                            app.seInfo, requiredAbi, instructionSet, invokeWith, app.startTime);
+                            app.seInfo, requiredAbi, instructionSet, invokeWith, app.startTime,
+                            isActivity, isActivity);
                     synchronized (mService) {
                         handleProcessStartedLocked(app, startResult, startSeq);
                     }
@@ -1697,10 +1700,12 @@ public final class ProcessList {
             return true;
         } else {
             try {
+                // PICO OS 5.13.7 (Smartisan UI first)
+                final boolean isActivity = "activity".equals(app.hostingRecord.getType());
                 final Process.ProcessStartResult startResult = startProcess(hostingRecord,
                         entryPoint, app,
                         uid, gids, runtimeFlags, mountExternal, seInfo, requiredAbi, instructionSet,
-                        invokeWith, startTime);
+                        invokeWith, startTime, isActivity, isActivity);
                 handleProcessStartedLocked(app, startResult.pid, startResult.usingWrapper,
                         startSeq, false);
             } catch (RuntimeException e) {
@@ -1809,7 +1814,7 @@ public final class ProcessList {
     private Process.ProcessStartResult startProcess(HostingRecord hostingRecord, String entryPoint,
             ProcessRecord app, int uid, int[] gids, int runtimeFlags, int mountExternal,
             String seInfo, String requiredAbi, String instructionSet, String invokeWith,
-            long startTime) {
+            long startTime, boolean topApp, boolean uiFirst) {
         try {
             Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "Start proc: " +
                     app.processName);
@@ -1835,7 +1840,10 @@ public final class ProcessList {
                         app.processName, uid, uid, gids, runtimeFlags, mountExternal,
                         app.info.targetSdkVersion, seInfo, requiredAbi, instructionSet,
                         app.info.dataDir, invokeWith, app.info.packageName,
-                        new String[] {PROC_START_SEQ_IDENT + app.startSeq});
+                        // PICO OS 5.13.7: UI first arguments for the (USAP) zygote
+                        new String[] {"--topapp=" + String.valueOf(topApp),
+                                "--uifirst=" + String.valueOf(uiFirst),
+                                PROC_START_SEQ_IDENT + app.startSeq});
             }
             if (mPerfServiceStartHint != null) {
                 if ((hostingRecord.getType() != null) && (hostingRecord.getType().equals("activity"))) {
