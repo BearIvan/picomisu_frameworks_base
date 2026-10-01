@@ -111,6 +111,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * Manages attached displays.
@@ -397,6 +398,11 @@ public final class DisplayManagerService extends SystemService {
                     }
                 }
             }
+        } else if (phase == PHASE_THIRD_PARTY_APPS_CAN_START) {
+            // PICO (factory PICO OS 5.13.7): check once whether the OpenXR runtime screen
+            // capture service can take the capture virtual displays.
+            Consumer<CaptureSurfaceAgent> check = CaptureSurfaceAgent::checkCapture;
+            check.accept(new CaptureSurfaceAgent(mContext));
         }
     }
 
@@ -1644,6 +1650,16 @@ public final class DisplayManagerService extends SystemService {
                 return displayDevice.getDisplayDeviceInfoLocked();
             }
             return null;
+        }
+    }
+
+    @VisibleForTesting
+    Surface getVirtualDisplaySurfaceInternal(IBinder appToken) {
+        synchronized (mSyncRoot) {
+            if (mVirtualDisplayAdapter == null) {
+                return null;
+            }
+            return mVirtualDisplayAdapter.getVirtualDisplaySurfaceLocked(appToken);
         }
     }
 

@@ -69,6 +69,8 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             new ArrayMap<IBinder, VirtualDisplayDevice>();
     private final Handler mHandler;
     private final SurfaceControlDisplayFactory mSurfaceControlDisplayFactory;
+    // PICO: declared by the factory PICO OS 5.13.7 adapter (unused; the agents are per device).
+    private CaptureSurfaceAgent mAgent;
     /** PICO extension (factory IExtVirtualDisplayAdapter): the PICO display flags. */
     private final IExtVirtualDisplayAdapter mExt;
 
@@ -95,7 +97,16 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
         String name = virtualDisplayConfig.getName();
         boolean secure = (flags & VIRTUAL_DISPLAY_FLAG_SECURE) != 0;
         IBinder appToken = callback.asBinder();
-        IBinder displayToken = mSurfaceControlDisplayFactory.createDisplay(name, secure);
+        // PICO: a capture display (CaptureDisplayUtils) is not created in SurfaceFlinger; its
+        // surface goes to the OpenXR runtime through a CaptureSurfaceAgent.
+        int captureType = CaptureDisplayUtils.getCaptureType(name, flags,
+                CaptureDisplayUtils.ADAPTER_TYPE_VIRTUAL);
+        IBinder displayToken;
+        if (captureType != CaptureDisplayUtils.CAPTURE_TYPE_INVALIDATE) {
+            displayToken = CaptureDisplayUtils.generateCaptureDisplayToken();
+        } else {
+            displayToken = mSurfaceControlDisplayFactory.createDisplay(name, secure);
+        }
         final String baseUniqueId =
                 UNIQUE_ID_PREFIX + ownerPackageName + "," + ownerUid + "," + name + ",";
         final int uniqueIndex = getNextUniqueIndex(baseUniqueId);
@@ -111,7 +122,7 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
         }
         VirtualDisplayDevice device = new VirtualDisplayDevice(displayToken, appToken,
                 ownerUid, ownerPackageName, surface, flags, new Callback(callback, mHandler),
-                uniqueId, uniqueIndex, virtualDisplayConfig);
+                uniqueId, uniqueIndex, virtualDisplayConfig, getContext(), captureType);
 
         mVirtualDisplayDevices.put(appToken, device);
 
@@ -139,6 +150,15 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
         }
     }
 
+
+    @VisibleForTesting
+    Surface getVirtualDisplaySurfaceLocked(IBinder appToken) {
+        VirtualDisplayDevice device = mVirtualDisplayDevices.get(appToken);
+        if (device != null) {
+            return device.getSurfaceLocked();
+        }
+        return null;
+    }
 
     public void setVirtualDisplaySurfaceLocked(IBinder appToken, Surface surface) {
         VirtualDisplayDevice device = mVirtualDisplayDevices.get(appToken);
@@ -227,11 +247,13 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
         private Display.Mode mMode;
         private boolean mIsDisplayOn;
         private int mDisplayIdToMirror;
+        // PICO: capture agent of a capture display (null for SurfaceFlinger displays).
+        private CaptureSurfaceAgent mAgent;
 
         public VirtualDisplayDevice(IBinder displayToken, IBinder appToken,
                 int ownerUid, String ownerPackageName, Surface surface, int flags,
                 Callback callback, String uniqueId, int uniqueIndex,
-                VirtualDisplayConfig virtualDisplayConfig) {
+                VirtualDisplayConfig virtualDisplayConfig, Context context, int captureType) {
             super(VirtualDisplayAdapter.this, displayToken, uniqueId);
             mAppToken = appToken;
             mOwnerUid = ownerUid;
@@ -249,6 +271,11 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             mUniqueIndex = uniqueIndex;
             mIsDisplayOn = surface != null;
             mDisplayIdToMirror = virtualDisplayConfig.getDisplayIdToMirror();
+            if (captureType != CaptureDisplayUtils.CAPTURE_TYPE_INVALIDATE) {
+                mAgent = new CaptureSurfaceAgent(context, surface, captureType,
+                        virtualDisplayConfig.getWidth(), virtualDisplayConfig.getHeight());
+                mAgent.startCapture();
+            }
         }
 
         @Override
@@ -258,7 +285,9 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
                 Slog.i(TAG, "Virtual display device released because application token died: "
                     + mOwnerPackageName);
                 destroyLocked(false);
-                sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_REMOVED);
+                if (mAgent == null) {
+                    sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_REMOVED);
+                }
             }
         }
 
@@ -267,7 +296,12 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
                 mSurface.release();
                 mSurface = null;
             }
-            SurfaceControl.destroyDisplay(getDisplayTokenLocked());
+            if (mAgent == null) {
+                SurfaceControl.destroyDisplay(getDisplayTokenLocked());
+            } else {
+                mAgent.stopCapture();
+                mAgent = null;
+            }
             if (binderAlive) {
                 mCallback.dispatchDisplayStopped();
             }
@@ -276,6 +310,11 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
         @Override
         public int getDisplayIdToMirrorLocked() {
             return mDisplayIdToMirror;
+        }
+
+        @VisibleForTesting
+        Surface getSurfaceLocked() {
+            return mSurface;
         }
 
         @Override
@@ -298,10 +337,10 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
 
         @Override
         public void performTraversalLocked(SurfaceControl.Transaction t) {
-            if ((mPendingChanges & PENDING_RESIZE) != 0) {
+            if ((mPendingChanges & PENDING_RESIZE) != 0 && mAgent == null) {
                 t.setDisplaySize(getDisplayTokenLocked(), mWidth, mHeight);
             }
-            if ((mPendingChanges & PENDING_SURFACE_CHANGE) != 0) {
+            if ((mPendingChanges & PENDING_SURFACE_CHANGE) != 0 && mAgent == null) {
                 setSurfaceLocked(t, mSurface);
             }
             mPendingChanges = 0;
@@ -309,10 +348,16 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
 
         public void setSurfaceLocked(Surface surface) {
             if (!mStopped && mSurface != surface) {
-                if ((mSurface != null) != (surface != null)) {
+                if ((mSurface != null) != (surface != null) && mAgent == null) {
                     sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_CHANGED);
                 }
-                sendTraversalRequestLocked();
+                if (mAgent == null) {
+                    sendTraversalRequestLocked();
+                }
+                // PICO (factory PICO OS 5.13.7): the replaced surface is released.
+                if (mSurface != null) {
+                    mSurface.release();
+                }
                 mSurface = surface;
                 mInfo = null;
                 mPendingChanges |= PENDING_SURFACE_CHANGE;
@@ -321,8 +366,10 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
 
         public void resizeLocked(int width, int height, int densityDpi) {
             if (mWidth != width || mHeight != height || mDensityDpi != densityDpi) {
-                sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_CHANGED);
-                sendTraversalRequestLocked();
+                if (mAgent == null) {
+                    sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_CHANGED);
+                    sendTraversalRequestLocked();
+                }
                 mWidth = width;
                 mHeight = height;
                 mMode = createMode(width, height, REFRESH_RATE);
@@ -336,7 +383,9 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             if (mIsDisplayOn != isOn) {
                 mIsDisplayOn = isOn;
                 mInfo = null;
-                sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_CHANGED);
+                if (mAgent == null) {
+                    sendDisplayDeviceEventLocked(this, DISPLAY_DEVICE_EVENT_CHANGED);
+                }
             }
         }
 
