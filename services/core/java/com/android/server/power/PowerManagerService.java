@@ -467,6 +467,10 @@ public final class PowerManagerService extends SystemService
     // True if the proximity sensor reads a positive result.
     private boolean mProximityPositive;
 
+    // Smartisan (factory): the display is really on (DISPLAY_STATE_ON), read by the sys-services
+    // WakelockPowerPolicy.
+    protected boolean mActualScreenOn;
+
     // Screen brightness setting limits.
     private int mScreenBrightnessSettingMinimum;
     private int mScreenBrightnessSettingMaximum;
@@ -2669,6 +2673,7 @@ public final class PowerManagerService extends SystemService
             synchronized (mLock) {
                 if (mDisplayState != state) {
                     mDisplayState = state;
+                    mActualScreenOn = state == Display.STATE_ON;
                     if (state == Display.STATE_OFF) {
                         if (!mDecoupleHalInteractiveModeFromDisplayConfig) {
                             setHalInteractiveModeLocked(false);
@@ -4337,6 +4342,9 @@ public final class PowerManagerService extends SystemService
         int mNumWakeLocks;
         int mProcState;
         boolean mActive;
+        // Smartisan (factory): set by the sys-services PowerManagerServiceOptEx freezer hooks.
+        boolean mFrozen;
+        boolean mVisible;
 
         UidState(int uid) {
             mUid = uid;

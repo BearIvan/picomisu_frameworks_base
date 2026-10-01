@@ -1986,6 +1986,39 @@ public class LocationManagerService extends ILocationManager.Stub {
         }
     }
 
+    /**
+     * Smartisan (factory): sticky broadcast of the packages with location listeners, sent by the
+     * sys-services LocationManagerServiceOptEx.
+     */
+    protected void broadcastUpdatesChanged() {
+        synchronized (mLock) {
+            try {
+                ArrayList<String> packagess = new ArrayList<>();
+                ArrayList<String> packagessSecond = new ArrayList<>();
+                for (Receiver r : mReceivers.values()) {
+                    if (reportLocationAccessNoThrow(r.mCallerIdentity.mPid,
+                            r.mCallerIdentity.mUid, r.mCallerIdentity.mPackageName,
+                            r.mAllowedResolutionLevel)) {
+                        int userId = UserHandle.getUserId(r.mCallerIdentity.mUid);
+                        if (userId > 0) {
+                            packagessSecond.add(r.mCallerIdentity.mPackageName + "@" + userId);
+                        } else {
+                            packagess.add(r.mCallerIdentity.mPackageName);
+                        }
+                    }
+                }
+                Intent broadcastIntent = new Intent("smartisan.intent.action.LOCATION_LISTENER_LIST");
+                broadcastIntent.putStringArrayListExtra("packages", packagess);
+                if (!packagessSecond.isEmpty()) {
+                    broadcastIntent.putStringArrayListExtra("packages_second", packagessSecond);
+                }
+                mContext.sendStickyBroadcast(broadcastIntent);
+            } catch (Exception e) {
+                Slog.e(TAG, "failed to broadcast location listener list due to:", e);
+            }
+        }
+    }
+
     private boolean reportLocationAccessNoThrow(
             int pid, int uid, String packageName, int allowedResolutionLevel) {
         int op = resolutionLevelToOp(allowedResolutionLevel);
