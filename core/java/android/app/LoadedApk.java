@@ -548,6 +548,19 @@ public final class LoadedApk {
                 }
             }
         }
+
+        if (aInfo.getSmtEx().mOverrideClassSDK == 1) {
+            Slog.i(TAG, "add sharememoryjar");
+            outZipPaths.add(0, "/system/framework/sys-sharememory.jar");
+        }
+        boolean isSystemApp = (aInfo.flags
+                & (ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
+        if (!isSystemApp && aInfo.getExt().isVrApp()
+                && !outZipPaths.contains("/system/framework/sys-verifytool.jar")
+                && aInfo.getSmtEx().vrAppSdkVersionCode == 0) {
+            outZipPaths.add(0, "/system/framework/sys-verifytool.jar");
+            Slog.i(TAG, "add verifyjar");
+        }
     }
 
     /**
