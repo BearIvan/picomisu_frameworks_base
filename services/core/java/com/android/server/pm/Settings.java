@@ -56,12 +56,17 @@ import android.os.Build;
 import android.os.Environment;
 import android.os.FileUtils;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Message;
+import android.os.Parcel;
 import android.os.PatternMatcher;
 import android.os.PersistableBundle;
 import android.os.Process;
+import android.os.RemoteException;
 import android.os.SELinux;
+import android.os.ServiceManager;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.storage.StorageManager;
@@ -5125,6 +5130,24 @@ public final class Settings {
         return mSmtEx;
     }
 
+    /** Reports a restored file to the stab service (android.stab.IBStabService). */
+    private void notifyStabdFileRestoreStat(String name, int val) {
+        try {
+            IBinder stabProxy = ServiceManager.getService("stabservice");
+            if (stabProxy != null) {
+                Parcel data = Parcel.obtain();
+                data.writeInterfaceToken("android.stab.IBStabService");
+                data.writeLong(System.currentTimeMillis());
+                data.writeLong(SystemClock.uptimeMillis());
+                data.writeString(name);
+                data.writeInt(val);
+                stabProxy.transact(11, data, null, IBinder.FLAG_ONEWAY);
+                data.recycle();
+            }
+        } catch (RemoteException e) {
+        }
+    }
+
     private final class RuntimePermissionPersistence {
         private static final long WRITE_PERMISSIONS_DELAY_MILLIS = 200;
         private static final long MAX_WRITE_PERMISSIONS_DELAY_MILLIS = 2000;
@@ -5354,6 +5377,12 @@ public final class Settings {
         public void readStateForUserSyncLPr(int userId) {
             File permissionsFile = getUserRuntimePermissionsFile(userId);
             if (!permissionsFile.exists()) {
+                // PICO: report a runtime-permission.xml restored after a parse failure
+                int prevVal = SystemProperties.getInt("debug.system.perm.crash", 0);
+                SystemProperties.set("debug.system.perm.crash", "0");
+                if (prevVal > 0) {
+                    notifyStabdFileRestoreStat("runtime-permission.xml", prevVal);
+                }
                 return;
             }
 
@@ -5369,8 +5398,37 @@ public final class Settings {
                 XmlPullParser parser = Xml.newPullParser();
                 parser.setInput(in, null);
                 parseRuntimePermissionsLPr(parser, userId);
+                int prevVal = SystemProperties.getInt("debug.system.perm.crash", 0);
+                if (prevVal == 1) {
+                    SystemProperties.set("debug.system.perm.crash", "0");
+                    notifyStabdFileRestoreStat("runtime-permission.xml", prevVal);
+                }
 
             } catch (XmlPullParserException | IOException e) {
+                if (e instanceof XmlPullParserException) {
+                    // PICO: restore runtime-permission.xml from /data/backup2 once, then give up
+                    int val = SystemProperties.getInt("debug.system.perm.crash", 0);
+                    Log.i(TAG, "parse runtime-permission.xml failure, debug.system.perm.crash"
+                            + " value is " + val);
+                    if (val == 0) {
+                        File srcFile = new File("/data/backup2/" + permissionsFile.getName());
+                        if (srcFile.exists()) {
+                            try {
+                                FileUtils.copy(srcFile, permissionsFile);
+                            } catch (IOException ioe) {
+                            }
+                            SystemProperties.set("debug.system.perm.crash", "1");
+                        } else {
+                            SystemProperties.set("debug.system.perm.crash", "2");
+                        }
+                    } else if (val == 1) {
+                        new AtomicFile(permissionsFile).delete();
+                        new AtomicFile(new File("/data/backup2/" + permissionsFile.getName()))
+                                .delete();
+                    } else {
+                        new AtomicFile(permissionsFile).delete();
+                    }
+                }
                 throw new IllegalStateException("Failed parsing permissions file: "
                         + permissionsFile , e);
             } finally {
