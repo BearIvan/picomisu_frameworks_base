@@ -90,6 +90,7 @@ import android.hardware.display.DisplayManager;
 import android.hardware.display.DisplayManagerInternal;
 import android.hardware.power.V1_0.PowerHint;
 import android.os.FactoryTest;
+import android.os.Debug;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -1492,6 +1493,8 @@ public class RootActivityContainer extends ConfigurationContainer
 
     /** Change the z-order of the given display. */
     private void positionChildAt(ActivityDisplay display, int position) {
+        Slog.w(TAG, "SourceDebug positionChildAt activityDisplay=" + display.mDisplayId + " pos="
+                + position + " callers=" + Debug.getCallers(10));
         if (position >= mActivityDisplays.size()) {
             position = mActivityDisplays.size() - 1;
         } else if (position < 0) {

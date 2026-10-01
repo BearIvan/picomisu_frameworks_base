@@ -1114,6 +1114,8 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
 
     @Override
     void positionChildAt(int position, DisplayContent child, boolean includingParents) {
+        Slog.w(TAG_WM, "SourceDebug positionChildAt display=" + child.getDisplayId() + " pos="
+                + position + " callers=" + Debug.getCallers(10));
         // PICO (factory): the VR loading display stays at the bottom of the display order.
         position = mExt.redirectPositionWhenPositionChildAt(position, child);
         super.positionChildAt(position, child, includingParents);
