@@ -1301,7 +1301,7 @@ void AndroidRuntime::onVmCreated(JNIEnv* env)
  * The JNIEnv pointer returned is only valid for the current thread, and
  * thus must be tucked into thread-local storage.
  */
-static int javaAttachThread(const char* threadName, JNIEnv** pEnv)
+/*static*/ int AndroidRuntime::javaAttachThread(const char* threadName, JNIEnv** pEnv)
 {
     JavaVMAttachArgs args;
     JavaVM* vm;
