@@ -84680,7 +84680,6 @@ Landroid/view/ViewRootImpl;->dispatchRequestKeyboardShortcuts(Lcom/android/inter
 Landroid/view/ViewRootImpl;->dispatchSystemUiVisibilityChanged(IIII)V
 Landroid/view/ViewRootImpl;->dispatchUnhandledKeyEvent(Landroid/view/KeyEvent;)Z
 Landroid/view/ViewRootImpl;->dispatchWindowShown()V
-Landroid/view/ViewRootImpl;->doConsumeBatchedInput(J)V
 Landroid/view/ViewRootImpl;->doDie()V
 Landroid/view/ViewRootImpl;->doProcessInputEvents()V
 Landroid/view/ViewRootImpl;->doTraversal()V
