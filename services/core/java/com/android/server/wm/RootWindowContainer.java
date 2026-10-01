@@ -158,10 +158,10 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
         mExt = new ExtRootWindowContainerImpl(this);
     }
 
-    /** PICO VR state of the root (factory ExtRootWindowContainerImpl). */
-    private final ExtRootWindowContainerImpl mExt;
+    /** PICO VR state of the root (factory IExtRootWindowContainer). */
+    private final IExtRootWindowContainer mExt;
 
-    ExtRootWindowContainerImpl getExt() {
+    public IExtRootWindowContainer getExt() {
         return mExt;
     }
 
@@ -176,17 +176,17 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
         mTopFocusedAppByProcess.clear();
         boolean changed = false;
         int topFocusedDisplayId = INVALID_DISPLAY;
-        final boolean picoVr = android.pico.utils.Features.isPvr2DEnabled();
         for (int i = mChildren.size() - 1; i >= 0; --i) {
             final DisplayContent dc = mChildren.get(i);
             // PICO (factory): 2D app displays with the unfocusable flag (1 << 16) never take
             // focus, and display 0 always keeps its own focused window (the VR scene) even when
             // a 2D panel display is the top focused display.
-            if (picoVr && dc.getDisplay().getExt().isNoFocusableDisplay()) {
+            if (dc.getDisplay().getExt().isNoFocusableDisplay()) {
                 continue;
             }
-            final int focusDisplayArg = picoVr && dc.isDefaultDisplay
-                    ? INVALID_DISPLAY : topFocusedDisplayId;
+            final int focusDisplayArg =
+                    dc.isDefaultDisplay && topFocusedDisplayId != INVALID_DISPLAY
+                            ? INVALID_DISPLAY : topFocusedDisplayId;
             changed |= dc.updateFocusedWindowLocked(mode, updateInputWindows, focusDisplayArg);
             final WindowState newFocus = dc.mCurrentFocus;
             if (newFocus != null) {
@@ -926,6 +926,11 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
                 // we want to show) but still allow opaque keyguard dialogs to be shown.
                 if (type == TYPE_DREAM || (attrs.privateFlags & PRIVATE_FLAG_KEYGUARD) != 0) {
                     mObscureApplicationContentOnSecondaryDisplays = true;
+                    // PICO (factory): dreams are disabled, so this should not happen.
+                    if (android.pico.utils.Features.disableDreamService()) {
+                        Slog.i(TAG, "Error set mObscureApplicationContentOnSecondaryDisplays"
+                                + " to true");
+                    }
                 }
                 displayHasContent = true;
             } else if (displayContent != null &&
@@ -1088,9 +1093,7 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
     @Override
     void positionChildAt(int position, DisplayContent child, boolean includingParents) {
         // PICO (factory): the VR loading display stays at the bottom of the display order.
-        if (android.pico.utils.Features.isPvr2DEnabled()) {
-            position = mExt.redirectPositionWhenPositionChildAt(position, child);
-        }
+        position = mExt.redirectPositionWhenPositionChildAt(position, child);
         super.positionChildAt(position, child, includingParents);
         if (mRootActivityContainer != null) {
             mRootActivityContainer.onChildPositionChanged(child.mAcitvityDisplay, position);

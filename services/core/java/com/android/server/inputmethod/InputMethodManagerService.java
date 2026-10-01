@@ -2308,7 +2308,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         }
         final WindowManagerService wms = getPicoWindowManagerService();
         if (wms != null) {
-            wms.notifyPicoImeVisibleChanged(true);
+            wms.getExt().notifyImeVisibleChanged(true);
         }
         com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(true);
         dispatchImeVisibleStatusToNS(
@@ -2319,7 +2319,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
     private void picoOnHideCurrentInput() {
         final WindowManagerService wms = getPicoWindowManagerService();
         if (wms != null) {
-            wms.notifyPicoImeVisibleChanged(false);
+            wms.getExt().notifyImeVisibleChanged(false);
         }
         com.android.server.api.ApiLayerService.getInstance().updateImeShowingState(false);
         dispatchImeVisibleStatusToNS(-1);
@@ -3234,7 +3234,7 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
         // PICO (factory ExtInputMethodManagerServiceImpl.updateCurrentFocusedWindow).
         final WindowManagerService picoWms = getPicoWindowManagerService();
         if (picoWms != null) {
-            picoWms.notifyPicoImeTargetChanged(mCurFocusedWindow);
+            picoWms.getExt().notifyImeTargetChanged(mCurFocusedWindow);
         }
 
         // Should we auto-show the IME even if the caller has not

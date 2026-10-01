@@ -1220,19 +1220,12 @@ public class WindowManagerService extends IWindowManager.Stub
     @Override
     public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
             throws RemoteException {
-        if (code == com.android.server.api.ApiLayerService.CODE_GET_API_LAYER) {
-            // PICO API layer (factory ExtWindowManagerServiceImpl): the PICO SDK reads an int
-            // flag and the IApiLayer binder without an exception header.
-            data.enforceInterface("android.view.IWindowManager");
-            final IBinder apiLayer = com.android.server.api.ApiLayerService.getInstance().getApiLayer();
-            reply.writeInt(apiLayer != null ? 1 : 0);
-            if (apiLayer != null) {
-                reply.writeStrongBinder(apiLayer);
-            }
-            return true;
-        }
         try {
-            return super.onTransact(code, data, reply, flags);
+            if (super.onTransact(code, data, reply, flags)) {
+                return true;
+            }
+            // PICO (factory): transactions IWindowManager does not know go to the extension.
+            return getExt().onTransact(code, data, reply, flags);
         } catch (RuntimeException e) {
             // The window manager only throws security exceptions, so let's
             // log all others.
@@ -1971,29 +1964,12 @@ public class WindowManagerService extends IWindowManager.Stub
                 outDisplayFrame.setEmpty();
                 return;
             }
-            outDisplayFrame.set(win.getDisplayFrameLw());
-            // PICO (factory ExtWindowManagerServiceImpl.adjustGetWindowDisplayFrame).
-            mRoot.getExt().adjustWindowDisplayFrame(win, outDisplayFrame);
+            // PICO (factory): the extension sets the display frame.
+            mExt.adjustGetWindowDisplayFrame(win, outDisplayFrame);
             if (win.inSizeCompatMode()) {
                 outDisplayFrame.scale(win.mInvGlobalScale);
             }
         }
-    }
-
-    /**
-     * PICO (factory ExtWindowManagerServiceImpl.notifyImeTargetChanged): InputMethodManagerService
-     * reports the window token of the current IME target.
-     */
-    public void notifyPicoImeTargetChanged(final IBinder target) {
-        mH.post(() -> mRoot.getExt().onImeTargetChanged(target));
-    }
-
-    /**
-     * PICO (factory ExtWindowManagerServiceImpl.notifyImeVisibleChanged): InputMethodManagerService
-     * reports that the IME was shown or hidden.
-     */
-    public void notifyPicoImeVisibleChanged(boolean visible) {
-        mRoot.getExt().onImeVisibleChanged(visible);
     }
 
     public void onRectangleOnScreenRequested(IBinder token, Rect rectangle) {
@@ -3578,6 +3554,11 @@ public class WindowManagerService extends IWindowManager.Stub
     }
 
     private void showStrictModeViolation(int arg, int pid) {
+        // PICO (factory): no red strict mode border in VR.
+        if (mExt.disableShowStrictModeViolation()) {
+            Log.v(TAG, "Do not draw red borader of strict mode");
+            return;
+        }
         final boolean on = arg != 0;
         synchronized (mGlobalLock) {
             // Ignoring requests to enable the red border from clients which aren't on screen.
@@ -4428,6 +4409,12 @@ public class WindowManagerService extends IWindowManager.Stub
 
     final InputManagerCallback mInputManagerCallback = new InputManagerCallback(this);
     private boolean mEventDispatchingEnabled;
+    /** PICO window manager extension (factory IExtWindowManagerService). */
+    private IExtWindowManagerService mExt = new ExtWindowManagerServiceImpl(this);
+
+    public IExtWindowManagerService getExt() {
+        return mExt;
+    }
 
     @Override
     public void setEventDispatching(boolean enabled) {
@@ -7675,6 +7662,10 @@ public class WindowManagerService extends IWindowManager.Stub
     }
 
     void updateNonSystemOverlayWindowsVisibilityIfNeeded(WindowState win, boolean surfaceShown) {
+        // PICO (factory): overlay windows of non-system apps are never hidden.
+        if (android.pico.utils.Features.isNsStartAppEnabled()) {
+            return;
+        }
         if (!win.hideNonSystemOverlayWindowsWhenVisible()
                 && !mHidingNonSystemOverlayWindows.contains(win)) {
             return;
@@ -7781,11 +7772,10 @@ public class WindowManagerService extends IWindowManager.Stub
         }
         // PICO (factory): injected motion events without a display (or for display 0) go to the
         // top focused display, which is the focused 2D panel's virtual display in VR.
-        if (android.pico.utils.Features.isPvr2DEnabled() && ev instanceof MotionEvent) {
+        if (ev instanceof MotionEvent) {
             final int evDisplayId = ev.getDisplayId();
-            final int topFocusedDisplayId = mRoot.getExt().getTopFocusedDisplayId();
-            if ((evDisplayId == DEFAULT_DISPLAY || evDisplayId == INVALID_DISPLAY)
-                    && topFocusedDisplayId != INVALID_DISPLAY) {
+            if (evDisplayId == DEFAULT_DISPLAY || evDisplayId == INVALID_DISPLAY) {
+                final int topFocusedDisplayId = mRoot.getExt().getTopFocusedDisplayId();
                 ev.setDisplayId(topFocusedDisplayId);
                 Slog.i(TAG, "inject MotionEvent : " + ev);
             }
