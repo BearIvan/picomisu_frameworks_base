@@ -3562,6 +3562,14 @@
   <java-symbol type="layout" name="shutdown_dialog" />
   <java-symbol type="dimen" name="chooser_service_spacing" />
   <java-symbol type="bool" name="config_showSysuiShutdown" />
+
+  <!-- PICO OS 5.13.7 -->
+  <java-symbol type="array" name="config_thermalTempThresholdOfLevel" />
+  <java-symbol type="array" name="config_thermalTempThresholdOfRefreshRate" />
+  <java-symbol type="string" name="eye_tracking_permission_name" />
+  <java-symbol type="string" name="eye_tracking_permission_describe" />
+  <java-symbol type="string" name="face_tracking_permission_name" />
+  <java-symbol type="string" name="face_tracking_permission_describe" />
   <java-symbol type="drawable" name="chooser_file_generic" />
 
   <java-symbol type="layout" name="notification_template_messaging_text_message" />

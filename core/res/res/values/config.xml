@@ -3839,6 +3839,15 @@
     <!-- Allow SystemUI to show the shutdown dialog -->
     <bool name="config_showSysuiShutdown">true</bool>
 
+    <!-- PICO OS 5.13.7: thermal temperature thresholds of the thermal level and of the display
+         refresh rate limit (framework-res arrays without a framework.jar user). -->
+    <integer-array name="config_thermalTempThresholdOfLevel" translatable="false">
+        <item>4</item>
+    </integer-array>
+    <integer-array name="config_thermalTempThresholdOfRefreshRate" translatable="false">
+        <item>60</item>
+    </integer-array>
+
     <!-- The stable device width and height in pixels. If these aren't set to a positive number
          then the device will use the width and height of the default display the first time it's
          booted.  -->

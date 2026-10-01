@@ -1165,6 +1165,10 @@
     <string name="face_tracking_permission_name">Face Tracking</string>
     <!-- PICO face-tracking permission description. -->
     <string name="face_tracking_permission_describe">Allow the app to get information about your facial expressions</string>
+    <!-- PICO OS 5.13.7: storage-full dialog title. -->
+    <string name="full_internal_storage_view_title">Storage Space Running Out</string>
+    <!-- PICO OS 5.13.7: storage-full dialog text. -->
+    <string name="full_internal_storage_view_text">Storage space running out. To keep system running, please delete some applications, pictures, or videos.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_vibrate">control vibration</string>
