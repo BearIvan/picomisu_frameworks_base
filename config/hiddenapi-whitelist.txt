@@ -3,6 +3,8 @@
 Landroid/Manifest$permission;->POWER_SCENE_CHANGE:Ljava/lang/String;
 Landroid/Manifest$permission;->lifecycle:Ljava/lang/String;
 Landroid/Manifest$permission;->startevent:Ljava/lang/String;
+Landroid/app/Notification$StandardTemplateParams;-><init>()V
+Landroid/app/Notification$StandardTemplateParams;->setMaxRemoteInputHistory(I)Landroid/app/Notification$StandardTemplateParams;
 Landroid/content/pm/ApplicationInfo;->appInfoJsonConfig:Ljava/lang/String;
 Landroid/content/pm/ApplicationInfo;->appLastTime:J
 Landroid/media/AudioAttributes$Builder;->setIsContentSpatialized(Z)Landroid/media/AudioAttributes$Builder;
@@ -127,6 +129,10 @@ Landroid/os/Looper;->mSlowDispatchThresholdMs:J
 Landroid/os/Process;->clearUIFirstSched()V
 Landroid/os/Process;->setUIFirstSched()V
 Landroid/os/Process;->setUIFirstSched(II)V
+Landroid/os/RemoteCallbackList;->mKilled:Z
+Landroid/view/SurfaceControl$Builder;->mFlags:I
+Landroid/view/SurfaceControl$Builder;->setFlags(II)Landroid/view/SurfaceControl$Builder;
+Landroid/view/SurfaceControl;->checkNotReleased()V
 Lcom/pvr/IPvrCallback$Default;-><init>()V
 Lcom/pvr/IPvrCallback$Default;->onEventChanged(Landroid/os/Bundle;)V
 Lcom/pvr/IPvrCallback$Stub$Proxy;->onEventChanged(Landroid/os/Bundle;)V
