@@ -2437,6 +2437,8 @@ public final class ActiveServices {
                 r.app.forceProcessStateUpTo(ActivityManager.PROCESS_STATE_SERVICE);
                 r.app.thread.scheduleBindService(r, i.intent.getIntent(), rebind,
                         r.app.getReportedProcState());
+                // Smartisan (factory): ANR monitor service tracking.
+                SysMonitorSvcBridge.getFactory().getAnrMonitor().notesServiceTrack(r, 1);
                 if (!rebind) {
                     i.requested = true;
                 }

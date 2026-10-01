@@ -11,8 +11,6 @@ import android.util.SparseArray;
 import com.android.internal.util.function.pooled.PooledLambda;
 import com.android.server.am.IApplicationFreezer;
 import java.util.List;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 /**
  * Reconstructed from the PICO OS 5.13.7 factory services.
@@ -218,21 +216,13 @@ public class WindowProcessControllerSmtBase extends ConfigurationContainerSmtBas
             }
         }
         addPendingEventLocked(this.realPid, event);
-        this.mAtm.mH.sendMessageAtFrontOfQueue(PooledLambda.obtainMessage(new BiConsumer() {
-            @Override
-            public final void accept(Object obj, Object obj2) {
-                ((WindowProcessListenerSmtBase) obj).unFreezeProcIfNeed((FrozenPendingEvent) obj2);
-            }
-        }, this.listener.getSmtEx(), event));
+        this.mAtm.mH.sendMessageAtFrontOfQueue(PooledLambda.obtainMessage(
+                WindowProcessListenerSmtBase::unFreezeProcIfNeed, this.listener.getSmtEx(), event));
     }
 
     void canclePrefetch() {
-        this.mAtm.mH.sendMessageAtFrontOfQueue(PooledLambda.obtainMessage(new Consumer() {
-            @Override
-            public final void accept(Object obj) {
-                ((WindowProcessListenerSmtBase) obj).canclePrefetch();
-            }
-        }, this.listener.getSmtEx()));
+        this.mAtm.mH.sendMessageAtFrontOfQueue(PooledLambda.obtainMessage(
+                WindowProcessListenerSmtBase::canclePrefetch, this.listener.getSmtEx()));
     }
 
     void setFreezingStat(int stat) {
@@ -309,12 +299,8 @@ public class WindowProcessControllerSmtBase extends ConfigurationContainerSmtBas
         if (this.listener == null) {
             return;
         }
-        this.mAtm.mH.sendMessage(PooledLambda.obtainMessage(new Consumer() {
-            @Override
-            public final void accept(Object obj) {
-                ((WindowProcessListenerSmtBase) obj).bringProcessToDefaultLocked();
-            }
-        }, this.listener.getSmtEx()));
+        this.mAtm.mH.sendMessage(PooledLambda.obtainMessage(
+                WindowProcessListenerSmtBase::bringProcessToDefaultLocked, this.listener.getSmtEx()));
     }
 
     public boolean isPreviousVrProcess() {
