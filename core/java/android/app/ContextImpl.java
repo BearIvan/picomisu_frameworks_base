@@ -2319,7 +2319,9 @@ class ContextImpl extends Context {
 
     @Override
     public int getDisplayId() {
-        return mDisplay != null ? mDisplay.getDisplayId() : Display.DEFAULT_DISPLAY;
+        // PICO (factory): go through getDisplay() so that the 2D app display redirection applies.
+        final Display display = getDisplay();
+        return display != null ? display.getDisplayId() : Display.DEFAULT_DISPLAY;
     }
 
     @Override
