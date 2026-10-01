@@ -104,9 +104,8 @@ public class ExtActivityStackImpl implements IExtActivityStack {
 
     @Override
     public void remove(ActivityStack currentStack) {
-        final RootActivityContainer root = mBase.mRootActivityContainer;
-        for (int i = root.mActivityDisplays.size() - 1; i >= 0; i--) {
-            final ActivityDisplay display = root.mActivityDisplays.get(i);
+        for (int i = mBase.mRootActivityContainer.mActivityDisplays.size() - 1; i >= 0; i--) {
+            final ActivityDisplay display = mBase.mRootActivityContainer.mActivityDisplays.get(i);
             for (int stackNdx = display.getChildCount() - 1; stackNdx >= 0; stackNdx--) {
                 final ActivityStack stack = display.getChildAt(stackNdx);
                 if (stack != currentStack
@@ -144,19 +143,16 @@ public class ExtActivityStackImpl implements IExtActivityStack {
                 callerStackId = sourceRecord.getStackId();
                 break;
             }
-            final ActivityStack sourceStack = sourceRecord.getActivityStack();
-            callerStackId = sourceStack != null
-                    ? sourceStack.getExt().getCallerStackId() : INVALID_STACK_ID;
+            callerStackId = sourceRecord.getActivityStack().getExt().getCallerStackId();
             sourceRecord = sourceRecord.getExt().getSourceRecord();
         }
         setCallerStackId(callerStackId, "setIntent");
     }
 
-    private ActivityRecord getResumedActivity(String packageName) {
-        final RootActivityContainer root = mBase.mRootActivityContainer;
-        for (int i = root.mActivityDisplays.size() - 1; i >= 0; i--) {
-            final ActivityRecord resumedActivity =
-                    root.mActivityDisplays.get(i).getResumedActivity();
+    ActivityRecord getResumedActivity(String packageName) {
+        for (int i = mBase.mRootActivityContainer.mActivityDisplays.size() - 1; i >= 0; i--) {
+            final ActivityDisplay display = mBase.mRootActivityContainer.mActivityDisplays.get(i);
+            final ActivityRecord resumedActivity = display.getResumedActivity();
             if (resumedActivity != null && resumedActivity.packageName.equals(packageName)) {
                 return resumedActivity;
             }
@@ -205,10 +201,10 @@ public class ExtActivityStackImpl implements IExtActivityStack {
 
     @Override
     public ActivityStack getNextFocusableStack(String reason, boolean ignoreCurrent) {
-        final ActivityDisplay display = mBase.getDisplay();
-        final ActivityStack next = display != null
-                ? display.getNextFocusableStackInner(mBase, ignoreCurrent) : null;
-        if (next != null && (!display.getExt().isVr2dDisplay() || next.getExt().allowUse(mBase))) {
+        final ActivityStack next = mBase.getDisplay().getNextFocusableStackInner(mBase,
+                ignoreCurrent);
+        if (next != null && (!mBase.getDisplay().getExt().isVr2dDisplay()
+                || next.getExt().allowUse(mBase))) {
             return next;
         }
         if ("clear-task-top finishActivity adjustFocus".equals(reason)
@@ -218,28 +214,28 @@ public class ExtActivityStackImpl implements IExtActivityStack {
         ActivityStack stack = mBase.mRootActivityContainer.getNextFocusableStack(mBase,
                 ignoreCurrent);
         if (stack == null) {
-            stack = getTopVisibleStack(display);
+            stack = getTopVisibleStack(mBase.getDisplay());
             if (ActivityTaskManagerDebugConfig.DEBUG_TASKS) {
                 Slog.i(TAG, "getTopVisibleStack: " + stack + ", current: " + mBase.getStackId());
             }
         }
         if ("moveTaskToBackLocked".equals(reason) || next != null) {
-            mBase.mService.getActivityStartController().getExt().onTaskMovedToBack(display);
+            mBase.mService.getActivityStartController().getExt().onTaskMovedToBack(
+                    mBase.getDisplay());
         }
         return stack;
     }
 
     /** Top visible stack of another display that has a resumed activity. */
     private ActivityStack getTopVisibleStack(ActivityDisplay currentDisplay) {
-        final RootActivityContainer root = mBase.mRootActivityContainer;
-        for (int i = root.getChildCount() - 1; i >= 0; i--) {
-            final ActivityDisplay display = root.getChildAt(i);
-            if (display == currentDisplay || display.getResumedActivity() == null) {
-                continue;
-            }
-            final ActivityStack topStack = display.getTopStack();
-            if (topStack != null && topStack.shouldBeVisible(null /* starting */)) {
-                return topStack;
+        for (int i = mBase.mRootActivityContainer.getChildCount() - 1; i >= 0; i--) {
+            final ActivityDisplay display = mBase.mRootActivityContainer.getChildAt(i);
+            if (display != mBase.getDisplay() && display.getResumedActivity() != null
+                    && currentDisplay != display) {
+                final ActivityStack topStack = display.getTopStack();
+                if (topStack != null && topStack.shouldBeVisible(null /* starting */)) {
+                    return topStack;
+                }
             }
         }
         return null;

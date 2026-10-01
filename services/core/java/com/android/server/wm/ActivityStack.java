@@ -948,7 +948,7 @@ public class ActivityStack extends ConfigurationContainer {
     void remove() {
         // PICO (factory ExtActivityStackImpl.remove): stacks launched from this one inherit its
         // caller stack.
-        mExt.remove(this);
+        getExt().remove(this);
         removeFromDisplay();
         if (mTaskStack != null) {
             mTaskStack.removeIfPossible();

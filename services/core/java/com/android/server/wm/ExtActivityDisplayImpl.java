@@ -91,7 +91,7 @@ public class ExtActivityDisplayImpl implements IExtActivityDisplay {
             return;
         }
         mDisplayState = displayState;
-        if (isScreenOn() && mBase.mDisplayContent != null) {
+        if (isScreenOn()) {
             mService.getActivityStartController().getExt().handleResizeVirtualDisplay(
                     mBase.mDisplayContent, mReqOrientation, true);
         }
@@ -114,17 +114,19 @@ public class ExtActivityDisplayImpl implements IExtActivityDisplay {
     }
 
     private void onTaskMovedToFront(ActivityManager.RunningTaskInfo taskInfo) {
-        final IExtActivityStartController controller =
-                mService.getActivityStartController().getExt();
         if (mBase.mDisplayId == 0) {
             Slog.i(TAG, "notifyDefaultDisplayTaskMoveToFront : " + taskInfo);
-            controller.onDefaultDisplayTopTaskChanged(taskInfo);
-            ApiLayerService.getInstance().updateTopAppOnDefaultDisplay(taskInfo);
+            mService.getActivityStartController().getExt().onDefaultDisplayTopTaskChanged(
+                    taskInfo);
         } else {
             Slog.i(TAG, "notifyVirtualDisplayTaskMoveToFront : " + taskInfo + ", display ID : "
                     + mBase.mDisplayId);
         }
-        controller.getSystemExt().notifyTaskMovedToFront(mBase.mDisplayId, taskInfo);
+        if (mBase.mDisplayId == 0) {
+            ApiLayerService.getInstance().updateTopAppOnDefaultDisplay(taskInfo);
+        }
+        mService.getActivityStartController().getExt().getSystemExt().notifyTaskMovedToFront(
+                mBase.mDisplayId, taskInfo);
     }
 
     private void onTaskRemoved(ActivityManager.RunningTaskInfo taskInfo) {
@@ -181,9 +183,14 @@ public class ExtActivityDisplayImpl implements IExtActivityDisplay {
     }
 
     private ActivityManager.RunningTaskInfo removeTaskInfo(int taskId) {
+        if (mAllTasks.isEmpty()) {
+            return null;
+        }
         for (int i = mAllTasks.size() - 1; i >= 0; i--) {
-            if (mAllTasks.get(i).taskId == taskId) {
-                return mAllTasks.remove(i);
+            final ActivityManager.RunningTaskInfo taskInfo = mAllTasks.get(i);
+            if (taskInfo.taskId == taskId) {
+                mAllTasks.remove(i);
+                return taskInfo;
             }
         }
         return null;
