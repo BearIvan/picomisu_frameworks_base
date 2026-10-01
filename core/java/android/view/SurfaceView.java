@@ -194,6 +194,8 @@ public class SurfaceView extends View implements ViewRootImpl.WindowStoppedCallb
     private SurfaceControl.Transaction mRtTransaction = new SurfaceControl.Transaction();
     private SurfaceControl.Transaction mTmpTransaction = new SurfaceControl.Transaction();
 
+    private final IExtSurfaceView mExt;
+
     public SurfaceView(Context context) {
         this(context, null);
     }
@@ -208,6 +210,7 @@ public class SurfaceView extends View implements ViewRootImpl.WindowStoppedCallb
 
     public SurfaceView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+        mExt = new ExtSurfaceViewImpl(this);
         mRenderNode.addPositionUpdateListener(mPositionListener);
 
         setWillNotDraw(true);
@@ -1330,6 +1333,10 @@ public class SurfaceView extends View implements ViewRootImpl.WindowStoppedCallb
 
         @Override
         public Surface getSurface() {
+            Surface surface = mExt.getSurface();
+            if (surface != null) {
+                return surface;
+            }
             return mSurface;
         }
 
