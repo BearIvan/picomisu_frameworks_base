@@ -3831,8 +3831,12 @@ public class DisplayPolicy {
             pw.print(prefix); pw.print("mNavigationBarPosition=");
             pw.println(mNavigationBarPosition);
         }
-        if (mFocusedWindow != null) {
-            pw.print(prefix); pw.print("mFocusedWindow="); pw.println(mFocusedWindow);
+        // Factory: only the top focused display reports its focused window.
+        if (mFocusedWindow != null
+                && mDisplayContent == mService.mRoot.getTopFocusedDisplayContent()) {
+            if (mFocusedWindow != null) {
+                pw.print(prefix); pw.print("mFocusedWindow="); pw.println(mFocusedWindow);
+            }
         }
         if (mFocusedApp != null) {
             pw.print(prefix); pw.print("mFocusedApp="); pw.println(mFocusedApp);

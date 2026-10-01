@@ -2894,7 +2894,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         pw.print(prefix);
         pw.print("mDeferredRotationPauseCount="); pw.println(mDeferredRotationPauseCount);
 
-        pw.print("  mCurrentFocus="); pw.println(mCurrentFocus);
+        // Factory: only the top focused display reports its focused window.
+        if (mCurrentFocus != null && this == mWmService.mRoot.getTopFocusedDisplayContent()) {
+            pw.print("  mCurrentFocus="); pw.println(mCurrentFocus);
+        } else {
+            pw.print("  mCurrentFocus=null");
+        }
         if (mLastFocus != mCurrentFocus) {
             pw.print("  mLastFocus="); pw.println(mLastFocus);
         }
