@@ -23,7 +23,7 @@
     <!-- see comment in values/config.xml -->
     <dimen name="config_prefDialogWidth">440dp</dimen>
 
-    <!-- see comment in values/config.xml -->
-    <integer name="config_longPressOnHomeBehavior">0</integer>
 
+    <!-- PICO OS 5.13.7: no SystemUI shutdown UI on large screens. -->
+    <bool name="config_showSysuiShutdown">false</bool>
 </resources>
