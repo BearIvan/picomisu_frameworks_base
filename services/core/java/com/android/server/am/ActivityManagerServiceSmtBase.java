@@ -2065,9 +2065,12 @@ public class ActivityManagerServiceSmtBase {
 
     public void forceStopPackageSmart(String packageName, int userId, int taskId, int cleanLevel) {
         long callingId = Binder.clearCallingIdentity();
+        // Factory: a non-constant local that is always false (const/4 v2, 0; if-eqz v2), so the
+        // deep clean below is dead code there too but stays in the bytecode.
+        boolean forceStop = false;
         try {
             this.mActivityManagerService.removeTask(taskId);
-            if (0 != 0) {
+            if (forceStop) {
                 Slog.d("ActivityManagerService", "Smart forceStopPackage: packageName=" + packageName + ", userId=" + userId + " taskId=" + taskId + " cleanLevel=" + cleanLevel);
                 SysOptBridge.getFactory().getTaskDeepClean().addTdcEvent(1, cleanLevel, packageName, 0);
                 this.mActivityManagerService.forceStopPackage(packageName, userId);
