@@ -20,6 +20,7 @@ import android.annotation.TestApi;
 import android.content.Context;
 import android.os.Build;
 import android.os.SystemProperties;
+import android.pico.utils.Features;
 import android.provider.Settings;
 import android.text.TextUtils;
 
@@ -181,6 +182,9 @@ public class AmbientDisplayConfiguration {
 
     /** {@hide} */
     public String ambientDisplayComponent() {
+        if (Features.disableSystemUI()) {
+            return null;
+        }
         return mContext.getResources().getString(R.string.config_dozeComponent);
     }
 

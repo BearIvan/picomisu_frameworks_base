@@ -59,6 +59,7 @@ import android.os.SystemProperties;
 import android.os.Trace;
 import android.os.UserHandle;
 import android.os.storage.IStorageManager;
+import android.pico.utils.Features;
 import android.provider.DeviceConfig;
 import android.provider.Settings;
 import android.sysprop.VoldProperties;
@@ -2395,6 +2396,10 @@ public final class SystemServer {
     }
 
     private static void startSystemUi(Context context, WindowManagerService windowManager) {
+        if (Features.disableSystemUI()) {
+            windowManager.onSystemUiStarted();
+            return;
+        }
         Intent intent = new Intent();
         intent.setComponent(new ComponentName("com.android.systemui",
                 "com.android.systemui.SystemUIService"));
