@@ -212,6 +212,7 @@ import com.android.server.ExtconStateObserver;
 import com.android.server.ExtconUEventObserver;
 import com.android.server.GestureLauncherService;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemServiceManager;
 import com.android.server.inputmethod.InputMethodManagerInternal;
 import com.android.server.policy.keyguard.KeyguardServiceDelegate;
@@ -226,6 +227,8 @@ import com.android.server.wm.DisplayPolicy;
 import com.android.server.wm.DisplayRotation;
 import com.android.server.wm.WindowManagerInternal;
 import com.android.server.wm.WindowManagerInternal.AppTransitionListener;
+
+import smartisanos.util.FeatLog;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -945,6 +948,16 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
         }
 
+        // Smartisan (factory): in the quick boot state the long press goes to quick boot.
+        if (SysOptBridge.getFactory().getQBStateMachine().sendPowerLongPressMsg(
+                MSG_POWER_LONG_PRESS, mHandler,
+                ViewConfiguration.get(mContext).getDeviceGlobalActionKeyTimeout())) {
+            mPowerKeyHandled = false;
+            FeatLog.i(TAG, "FEAT_QUICK_BOOT", 0, "interceptPowerKeyDown interactive: "
+                    + interactive);
+            return;
+        }
+
         mWindowManagerFuncs.onPowerKeyDown(interactive);
 
         // Latch power key state to detect screenshot chord.
@@ -1047,10 +1060,17 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     private void interceptPowerKeyUp(KeyEvent event, boolean interactive, boolean canceled) {
-        final boolean handled = canceled || mPowerKeyHandled;
+        boolean handled = canceled || mPowerKeyHandled;
         mScreenshotChordPowerKeyTriggered = false;
         cancelPendingScreenshotChordAction();
         cancelPendingPowerKeyAction();
+
+        // Smartisan (factory): the key up is not handled in the quick boot shutdown state.
+        if (SysOptBridge.getFactory().getQBStateMachine().handleQBPowerKeyUp()) {
+            FeatLog.i(TAG, "FEAT_QUICK_BOOT", 0,
+                    "not handle power keyUp in quick boot shutdown state");
+            handled = true;
+        }
 
         if (!handled) {
             if ((event.getFlags() & KeyEvent.FLAG_LONG_PRESS) == 0) {
@@ -1262,6 +1282,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     private void powerLongPress() {
+        // Smartisan (factory): quick boot.
+        if (SysOptBridge.getFactory().getQBStateMachine().goToQuickBoot(mWindowManagerFuncs)) {
+            mPowerKeyHandled = true;
+            return;
+        }
         // PICO (factory): a ToB key configuration can switch the long press off.
         if (mExt.interruptPowerLongPress()) {
             return;

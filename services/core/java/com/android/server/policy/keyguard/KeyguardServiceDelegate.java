@@ -26,6 +26,7 @@ import com.android.internal.policy.IKeyguardDismissCallback;
 import com.android.internal.policy.IKeyguardDrawnCallback;
 import com.android.internal.policy.IKeyguardExitCallback;
 import com.android.internal.policy.IKeyguardService;
+import com.android.server.SysOptBridge;
 import com.android.server.UiThread;
 import com.android.server.policy.WindowManagerPolicy.OnKeyguardExitResult;
 
@@ -204,6 +205,9 @@ public class KeyguardServiceDelegate {
             if (!mKeyguardState.enabled) {
                 mKeyguardService.setKeyguardEnabled(mKeyguardState.enabled);
             }
+            // Smartisan (factory): smart scenes learn the keyguard package.
+            SysOptBridge.getFactory().getSmartScenes().updateKeyguardPackage(
+                    name.getPackageName());
         }
 
         @Override
@@ -219,6 +223,8 @@ public class KeyguardServiceDelegate {
                     // Local call.
                 }
             });
+            // Smartisan (factory): no keyguard package any more.
+            SysOptBridge.getFactory().getSmartScenes().updateKeyguardPackage(null);
         }
     };
 
