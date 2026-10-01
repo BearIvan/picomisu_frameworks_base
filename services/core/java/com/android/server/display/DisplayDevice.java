@@ -37,6 +37,8 @@ abstract class DisplayDevice {
     private final DisplayAdapter mDisplayAdapter;
     private final IBinder mDisplayToken;
     private final String mUniqueId;
+    /** PICO extension (factory IExtDisplayDevice). */
+    private final IExtDisplayDevice mExt = new ExtDisplayDeviceImpl(this);
 
     // The display device does not manage these properties itself, they are set by
     // the display manager service.  The display device shouldn't really be looking at these.
@@ -57,6 +59,10 @@ abstract class DisplayDevice {
         mDisplayAdapter = displayAdapter;
         mDisplayToken = displayToken;
         mUniqueId = uniqueId;
+    }
+
+    public IExtDisplayDevice getExt() {
+        return mExt;
     }
 
     /**

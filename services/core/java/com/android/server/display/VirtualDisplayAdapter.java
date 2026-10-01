@@ -69,6 +69,8 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             new ArrayMap<IBinder, VirtualDisplayDevice>();
     private final Handler mHandler;
     private final SurfaceControlDisplayFactory mSurfaceControlDisplayFactory;
+    /** PICO extension (factory IExtVirtualDisplayAdapter): the PICO display flags. */
+    private final IExtVirtualDisplayAdapter mExt;
 
     // Called with SyncRoot lock held.
     public VirtualDisplayAdapter(DisplayManagerService.SyncRoot syncRoot,
@@ -82,6 +84,7 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             Context context, Handler handler, Listener listener,
             SurfaceControlDisplayFactory surfaceControlDisplayFactory) {
         super(syncRoot, context, handler, listener, TAG);
+        mExt = new ExtVirtualDisplayAdapterImpl(this);
         mHandler = handler;
         mSurfaceControlDisplayFactory = surfaceControlDisplayFactory;
     }
@@ -405,8 +408,8 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
                 if ((mFlags & VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS) != 0) {
                     mInfo.flags |= DisplayDeviceInfo.FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS;
                 }
-                // Factory ExtVirtualDisplayAdapterImpl.adjustDisplayDeviceInfoFlags.
-                mInfo.flags |= mFlags & LogicalDisplay.PICO_DISPLAY_FLAGS;
+                // PICO (factory): the PICO virtual display creation flags.
+                VirtualDisplayAdapter.this.mExt.adjustDisplayDeviceInfoFlags(mInfo, mFlags);
 
                 mInfo.type = Display.TYPE_VIRTUAL;
                 mInfo.touch = ((mFlags & VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH) == 0) ?
