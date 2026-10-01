@@ -17124,12 +17124,8 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     /**
      * Schedule PSS collection of a process.
+     * Smartisan (factory PICO OS 5.13.7): the PSS collection policy needs the current time.
      */
-    boolean requestPssLocked(ProcessRecord proc, int procState) {
-        return requestPssLocked(proc, procState, SystemClock.uptimeMillis());
-    }
-
-    /** Smartisan (factory PICO OS 5.13.7): the PSS collection policy needs the current time. */
     boolean requestPssLocked(ProcessRecord proc, int procState, long now) {
         if (mPendingPssProcesses.contains(proc)) {
             return false;

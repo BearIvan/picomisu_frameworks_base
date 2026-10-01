@@ -2241,7 +2241,7 @@ public final class OomAdjuster {
             if (now > app.nextPssTime || (now > (app.lastPssTime+ProcessList.PSS_MAX_INTERVAL)
                     && now > (app.lastStateTime+ProcessList.minTimeFromStateChange(
                     mService.mTestPssMode)))) {
-                if (mService.requestPssLocked(app, app.setProcState)) {
+                if (mService.requestPssLocked(app, app.setProcState, now)) {
                     app.nextPssTime = ProcessList.computeNextPssTime(app.getCurProcState(),
                             app.procStateMemTracker, mService.mTestPssMode,
                             mService.mAtmInternal.isSleeping(), now);
