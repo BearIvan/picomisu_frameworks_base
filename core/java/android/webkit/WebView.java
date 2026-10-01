@@ -23,6 +23,9 @@ import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.annotation.UnsupportedAppUsage;
 import android.annotation.Widget;
+import android.app.ActivityThread;
+import android.app.Application;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -2562,6 +2565,13 @@ public class WebView extends AbsoluteLayout
     @UnsupportedAppUsage
     private final Looper mWebViewThread = Looper.myLooper();
 
+    /** @hide */
+    public static final String PICO_WEB_VIEW_ACTIVITY =
+            "com.android.internal.app.PicoWebViewActivity";
+
+    // PICO: lifecycle callbacks of the WebXR activity (factory PICO OS 5.13.7).
+    private Application.ActivityLifecycleCallbacks mCallback = null;
+
     @UnsupportedAppUsage
     private void checkThread() {
         // Ignore mWebViewThread == null because this can be called during in the super class
@@ -3061,5 +3071,32 @@ public class WebView extends AbsoluteLayout
         encoder.addProperty("webview:title", mProvider.getTitle());
         encoder.addProperty("webview:url", mProvider.getUrl());
         encoder.addProperty("webview:originalUrl", mProvider.getOriginalUrl());
+    }
+
+    /**
+     * PICO WebXR: registers {@code callback} for the lifecycle of the PICO WebView activity of
+     * this process and starts it (factory PICO OS 5.13.7).
+     * @hide
+     */
+    public void startWebViewActivity(Application.ActivityLifecycleCallbacks callback) {
+        Log.d(LOGTAG, "startWebViewActivity, thread: " + Thread.currentThread());
+        mCallback = callback;
+        ActivityThread.currentActivityThread().getExt()
+                .registerWebViewActivityLifecycleCallbacks(mCallback);
+        Intent intent = new Intent();
+        intent.setComponent(new ComponentName(mContext, PICO_WEB_VIEW_ACTIVITY));
+        getContext().startActivity(intent);
+    }
+
+    /**
+     * PICO WebXR: unregisters the callbacks of {@link #startWebViewActivity}
+     * (factory PICO OS 5.13.7).
+     * @hide
+     */
+    public void onWebXRExit() {
+        Log.d(LOGTAG, "onWebXRExit, thread: " + Thread.currentThread());
+        ActivityThread.currentActivityThread().getExt()
+                .unregisterWebViewActivityLifecycleCallbacks(mCallback);
+        mCallback = null;
     }
 }

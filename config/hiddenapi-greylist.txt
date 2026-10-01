@@ -1814,3 +1814,5 @@ Lcom/google/android/util/AbstractMessageParser$Token$Type;->values()[Lcom/google
 Landroid/view/ExtSurfaceImpl;->mLockedObject:J
 Landroid/view/Surface;->mExt:Landroid/view/IExtSurface;
 Landroid/view/Surface;->nativeSetPvrStatus(JI)V
+Landroid/webkit/WebView;->onWebXRExit()V
+Landroid/webkit/WebView;->startWebViewActivity(Landroid/app/Application$ActivityLifecycleCallbacks;)V
