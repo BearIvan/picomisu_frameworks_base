@@ -57,6 +57,7 @@ import static com.android.server.wm.WindowSurfacePlacer.SET_WALLPAPER_ACTION_PEN
 
 import android.annotation.CallSuper;
 import android.annotation.NonNull;
+import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
 import android.hardware.power.V1_0.PowerHint;
 import android.os.Binder;
@@ -84,6 +85,7 @@ import com.android.server.EventLogTags;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.function.Consumer;
 
 /** Root {@link WindowContainer} for the device. */
@@ -845,11 +847,21 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
                     mWmService.getDefaultDisplayRotation());
         }
 
+        // Smartisan (factory): collect the applications of the visible windows
+        // (handleNotObscuredLocked) and dispatch the changes of that set.
+        mWmService.getSmtEx().mApplicationInfosBK.clear();
+        final HashSet<ApplicationInfo> oldVisibleApplicationInfos =
+                mWmService.getSmtEx().getApplicationInfos();
         final int count = mChildren.size();
         for (int j = 0; j < count; ++j) {
             final DisplayContent dc = mChildren.get(j);
             dc.applySurfaceChangesTransaction(recoveringMemory);
         }
+        mWmService.getSmtEx().switchApplicationInfos();
+        final HashSet<ApplicationInfo> visibleApplicationInfos =
+                mWmService.getSmtEx().getApplicationInfos();
+        ((RootWindowContainerSmtBase) getSmtEx()).dispatchVisibleApplicationInfosChanged(
+                oldVisibleApplicationInfos, visibleApplicationInfos);
 
         // Give the display manager a chance to adjust properties like display rotation if it needs
         // to.
@@ -942,6 +954,15 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
             if ((privateflags & PRIVATE_FLAG_SUSTAINED_PERFORMANCE_MODE) != 0) {
                 mSustainedPerformanceModeCurrent = true;
             }
+        }
+
+        // Smartisan (factory): application of a visible app window.
+        if (WindowManagerServiceSmtBase.isOperatible(w) && w.mToken != null
+                && w.mToken.asAppWindowToken() != null
+                && w.mToken.asAppWindowToken().mActivityRecord != null
+                && w.mToken.asAppWindowToken().mActivityRecord.appInfo != null) {
+            mWmService.getSmtEx().mApplicationInfosBK.add(
+                    w.mToken.asAppWindowToken().mActivityRecord.appInfo);
         }
 
         return displayHasContent;

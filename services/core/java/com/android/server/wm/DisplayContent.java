@@ -205,6 +205,8 @@ import com.android.internal.util.function.TriConsumer;
 import com.android.internal.util.function.pooled.PooledConsumer;
 import com.android.internal.util.function.pooled.PooledLambda;
 import com.android.server.AnimationThread;
+import com.android.server.SysOptBridge;
+import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.wm.utils.DisplayRotationUtil;
 import com.android.server.wm.utils.RotationCache;
@@ -1468,6 +1470,8 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         }
 
         mRotation = rotation;
+        // Smartisan (factory): smart scenes learn the display rotation.
+        SysOptBridge.getFactory().getSmartScenes().updateDisplayRotation(rotation);
 
         mWmService.mWindowsFreezingScreen = WINDOWS_FREEZING_SCREENS_ACTIVE;
         mWmService.mH.sendNewMessageDelayed(WindowManagerService.H.WINDOW_FREEZE_TIMEOUT,
@@ -3086,7 +3090,11 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     boolean updateFocusedWindowLocked(int mode, boolean updateInputWindows,
             int topFocusedDisplayId) {
         WindowState newFocus = findFocusedWindowIfNeeded(topFocusedDisplayId);
-        if (mCurrentFocus == newFocus) {
+        // Smartisan (factory): a window of a prefetched activity does not take the focus.
+        if (mCurrentFocus == newFocus || (newFocus != null && newFocus.mAppToken != null
+                && newFocus.mAppToken.mActivityRecord != null
+                && newFocus.mAppToken.mActivityRecord.info.applicationInfo.getSmtEx()
+                        .isPrefetch)) {
             return false;
         }
         boolean imWindowChanged = false;
@@ -3117,6 +3125,17 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         final WindowState oldFocus = mCurrentFocus;
         mCurrentFocus = newFocus;
         mLosingFocus.remove(newFocus);
+
+        // Smartisan (factory): smart scenes and the SysPerfMonitor learn the focus window.
+        if (newFocus != null) {
+            SysOptBridge.getFactory().getSmartScenes().updateFocusWindow(
+                    newFocus.mAppToken == null
+                            ? null : newFocus.mAppToken.mActivityRecord.info.applicationInfo);
+        }
+        if (newFocus != null) {
+            SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updateFocusWindow(
+                    ((WindowStateSmtBase) newFocus.getSmtEx()).getSmtUid());
+        }
 
         if (newFocus != null) {
             mWinAddedSinceNullFocus.clear();

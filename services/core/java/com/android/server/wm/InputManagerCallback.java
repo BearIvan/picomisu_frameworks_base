@@ -69,6 +69,11 @@ final class InputManagerCallback implements InputManagerService.WindowManagerCal
      */
     @Override
     public long notifyANR(IBinder token, String reason) {
+        // Smartisan (factory): input monitor ANRs go to the sysmonitor ANR monitor only.
+        if (reason.startsWith("Monitor ")) {
+            InputManagerCallbackSysMoEx.getInstance().monitorAnr(mService, token, reason);
+            return 0;
+        }
         AppWindowToken appWindowToken = null;
         WindowState windowState = null;
         boolean aboveSystem = false;

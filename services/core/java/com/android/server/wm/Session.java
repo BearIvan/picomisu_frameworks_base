@@ -614,6 +614,11 @@ class Session extends IWindowSession.Stub implements IBinder.DeathRecipient {
         return !mAlertWindowSurfaces.isEmpty();
     }
 
+    /** Smartisan (factory): the session's Smartisan extension state. */
+    public SessionSmtBase getSmtEx() {
+        return mSmtEx;
+    }
+
     /**
      * Smartisan window session extension (factory PICO OS 5.13.7). As in the factory, the
      * SessionSmtBase itself is cast to IWindowSessionSmtEx, which it does not implement, so
