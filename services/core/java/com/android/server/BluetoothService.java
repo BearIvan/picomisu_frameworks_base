@@ -23,11 +23,14 @@ import com.android.internal.os.RoSystemProperties;
 
 class BluetoothService extends SystemService {
     private BluetoothManagerService mBluetoothManagerService;
+    // PICO (factory PICO OS 5.13.7): Swift Bluetooth peripheral service connection.
+    private IExtBluetoothService mExt;
     private boolean mInitialized = false;
 
     public BluetoothService(Context context) {
         super(context);
         mBluetoothManagerService = new BluetoothManagerService(context);
+        mExt = new ExtBluetoothServiceImpl(this);
     }
 
     private void initialize() {
@@ -49,6 +52,7 @@ class BluetoothService extends SystemService {
         } else if (phase == SystemService.PHASE_ACTIVITY_MANAGER_READY &&
                 !RoSystemProperties.MULTIUSER_HEADLESS_SYSTEM_USER) {
             initialize();
+            mExt.bindUnbindPeripheralServiceIfNeed(true);
         }
     }
 
