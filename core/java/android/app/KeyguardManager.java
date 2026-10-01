@@ -61,6 +61,8 @@ public class KeyguardManager {
     private static final String TAG = "KeyguardManager";
 
     private final Context mContext;
+    // PICO: factory PICO OS 5.13.7 VR keyguard extension (initialized before mContext).
+    private final IExtKeyguardManager mExt = new ExtKeyguardManagerImpl(this);
     private final IWindowManager mWM;
     private final IActivityManager mAm;
     private final ITrustManager mTrustManager;
@@ -438,6 +440,9 @@ public class KeyguardManager {
      * @return true if a PIN, pattern or password is set or a SIM card is locked.
      */
     public boolean isKeyguardSecure() {
+        if (!mExt.hasVrKeyguard()) {
+            return mExt.isKeyguardSecure(mWM, mContext);
+        }
         try {
             return mWM.isKeyguardSecure(mContext.getUserId());
         } catch (RemoteException ex) {
@@ -491,6 +496,9 @@ public class KeyguardManager {
      * @return true if a PIN, pattern or password was set.
      */
     public boolean isDeviceSecure() {
+        if (!mExt.hasVrKeyguard()) {
+            return mExt.isDeviceSecure(mContext);
+        }
         return isDeviceSecure(mContext.getUserId());
     }
 
