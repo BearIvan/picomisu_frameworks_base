@@ -12610,6 +12610,9 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         }
 
         final ClipData clipData = getClipboardManagerForUser().getPrimaryClip();
+        if (clipData == null) {
+            return false;
+        }
         final ClipDescription description = clipData.getDescription();
         final boolean isPlainType = description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN);
         final CharSequence text = clipData.getItemAt(0).getText();
