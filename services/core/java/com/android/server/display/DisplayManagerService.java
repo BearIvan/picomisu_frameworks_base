@@ -79,6 +79,7 @@ import android.os.SystemProperties;
 import android.os.Trace;
 import android.os.UserHandle;
 import android.os.UserManager;
+import android.pico.utils.Features;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.IntArray;
@@ -870,7 +871,10 @@ public final class DisplayManagerService extends SystemService {
     private void registerWifiDisplayAdapterLocked() {
         if (mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_enableWifiDisplay)
-                || SystemProperties.getInt(FORCE_WIFI_DISPLAY_ENABLE, -1) == 1) {
+                || SystemProperties.getInt(FORCE_WIFI_DISPLAY_ENABLE, -1) == 1
+                // PICO (factory PICO OS 5.13.7): the build-time project check, which is
+                // "neo3".equals("phoenix") there, i.e. never true.
+                || Features.PROJECT_NEO3.equals(Features.PROJECT_PHOENIX)) {
             mWifiDisplayAdapter = new WifiDisplayAdapter(
                     mSyncRoot, mContext, mHandler, mDisplayAdapterListener,
                     mPersistentDataStore);

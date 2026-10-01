@@ -71,6 +71,9 @@ final class WifiDisplayAdapter extends DisplayAdapter {
     // Unique id prefix for wifi displays
     private static final String DISPLAY_NAME_PREFIX = "wifi:";
 
+    // PICO (factory PICO OS 5.13.7): the Wi-Fi display is the casting display.
+    private static final String WFD_VIRTUAL_DISPLAY_NAME = "ScreenCastThread-display";
+
     private final WifiDisplayHandler mHandler;
     private final PersistentDataStore mPersistentDataStore;
     private final boolean mSupportsProtectedBuffers;
@@ -378,11 +381,10 @@ final class WifiDisplayAdapter extends DisplayAdapter {
 
         float refreshRate = 60.0f; // TODO: get this for real
 
-        String name = display.getFriendlyDisplayName();
         String address = display.getDeviceAddress();
-        IBinder displayToken = SurfaceControl.createDisplay(name, secure);
-        mDisplayDevice = new WifiDisplayDevice(displayToken, name, width, height,
-                refreshRate, deviceFlags, address, surface);
+        IBinder displayToken = SurfaceControl.createDisplay(WFD_VIRTUAL_DISPLAY_NAME, secure);
+        mDisplayDevice = new WifiDisplayDevice(displayToken, WFD_VIRTUAL_DISPLAY_NAME, width,
+                height, refreshRate, deviceFlags, address, surface);
         sendDisplayDeviceEventLocked(mDisplayDevice, DISPLAY_DEVICE_EVENT_ADDED);
     }
 
