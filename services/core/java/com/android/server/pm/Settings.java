@@ -2908,6 +2908,16 @@ public final class Settings {
         bp.writeLPr(serializer);
     }
 
+    /** PICO (factory PICO OS 5.13.7): delete packages.xml and its backup. */
+    void delLPwFile() {
+        if (mBackupSettingsFilename.exists()) {
+            mBackupSettingsFilename.delete();
+        }
+        if (mSettingsFilename.exists()) {
+            mSettingsFilename.delete();
+        }
+    }
+
     boolean readLPw(@NonNull List<UserInfo> users) {
         FileInputStream str = null;
         if (mBackupSettingsFilename.exists()) {

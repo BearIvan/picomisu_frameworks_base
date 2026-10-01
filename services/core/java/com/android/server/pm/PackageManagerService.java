@@ -2631,6 +2631,13 @@ public class PackageManagerService extends IPackageManager.Stub
             File frameworkDir = new File(Environment.getRootDirectory(), "framework");
 
             final VersionInfo ver = mSettings.getInternalVersion();
+            // PICO (factory PICO OS 5.13.7): without internal version info the settings files
+            // are deleted so that they are written anew (ver is still dereferenced below, as
+            // on the factory).
+            if (ver == null) {
+                mSettings.delLPwFile();
+                Slog.i(TAG, "settings versionInfo is null, del file to recreate!!!");
+            }
             mIsUpgrade = !Build.FINGERPRINT.equals(ver.fingerprint);
             if (mIsUpgrade) {
                 logCriticalInfo(Log.INFO,
@@ -9558,11 +9565,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 mPackages.remove(pkgSetting.name);
             }
 
-            logCriticalInfo(Log.WARN,
-                    "System package updated;"
-                    + " name: " + pkgSetting.name
-                    + "; " + pkgSetting.versionCode + " --> " + pkg.getLongVersionCode()
-                    + "; " + pkgSetting.codePathString + " --> " + pkg.codePath);
+            logCriticalInfo(Log.WARN, "System package updated;");
 
             final InstallArgs args = createInstallArgsForExisting(
                     pkgSetting.codePathString,
@@ -9578,8 +9581,7 @@ public class PackageManagerService extends IPackageManager.Stub
             // equal to the version on the /data partition. Throw an exception and use
             // the application already installed on the /data partition.
             throw new PackageManagerException(Log.WARN, "Package " + pkg.packageName + " at "
-                    + pkg.codePath + " ignored: updated version " + pkgSetting.versionCode
-                    + " better than this " + pkg.getLongVersionCode());
+                    + pkg.codePath + " ignored: updated version ");
         }
 
         // Verify certificates against what was last scanned. If there was an upgrade and this is an
