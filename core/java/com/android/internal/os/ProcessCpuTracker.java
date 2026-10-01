@@ -47,7 +47,7 @@ public class ProcessCpuTracker {
     private static final int[] PROCESS_STATS_FORMAT = new int[] {
         PROC_SPACE_TERM,
         PROC_SPACE_TERM|PROC_PARENS,
-        PROC_SPACE_TERM,
+        PROC_SPACE_TERM|PROC_CHAR|PROC_OUT_LONG,        // 3: task state (Smartisan)
         PROC_SPACE_TERM,
         PROC_SPACE_TERM,
         PROC_SPACE_TERM,
@@ -62,22 +62,24 @@ public class ProcessCpuTracker {
         PROC_SPACE_TERM|PROC_OUT_LONG,                  // 15: stime
     };
 
-    static final int PROCESS_STAT_MINOR_FAULTS = 0;
-    static final int PROCESS_STAT_MAJOR_FAULTS = 1;
-    static final int PROCESS_STAT_UTIME = 2;
-    static final int PROCESS_STAT_STIME = 3;
+    // Smartisan (PICO OS 5.13.7): the task state is read as the first value.
+    static final int PROCESS_STAT_TASK_STATE = 0;
+    static final int PROCESS_STAT_MINOR_FAULTS = 1;
+    static final int PROCESS_STAT_MAJOR_FAULTS = 2;
+    static final int PROCESS_STAT_UTIME = 3;
+    static final int PROCESS_STAT_STIME = 4;
 
     /** Stores user time and system time in jiffies. */
-    private final long[] mProcessStatsData = new long[4];
+    private final long[] mProcessStatsData = new long[6];
 
     /** Stores user time and system time in jiffies.  Used for
      * public API to retrieve CPU use for a process.  Must lock while in use. */
-    private final long[] mSinglePidStatsData = new long[4];
+    private final long[] mSinglePidStatsData = new long[5];
 
     private static final int[] PROCESS_FULL_STATS_FORMAT = new int[] {
         PROC_SPACE_TERM,
         PROC_SPACE_TERM|PROC_PARENS|PROC_OUT_STRING,    // 2: name
-        PROC_SPACE_TERM,
+        PROC_SPACE_TERM|PROC_CHAR|PROC_OUT_LONG,        // 3: task state (Smartisan)
         PROC_SPACE_TERM,
         PROC_SPACE_TERM,
         PROC_SPACE_TERM,
@@ -100,16 +102,18 @@ public class ProcessCpuTracker {
         PROC_SPACE_TERM|PROC_OUT_LONG,                  // 23: vsize
     };
 
-    static final int PROCESS_FULL_STAT_MINOR_FAULTS = 1;
-    static final int PROCESS_FULL_STAT_MAJOR_FAULTS = 2;
-    static final int PROCESS_FULL_STAT_UTIME = 3;
-    static final int PROCESS_FULL_STAT_STIME = 4;
-    static final int PROCESS_FULL_STAT_VSIZE = 5;
+    static final int PROCESS_FULL_STAT_TASK_STATE = 1;
+    static final int PROCESS_FULL_STAT_MINOR_FAULTS = 2;
+    static final int PROCESS_FULL_STAT_MAJOR_FAULTS = 3;
+    static final int PROCESS_FULL_STAT_UTIME = 4;
+    static final int PROCESS_FULL_STAT_STIME = 5;
+    static final int PROCESS_FULL_STAT_VSIZE = 6;
 
     private final String[] mProcessFullStatsStringData = new String[6];
-    private final long[] mProcessFullStatsData = new long[6];
+    private final long[] mProcessFullStatsData = new long[7];
 
-    private static final int[] SYSTEM_CPU_FORMAT = new int[] {
+    // Smartisan (PICO OS 5.13.7): protected for smartisanos.os.UidCpuTrackerBase.
+    protected static final int[] SYSTEM_CPU_FORMAT = new int[] {
         PROC_SPACE_TERM|PROC_COMBINE,
         PROC_SPACE_TERM|PROC_OUT_LONG,                  // 1: user time
         PROC_SPACE_TERM|PROC_OUT_LONG,                  // 2: nice time
@@ -120,7 +124,7 @@ public class ProcessCpuTracker {
         PROC_SPACE_TERM|PROC_OUT_LONG                   // 7: softirq time
     };
 
-    private final long[] mSystemCpuData = new long[7];
+    protected final long[] mSystemCpuData = new long[7];
 
     private static final int[] LOAD_AVERAGE_FORMAT = new int[] {
         PROC_SPACE_TERM|PROC_OUT_FLOAT,                 // 0: 1 min
@@ -141,37 +145,39 @@ public class ProcessCpuTracker {
 
     // All times are in milliseconds. They are converted from jiffies to milliseconds
     // when extracted from the kernel.
-    private long mCurrentSampleTime;
-    private long mLastSampleTime;
+    protected long mCurrentSampleTime;
+    protected long mLastSampleTime;
 
-    private long mCurrentSampleRealTime;
-    private long mLastSampleRealTime;
+    protected long mCurrentSampleRealTime;
+    protected long mLastSampleRealTime;
 
-    private long mCurrentSampleWallTime;
-    private long mLastSampleWallTime;
+    protected long mCurrentSampleWallTime;
+    protected long mLastSampleWallTime;
 
-    private long mBaseUserTime;
-    private long mBaseSystemTime;
-    private long mBaseIoWaitTime;
-    private long mBaseIrqTime;
-    private long mBaseSoftIrqTime;
-    private long mBaseIdleTime;
-    private int mRelUserTime;
-    private int mRelSystemTime;
-    private int mRelIoWaitTime;
-    private int mRelIrqTime;
-    private int mRelSoftIrqTime;
-    private int mRelIdleTime;
-    private boolean mRelStatsAreGood;
+    protected long mBaseUserTime;
+    protected long mBaseSystemTime;
+    protected long mBaseIoWaitTime;
+    protected long mBaseIrqTime;
+    protected long mBaseSoftIrqTime;
+    protected long mBaseIdleTime;
+    protected int mRelUserTime;
+    protected int mRelSystemTime;
+    protected int mRelIoWaitTime;
+    protected int mRelIrqTime;
+    protected int mRelSoftIrqTime;
+    protected int mRelIdleTime;
+    protected boolean mRelStatsAreGood;
 
-    private int[] mCurPids;
-    private int[] mCurThreadPids;
+    protected int[] mCurPids;
+    protected int[] mCurThreadPids;
 
-    private final ArrayList<Stats> mProcStats = new ArrayList<Stats>();
-    private final ArrayList<Stats> mWorkingProcs = new ArrayList<Stats>();
-    private boolean mWorkingProcsSorted;
+    protected final ArrayList<Stats> mProcStats = new ArrayList<Stats>();
+    protected final ArrayList<Stats> mWorkingProcs = new ArrayList<Stats>();
+    protected boolean mWorkingProcsSorted;
 
-    private boolean mFirst = true;
+    protected boolean mFirst = true;
+
+    private ProcessCpuTrackerSmtBase mSmtEx = new ProcessCpuTrackerSmtBase(this);
 
     public interface FilterStats {
         /** Which stats to pick when filtering */
@@ -243,6 +249,12 @@ public class ProcessCpuTracker {
         public boolean added;
         public boolean removed;
 
+        // Smartisan (PICO OS 5.13.7): task state from /proc/<pid>/stat, see
+        // ProcessCpuTrackerSmtBase.updateReportTaskState.
+        public char taskState;
+        public Object taskStateLock = new Object();
+        public long zombie_start = 0;
+
         Stats(int _pid, int parentPid, boolean includeThreads) {
             pid = _pid;
             if (parentPid < 0) {
@@ -282,7 +294,7 @@ public class ProcessCpuTracker {
         }
     }
 
-    private final static Comparator<Stats> sLoadComparator = new Comparator<Stats>() {
+    protected final static Comparator<Stats> sLoadComparator = new Comparator<Stats>() {
         public final int
         compare(Stats sta, Stats stb) {
             int ta = sta.rel_utime + sta.rel_stime;
@@ -421,7 +433,7 @@ public class ProcessCpuTracker {
         mFirst = false;
     }
 
-    private int[] collectStats(String statsFile, int parentPid, boolean first,
+    protected int[] collectStats(String statsFile, int parentPid, boolean first,
             int[] curPids, ArrayList<Stats> allProcs) {
 
         int[] pids = Process.getPids(statsFile, curPids);
@@ -454,6 +466,7 @@ public class ProcessCpuTracker {
                         continue;
                     }
 
+                    getSmtEx().updateReportTaskState(st, (char) procStats[PROCESS_STAT_TASK_STATE]);
                     final long minfaults = procStats[PROCESS_STAT_MINOR_FAULTS];
                     final long majfaults = procStats[PROCESS_STAT_MAJOR_FAULTS];
                     final long utime = procStats[PROCESS_STAT_UTIME] * mJiffyMillis;
@@ -526,6 +539,8 @@ public class ProcessCpuTracker {
                     // of them do use CPU, but there can be a *lot* that are
                     // not doing anything.
                     st.vsize = procStats[PROCESS_FULL_STAT_VSIZE];
+                    getSmtEx().updateReportTaskState(st,
+                            (char) procStats[PROCESS_FULL_STAT_TASK_STATE]);
                     if (true || procStats[PROCESS_FULL_STAT_VSIZE] != 0) {
                         st.interesting = true;
                         st.baseName = procStatsString[0];
@@ -896,5 +911,10 @@ public class ProcessCpuTracker {
             st.name = newName;
             st.nameWidth = onMeasureProcessName(st.name);
         }
+    }
+
+    /** @hide */
+    public ProcessCpuTrackerSmtBase getSmtEx() {
+        return mSmtEx;
     }
 }
