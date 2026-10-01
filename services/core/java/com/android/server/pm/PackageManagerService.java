@@ -137,6 +137,7 @@ import android.content.IntentSender;
 import android.content.IntentSender.SendIntentException;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ApplicationInfoSmtBase;
 import android.content.pm.AppsQueryHelper;
 import android.content.pm.AuxiliaryResolveInfo;
 import android.content.pm.ChangedPackages;
@@ -306,6 +307,7 @@ import com.android.server.LocalServices;
 import com.android.server.LockGuard;
 import com.android.server.PackageWatchdog;
 import com.android.server.ServiceThread;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemConfig;
 import com.android.server.SystemServerInitThreadPool;
 import com.android.server.Watchdog;
@@ -2442,6 +2444,8 @@ public class PackageManagerService extends IPackageManager.Stub
         Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "create package manager");
         EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_START,
                 SystemClock.uptimeMillis());
+        SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_pms_start",
+                SystemClock.elapsedRealtime());
 
         mPackageManagerServiceMonitorEx = new PackageManagerServiceMonitorEx(this);
         mPackageManagerServiceSmtBase = new PackageManagerServiceSmtBase(this,
@@ -2606,6 +2610,8 @@ public class PackageManagerService extends IPackageManager.Stub
 
             EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_SYSTEM_SCAN_START,
                     startTime);
+            SysOptBridge.getFactory().getBootEventStat().writeEvent(
+                    "boot_event_pms_system_scan_start", SystemClock.elapsedRealtime());
 
             final String bootClassPath = System.getenv("BOOTCLASSPATH");
             final String systemServerClassPath = System.getenv("SYSTEMSERVERCLASSPATH");
@@ -2658,8 +2664,24 @@ public class PackageManagerService extends IPackageManager.Stub
             // scanning install directories.
             int scanFlags = SCAN_BOOTING | SCAN_INITIAL;
 
+            // PICO (factory): log the boot type with the OTA version; Smartisan (factory):
+            // report it to the boot event statistics (1 = first boot, 2 = upgrade).
+            String otaVersion = SystemProperties.get("ro.pico.ota.version", "unknown");
+            if ("unknown".equals(otaVersion)) {
+                otaVersion = SystemProperties.get("ro.pvr.internal.version", "unknown");
+            }
             if (mIsUpgrade || mFirstBoot) {
                 scanFlags = scanFlags | SCAN_FIRST_BOOT_OR_UPGRADE;
+                if (mIsUpgrade) {
+                    SysOptBridge.getFactory().getBootEventStat().setBootType(2);
+                    Slog.i(TAG, "This boot is upgrading, upgrading version to " + otaVersion);
+                }
+                if (mFirstBoot) {
+                    SysOptBridge.getFactory().getBootEventStat().setBootType(1);
+                    Slog.i(TAG, "This boot is the first boot, version is " + otaVersion);
+                }
+            } else {
+                Slog.i(TAG, "This boot is a normal boot, version is " + otaVersion);
             }
 
             // Collect vendor/product/product_services overlay packages. (Do this before scanning
@@ -2976,6 +2998,8 @@ public class PackageManagerService extends IPackageManager.Stub
             if (!mOnlyCore) {
                 EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_DATA_SCAN_START,
                         SystemClock.uptimeMillis());
+                SysOptBridge.getFactory().getBootEventStat().writeEvent(
+                        "boot_event_pms_data_scan_start", SystemClock.elapsedRealtime());
                 scanDirTracedLI(sAppInstallDir, 0, scanFlags | SCAN_REQUIRE_KNOWN, 0);
 
                 // Remove disable package settings for updated system apps that were
@@ -3154,6 +3178,10 @@ public class PackageManagerService extends IPackageManager.Stub
                     MetricsLogger.histogram(null, "ota_package_manager_data_app_avg_scan_time",
                             ((int) dataScanTime) / dataPackagesCount);
                 }
+                SysOptBridge.getFactory().getBootEventStat().setSystemPackagesCount(
+                        systemPackagesCount);
+                SysOptBridge.getFactory().getBootEventStat().setDataPackagesCount(
+                        dataPackagesCount);
             }
             mExpectingBetter.clear();
 
@@ -3205,6 +3233,8 @@ public class PackageManagerService extends IPackageManager.Stub
 
             EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_SCAN_END,
                     SystemClock.uptimeMillis());
+            SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_pms_scan_end",
+                    SystemClock.elapsedRealtime());
             Slog.i(TAG, "Time to scan packages: "
                     + ((SystemClock.uptimeMillis()-startTime)/1000f)
                     + " seconds");
@@ -3331,6 +3361,8 @@ public class PackageManagerService extends IPackageManager.Stub
             Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
             EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_PMS_READY,
                     SystemClock.uptimeMillis());
+            SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_pms_ready",
+                    SystemClock.elapsedRealtime());
 
             if (!mOnlyCore) {
                 mRequiredVerifierPackage = getRequiredButNotReallyRequiredVerifierLPr();
@@ -9172,6 +9204,18 @@ public class PackageManagerService extends IPackageManager.Stub
                     logCriticalInfo(Log.WARN,
                             "Deleting invalid package at " + parseResult.scanFile);
                     removeCodePathLI(parseResult.scanFile);
+                }
+
+                // Smartisan (factory): drop the class SDK override of refused packages.
+                try {
+                    if (parseResult.pkg.applicationInfo != null
+                            && parseResult.pkg.applicationInfo.getSmtEx().mOverrideClassSDK != 0
+                            && mPackageManagerServiceSmtBase.refuseOverrideSdkClazz(
+                                    parseResult.pkg.packageName)) {
+                        parseResult.pkg.applicationInfo.getSmtEx().mOverrideClassSDK = 0;
+                    }
+                } catch (Exception e) {
+                    Slog.e(TAG, "check refuseOverrideSdkClazz failed");
                 }
             }
         }
@@ -17455,6 +17499,13 @@ public class PackageManagerService extends IPackageManager.Stub
             } else {
                 Slog.e(TAG, "installPackageLI pkg: " + pkg.packageName
                         + " applicationInfo null");
+            }
+            // Smartisan (factory): refresh the prefetch record of a prefetch-enabled app.
+            if (pkg != null && pkg.applicationInfo != null
+                    && (pkg.applicationInfo.getSmtEx().peroptFlag
+                            & ApplicationInfoSmtBase.PEROPT_FLAG_PREFETCH_WHITE_LIST_APP) != 0) {
+                SysOptBridge.getFactory().getPrefetchManager().updatePrefetchVersion(
+                        pkg.packageName, pkg.mVersionName, pkg.mVersionCode);
             }
         } catch (PackageParserException e) {
             throw new PrepareFailure("Failed parse during installPackageLI", e);
@@ -25842,6 +25893,10 @@ public class PackageManagerService extends IPackageManager.Stub
 
     public PackageManagerServiceSmtBase getSmtEx() {
         return mPackageManagerServiceSmtBase;
+    }
+
+    public PackageManagerServiceMonitorEx getMonitorEx() {
+        return mPackageManagerServiceMonitorEx;
     }
 
     /**

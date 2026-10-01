@@ -10,26 +10,37 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageParser;
 import android.os.Binder;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.Log;
 import android.util.Slog;
+import android.util.Xml;
 
+import com.android.internal.util.XmlUtils;
 import com.android.server.SysOptBridge;
 import com.android.server.pm.dex.DexoptOptions;
 
+import org.xmlpull.v1.XmlPullParser;
+
 import smartisanos.os.PeroptWhiteListParser;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
  * Smartisan extension of the {@link PackageManagerService}, whose
  * {@link IPackageManagerSmtExBase} binder is returned by {@code IPackageManager.getISmtEx()}.
  * Reconstructed from the PICO OS 5.13.7 factory services; only the members reached by the
- * {@link IPackageManagerSmtEx} methods are present.
+ * {@link IPackageManagerSmtEx} methods and by the PackageManagerService hooks
+ * (refuseOverrideSdkClazz) are present.
  *
  * @hide
  */
 public class PackageManagerServiceSmtBase {
     static final String TAG = "PackageManager";
+    // Packages listed in /data/system/overrideSdk.xml (closeOverrideProc), loaded once.
+    public static ArraySet<String> mOverrideClazzIgnoreProcs = null;
 
     private IPackageManagerSmtEx mIPackageManagerSmtEx = this.new IPackageManagerSmtExBase();
     protected PackageManagerService mPmService;
@@ -207,6 +218,48 @@ public class PackageManagerServiceSmtBase {
             ps.pkg.applicationInfo.getSmtEx().mOverrideClassSDK = 0;
             mPmService.mSettings.mPackages.put(packageName, ps);
         }
+    }
+
+    /**
+     * Whether the class SDK override is refused for {@code proc}: listed as
+     * {@code <package closeOverrideProc="...">} in /data/system/overrideSdk.xml, which is read
+     * the first time it exists (factory).
+     */
+    public boolean refuseOverrideSdkClazz(String proc) {
+        try {
+            File file = new File("/data/system/overrideSdk.xml");
+            if (mOverrideClazzIgnoreProcs == null && file.exists()) {
+                mOverrideClazzIgnoreProcs = new ArraySet<>(4);
+                FileInputStream str = new FileInputStream("/data/system/overrideSdk.xml");
+                XmlPullParser parser = Xml.newPullParser();
+                parser.setInput(str, StandardCharsets.UTF_8.name());
+                int type;
+                while ((type = parser.next()) != XmlPullParser.START_TAG
+                        && type != XmlPullParser.END_DOCUMENT) {
+                }
+                if (type != XmlPullParser.START_TAG) {
+                    return false;
+                }
+                int outerDepth = parser.getDepth();
+                while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                        && (type != XmlPullParser.END_TAG || parser.getDepth() > outerDepth)) {
+                    if (type == XmlPullParser.END_TAG || type == XmlPullParser.TEXT) {
+                        continue;
+                    }
+                    String tagName = parser.getName();
+                    if (tagName.equals("package")) {
+                        String name = parser.getAttributeValue(null, "closeOverrideProc");
+                        mOverrideClazzIgnoreProcs.add(name);
+                    } else {
+                        XmlUtils.skipCurrentTag(parser);
+                    }
+                }
+                str.close();
+            }
+        } catch (Exception e) {
+            Slog.e(TAG, "refuseOverrideSdkClazz failed");
+        }
+        return mOverrideClazzIgnoreProcs != null && mOverrideClazzIgnoreProcs.contains(proc);
     }
 
     public void updateOverrideSdkClazzClose() {
