@@ -81,6 +81,7 @@ import android.graphics.HardwareRenderer;
 import android.graphics.ImageDecoder;
 import android.hardware.display.DisplayManagerGlobal;
 import android.net.ConnectivityManager;
+import android.net.ConnectivityManagerSmtEx;
 import android.net.IConnectivityManager;
 import android.net.Proxy;
 import android.net.Uri;
@@ -4470,6 +4471,10 @@ public final class ActivityThread extends ClientTransactionHandler {
         mNewActivities = r;
         if (localLOGV) Slog.v(TAG, "Scheduling idle handler for " + r);
         Looper.myQueue().addIdleHandler(new Idler());
+        if (r.activity.mActivityInfo.applicationInfo.getSmtEx().isPrefetch) {
+            r.activity.onWindowFocusChanged(true);
+        }
+        ConnectivityManagerSmtEx.clearActiveNetworkInfoCache();
     }
 
 
