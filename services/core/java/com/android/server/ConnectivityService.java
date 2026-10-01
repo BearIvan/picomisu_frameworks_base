@@ -105,6 +105,9 @@ import android.net.NetworkStack;
 import android.net.NetworkStackClient;
 import android.net.NetworkState;
 import android.net.NetworkUtils;
+import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.net.NetworkWatchlistManager;
 import android.net.PrivateDnsConfigParcel;
 import android.net.ProxyInfo;
@@ -215,6 +218,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -237,6 +241,19 @@ import java.util.TreeSet;
 public class ConnectivityService extends IConnectivityManager.Stub
         implements PendingIntent.OnFinished {
     private static final String TAG = ConnectivityService.class.getSimpleName();
+
+    // PICO (factory PICO OS 5.13.7): Wi-Fi captive portal sign-in app.
+    private static final String ACTION_WIFI_NEED_SIGIN_IN =
+            "com.smartisanos.wifi.WIFI_NEDD_SIGIN_IN";
+    private static final String PACKAGE_NAME_WIFI_AUTHORZIE = "com.android.wifiauthorize";
+    private static final int WIFI_DISABLED_RELEASE_LOCK_DELAY_MS = 5000;
+
+    // PICO (factory PICO OS 5.13.7): config_default_dns_server, added to Internet networks
+    // without usable DNS servers.
+    private InetAddress mDefaultDns;
+
+    // PICO (factory PICO OS 5.13.7): Wi-Fi off wakelock release and the device host name.
+    private final IExtConnectivityService mExt;
 
     private static final String DIAG_ARG = "--diag";
     public static final String SHORT_ARG = "--short";
@@ -336,6 +353,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
     private final Object mTNSLock = new Object();
 
+    // PICO (factory PICO OS 5.13.7): proxy broadcast for a foreground app that asked for the
+    // proxy before the connected network became the default one.
+    private boolean mayNeedUpdateProxy = false;
+    private NetworkInfo.State mNetworkState = NetworkInfo.State.DISCONNECTED;
+
     private String mCurrentTcpBufferSizes;
 
     private static final SparseArray<String> sMagicDecoderRing = MessageUtils.findMessageNames(
@@ -363,7 +385,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
      * network - EVENT_EXPIRE_NET_TRANSITION_WAKELOCK happens
      * after a timeout if no network is found (typically 1 min).
      */
-    private static final int EVENT_CLEAR_NET_TRANSITION_WAKELOCK = 8;
+    // PICO: protected as in the factory PICO OS 5.13.7 (used by ExtConnectivityServiceImpl).
+    protected static final int EVENT_CLEAR_NET_TRANSITION_WAKELOCK = 8;
 
     /**
      * used internally to reload global proxy settings
@@ -427,7 +450,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
      * EVENT_CLEAR_NET_TRANSITION_WAKELOCK happens if we had found
      * a replacement network.
      */
-    private static final int EVENT_EXPIRE_NET_TRANSITION_WAKELOCK = 24;
+    protected static final int EVENT_EXPIRE_NET_TRANSITION_WAKELOCK = 24;
 
     /**
      * Used internally to indicate the system is ready.
@@ -643,6 +666,10 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
     @GuardedBy("mBandwidthRequests")
     private final SparseArray<Integer> mBandwidthRequests = new SparseArray(10);
+
+    // PICO (factory PICO OS 5.13.7): redirect URL of the last validation result, passed to the
+    // Wi-Fi sign-in app.
+    private String mRedirectUrl = null;
 
     @VisibleForTesting
     final MultinetworkPolicyTracker mMultinetworkPolicyTracker;
@@ -882,6 +909,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
     protected ConnectivityService(Context context, INetworkManagementService netManager,
             INetworkStatsService statsService, INetworkPolicyManager policyManager,
             IDnsResolver dnsresolver, IpConnectivityLog logger, INetd netd) {
+        mExt = new ExtConnectivityServiceImpl(this);
         if (DBG) log("ConnectivityService starting up");
 
         mSystemProperties = getSystemProperties();
@@ -905,6 +933,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mHandlerThread.start();
         mHandler = new InternalHandler(mHandlerThread.getLooper());
         mTrackerHandler = new NetworkStateTrackerHandler(mHandlerThread.getLooper());
+        mExt.setupUniqueDeviceName(context, mSystemProperties);
 
         mReleasePendingIntentDelayMs = Settings.Secure.getInt(context.getContentResolver(),
                 Settings.Secure.CONNECTIVITY_RELEASE_PENDING_INTENT_DELAY_MS, 5_000);
@@ -1077,6 +1106,17 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         mDnsManager = new DnsManager(mContext, mDnsResolver, mSystemProperties);
         registerPrivateDnsSettingsCallbacks();
+        mExt.init(mContext, mHandler);
+        initDefaultDns();
+    }
+
+    private void initDefaultDns() {
+        String dns = mContext.getResources().getString(R.string.config_default_dns_server);
+        try {
+            mDefaultDns = NetworkUtils.numericToInetAddress(dns);
+        } catch (IllegalArgumentException e) {
+            loge("Error setting defaultDns using " + dns);
+        }
     }
 
     @VisibleForTesting
@@ -2718,8 +2758,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
                         final String logMsg = !TextUtils.isEmpty(redirectUrl)
                                  ? " with redirect to " + redirectUrl
                                  : "";
-                        log(nai.name() + " validation " + (valid ? "passed" : "failed") + logMsg);
+                        // PICO (factory PICO OS 5.13.7): logged with Slog.i.
+                        Slog.i(TAG, nai.name() + "validation " + (valid ? "passed" : "failed")
+                                + logMsg);
                     }
+                    mRedirectUrl = redirectUrl;
                     if (valid != nai.lastValidated) {
                         if (wasDefault) {
                             metricsLogger().defaultNetworkMetrics().logDefaultNetworkValidity(
@@ -2798,6 +2841,30 @@ public class ConnectivityService extends IConnectivityManager.Stub
                         if (nai == null) {
                             loge("EVENT_PROVISIONING_NOTIFICATION from unknown NetworkMonitor");
                             break;
+                        }
+                        // PICO (factory PICO OS 5.13.7): a Wi-Fi captive portal also starts the
+                        // Wi-Fi sign-in app with the redirect URL and the Wi-Fi network id.
+                        if (nai.networkCapabilities.hasTransport(
+                                NetworkCapabilities.TRANSPORT_WIFI)) {
+                            int redirectNetId = WifiConfiguration.INVALID_NETWORK_ID;
+                            WifiManager wifiManager =
+                                    (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
+                            if (wifiManager != null) {
+                                WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+                                if (wifiInfo != null && wifiInfo.getNetworkId()
+                                        != WifiConfiguration.INVALID_NETWORK_ID) {
+                                    redirectNetId = wifiInfo.getNetworkId();
+                                }
+                            }
+                            Intent siginInIntent = new Intent(ACTION_WIFI_NEED_SIGIN_IN);
+                            siginInIntent.setPackage(PACKAGE_NAME_WIFI_AUTHORZIE);
+                            siginInIntent.putExtra("REDIRECT_URL_STRING", mRedirectUrl);
+                            if (redirectNetId != WifiConfiguration.INVALID_NETWORK_ID) {
+                                siginInIntent.putExtra("REDIRECT_NETWORK_ID", redirectNetId);
+                            }
+                            Slog.d(TAG, "Wifi need sign in, send WIFI_NEDD_SIGIN_IN broadcast!"
+                                    + " redirectNetId = " + redirectNetId);
+                            mContext.sendBroadcast(siginInIntent);
                         }
                         if (!nai.networkMisc.provisioningNotificationDisabled) {
                             mNotifier.showNotification(netId, NotificationType.SIGN_IN, nai, null,
@@ -4261,6 +4328,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
             final Network activeNetwork = getActiveNetworkForUidInternal(Binder.getCallingUid(),
                     true);
             if (activeNetwork == null) {
+                // PICO (factory PICO OS 5.13.7): broadcast the proxy once the network connects.
+                if (!mayNeedUpdateProxy && mNetworkState == NetworkInfo.State.CONNECTED) {
+                    mayNeedUpdateProxy = true;
+                }
+                Log.i(TAG, "getProxyForNetwork active network is null");
                 return null;
             }
             return getLinkPropertiesProxyInfo(activeNetwork);
@@ -5819,6 +5891,42 @@ public class ConnectivityService extends IConnectivityManager.Stub
         return !routeDiff.added.isEmpty() || !routeDiff.removed.isEmpty();
     }
 
+    /**
+     * PICO (factory PICO OS 5.13.7): the default DNS server to add to an Internet network that
+     * lacks it, has no DNS servers or private DNS off, is not a VPN and has a default route of
+     * the default server's address family; otherwise null.
+     */
+    private InetAddress addDefaultDnsServer(int netId, LinkProperties lp) {
+        NetworkAgentInfo nai = getNetworkAgentInfoForNetId(netId);
+        Collection<InetAddress> dnses = lp.getDnsServers();
+        if (nai == null || mDefaultDns == null || dnses.contains(mDefaultDns)
+                || !nai.networkCapabilities.hasCapability(NET_CAPABILITY_INTERNET)) {
+            return null;
+        }
+        if (!dnses.isEmpty()) {
+            String mode = Settings.Global.getString(mContext.getContentResolver(),
+                    Settings.Global.PRIVATE_DNS_MODE);
+            if (mode != null && !ConnectivityManager.PRIVATE_DNS_MODE_OFF.equals(mode)) {
+                log("Not append default DNS for original DNSes not empy:" + dnses);
+                return null;
+            }
+        }
+        if (nai.isVPN()) {
+            return null;
+        }
+        boolean hadIPv4 = lp.hasIpv4Address() && lp.hasIpv4DefaultRoute();
+        boolean hadIPv6 = lp.hasGlobalIpv6Address() && lp.hasIpv6DefaultRoute();
+        if ((mDefaultDns instanceof Inet4Address) && hadIPv4) {
+            log("add default v4 dns" + mDefaultDns);
+            return mDefaultDns;
+        }
+        if ((mDefaultDns instanceof Inet6Address) && hadIPv6) {
+            log("add default v6 dns" + mDefaultDns);
+            return mDefaultDns;
+        }
+        return null;
+    }
+
     private void updateDnses(LinkProperties newLp, LinkProperties oldLp, int netId) {
         if (oldLp != null && newLp.isIdenticalDnses(oldLp)) {
             return;  // no updating necessary
@@ -5826,6 +5934,13 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         final NetworkAgentInfo defaultNai = getDefaultNetwork();
         final boolean isDefaultNetwork = (defaultNai != null && defaultNai.network.netId == netId);
+
+        // PICO (factory PICO OS 5.13.7): append config_default_dns_server when needed.
+        try {
+            newLp.addDnsServer(addDefaultDnsServer(netId, newLp));
+        } catch (Exception e) {
+            loge("addDefaultDnsServer:" + e);
+        }
 
         if (DBG) {
             final Collection<InetAddress> dnses = newLp.getDnsServers();
@@ -6700,7 +6815,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
         if (DBG) {
             log(networkAgent.name() + " EVENT_NETWORK_INFO_CHANGED, going from " +
                     (oldInfo == null ? "null" : oldInfo.getState()) +
-                    " to " + state);
+                    " to " + state + " evetConnectd=" + networkAgent.everConnected);
+        }
+        // PICO (factory PICO OS 5.13.7).
+        if (state != null) {
+            mNetworkState = state;
         }
 
         if (!networkAgent.created
@@ -6757,6 +6876,15 @@ public class ConnectivityService extends IConnectivityManager.Stub
             // Consider network even though it is not yet validated.
             final long now = SystemClock.elapsedRealtime();
             rematchNetworkAndRequests(networkAgent, ReapUnvalidatedNetworks.REAP, now);
+
+            // PICO (factory PICO OS 5.13.7): a foreground app asked for the proxy while there
+            // was no default network.
+            if (mayNeedUpdateProxy && networkAgent.linkProperties != null
+                    && networkAgent.linkProperties.getHttpProxy() != null) {
+                mProxyTracker.sendProxyBroadcast();
+                Log.i(TAG, "updateProxy  for foreground proccess");
+                mayNeedUpdateProxy = false;
+            }
 
             // This has to happen after matching the requests, because callbacks are just requests.
             notifyNetworkCallbacks(networkAgent, ConnectivityManager.CALLBACK_PRECHECK);
