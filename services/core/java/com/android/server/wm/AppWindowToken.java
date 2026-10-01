@@ -2720,6 +2720,8 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
 
     @Override
     public void onAnimationLeashLost(Transaction t) {
+        // Factory: a lost leash also ends the z-boost of the animation.
+        mNeedsZBoost = false;
         super.onAnimationLeashLost(t);
         if (mAnimationBoundsLayer != null) {
             t.remove(mAnimationBoundsLayer);
