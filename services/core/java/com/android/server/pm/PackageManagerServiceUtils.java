@@ -842,7 +842,8 @@ public class PackageManagerServiceUtils {
         if (isDebuggable) {
             return true;
         }
-        return (installFlags & PackageManager.INSTALL_ALLOW_DOWNGRADE) != 0;
+        return (installFlags & PackageManager.INSTALL_ALLOW_DOWNGRADE) != 0
+                && (applicationFlags & ApplicationInfo.FLAG_SYSTEM) == 0;
     }
 
     /**
