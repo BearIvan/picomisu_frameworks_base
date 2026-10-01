@@ -1970,10 +1970,10 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         }
 
         // Smartisan (factory): drop the frozen callback of this window's process.
-        if (getWindowStateSmtBase().isFrozenCallbackRegisterd) {
-            getWindowStateSmtBase().isFrozenCallbackRegisterd = false;
+        if (((WindowStateSmtBase) getSmtEx()).isFrozenCallbackRegisterd) {
+            ((WindowStateSmtBase) getSmtEx()).isFrozenCallbackRegisterd = false;
             ApplicationFreezerHelperSmt.unregisterFrozenCallbackByPidOnce(mSession.mPid,
-                    mSession.mUid, getWindowStateSmtBase());
+                    mSession.mUid, (WindowStateSmtBase) getSmtEx());
         }
 
         mWmService.postWindowRemoveCleanupLocked(this);

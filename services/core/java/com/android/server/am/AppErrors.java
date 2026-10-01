@@ -589,8 +589,10 @@ class AppErrors {
                     }
                 } else {
                     // Huh.
-                    // Smartisan (factory): report the kill. (The factory also sets
-                    // r.getSmtEx().killedReason = "app-crash" here although r is null.)
+                    // Smartisan (factory): record and report the kill. As on the factory, r is
+                    // null on this branch, so the killedReason store throws a
+                    // NullPointerException before the process is killed.
+                    r.getSmtEx().killedReason = "app-crash";
                     mService.getSmtEx().reportKillingEvent(
                             KillingStatsUtils.buildOtherKillingEventItem(
                                     KillingStatsUtils.getNameForUid(uid), uid, "app-crash"));

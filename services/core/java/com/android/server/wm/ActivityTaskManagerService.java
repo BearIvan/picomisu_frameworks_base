@@ -2184,7 +2184,9 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         // shortcut whose app has the 0x10000 perf-opt flag is kept alive for VR and moved to
         // the back instead.
         final int callingPid = getCallingPid();
-        final TaskRecord tr = getSmtEx().getTaskRecordByTaskIdForDeepClean(taskId);
+        // Factory: the call is bound to ActivityTaskManagerServiceSmtBase.
+        final TaskRecord tr = ((ActivityTaskManagerServiceSmtBase) getSmtEx())
+                .getTaskRecordByTaskIdForDeepClean(taskId);
         final long ident = Binder.clearCallingIdentity();
         boolean ret = false;
         try {

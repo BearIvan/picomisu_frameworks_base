@@ -766,10 +766,10 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
         // PICO OS 5.13.7 (Smartisan UI first): UI first level 4 for the launching process.
         if (mService.getSmtEx().uiFirstSwitch) {
             try {
-                Process.setUIFirstSched(proc.getPid(), 4);
+                Process.setUIFirstSched(proc.mPid, 4);
                 if (Process.UI_FIRST_LOG_CONTROL) {
                     FeatLog.d(TAG, "FEAT_UI_FIRST_WHEN_LAUNCH_APP", 0,
-                            "AMSOE UI first enabled tid = " + proc.getPid() + " pkname = "
+                            "AMSOE UI first enabled tid = " + proc.mPid + " pkname = "
                             + proc.mInfo.packageName);
                 }
             } catch (Exception e) {
