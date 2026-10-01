@@ -35,4 +35,21 @@ public interface IExtActivityStack extends IExtBase {
 
     /** Next focusable stack for ActivityStack.adjustFocusToNextFocusableStack. */
     ActivityStack getNextFocusableStack(String reason, boolean ignoreCurrent);
+
+    /** Destroys {@code r} later while it is the source of a pending startActivityAsCaller. */
+    boolean delayDestroyActivityLocked(ActivityRecord r, boolean removeFromApp, String reason);
+
+    boolean disableResumeNextFocusableActivityWhenStackIsEmpty();
+
+    ActivityRecord getDeferResumeActivity();
+
+    void setDeferResumeActivity(ActivityRecord r);
+
+    /** Ensures visibility on this stack's display only after a pause; true when done. */
+    boolean interruptCompletePauseLocked(ActivityRecord resuming);
+
+    void onActivityDestroy(ActivityRecord r);
+
+    /** Delivers the pending results of a VR activity right away. */
+    void sendResultsToVrActivity(ActivityRecord r);
 }

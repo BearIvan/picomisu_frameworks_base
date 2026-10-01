@@ -3848,6 +3848,11 @@ public final class ActivityRecord extends ConfigurationContainer {
         mAppWindowToken.registerRemoteAnimations(definition);
     }
 
+    /** PICO (factory). */
+    public ActivityInfo getActivityInfo() {
+        return info;
+    }
+
     @Override
     public String toString() {
         if (stringName != null) {

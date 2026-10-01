@@ -1734,6 +1734,8 @@ class ActivityStarter {
         ActivityStack.logStartActivity(
                 EventLogTags.AM_CREATE_ACTIVITY, mStartActivity, mStartActivity.getTaskRecord());
         mTargetStack.mLastPausedActivity = null;
+        // PICO (factory): an activity started without resume is resumed like a paused one.
+        mTargetStack.getExt().setDeferResumeActivity(mDoResume ? null : mStartActivity);
 
         mRootActivityContainer.sendPowerHintForLaunchStartIfNeeded(
                 false /* forceSend */, mStartActivity);

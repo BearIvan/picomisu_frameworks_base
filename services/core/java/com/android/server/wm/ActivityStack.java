@@ -1906,17 +1906,9 @@ public class ActivityStack extends ConfigurationContainer {
             mStackSupervisor.mAppVisibilitiesChangedSinceLastPause = false;
         }
 
-        // PICO (factory ExtActivityStackImpl.interruptCompletePauseLocked): with 2D app displays
-        // only this stack's display updates visibility after a pause.
-        final ActivityDisplay pauseDisplay = getDisplay();
-        if (android.pico.utils.Features.isPvr2DEnabled() && pauseDisplay != null) {
-            mStackSupervisor.getKeyguardController().beginActivityVisibilityUpdate();
-            try {
-                pauseDisplay.ensureActivitiesVisible(resuming, 0, !PRESERVE_WINDOWS,
-                        true /* notifyClients */);
-            } finally {
-                mStackSupervisor.getKeyguardController().endActivityVisibilityUpdate();
-            }
+        // PICO (factory): with 2D app displays only this stack's display updates visibility
+        // after a pause.
+        if (mExt.interruptCompletePauseLocked(resuming)) {
             return;
         }
 
@@ -2680,8 +2672,8 @@ public class ActivityStack extends ConfigurationContainer {
         mStackSupervisor.mUserLeaving = false;
 
         if (!hasRunningActivity) {
-            if (ExtActivityStartControllerImpl.disableResumeNextFocusableActivityWhenStackIsEmpty(
-                    getDisplay())) {
+            // PICO (factory): a 2D app display keeps its stack order when a stack becomes empty.
+            if (mExt.disableResumeNextFocusableActivityWhenStackIsEmpty()) {
                 return false;
             }
             // There are no activities left in the stack, let's look somewhere else.
@@ -2708,8 +2700,9 @@ public class ActivityStack extends ConfigurationContainer {
 
         // If we are sleeping, and there is no resumed activity, and the top
         // activity is paused, well that is the state we want.
+        // PICO (factory): or the activity whose start did not resume it (ActivityStarter).
         if (shouldSleepOrShutDownActivities()
-                && mLastPausedActivity == next
+                && (mLastPausedActivity == next || getExt().getDeferResumeActivity() == next)
                 && mRootActivityContainer.allPausedActivitiesComplete()) {
             // If the current top activity may be able to occlude keyguard but the occluded state
             // has not been set, update visibility and check again if we should continue to resume.
@@ -3806,9 +3799,7 @@ public class ActivityStack extends ConfigurationContainer {
         // PICO (factory ExtActivityStackImpl.getNextFocusableStack): on a 2D app display focus
         // only returns to the stack that launched this one; otherwise it moves to another
         // display, and the 2D app display is reported to SystemExt as hidden.
-        final ActivityStack stack = android.pico.utils.Features.isPvr2DEnabled()
-                ? mExt.getNextFocusableStack(reason, !allowFocusSelf)
-                : mRootActivityContainer.getNextFocusableStack(this, !allowFocusSelf);
+        final ActivityStack stack = getExt().getNextFocusableStack(reason, !allowFocusSelf);
         final String myReason = reason + " adjustFocusToNextFocusableStack";
         if (stack == null) {
             return null;
@@ -4053,6 +4044,8 @@ public class ActivityStack extends ConfigurationContainer {
                         resultTo.getUriPermissionsLocked(), resultTo.mUserId);
             }
             resultTo.addResultLocked(r, r.resultWho, r.requestCode, resultCode, resultData);
+            // PICO (factory): a VR activity gets its results right away.
+            getExt().sendResultsToVrActivity(resultTo);
             r.resultTo = null;
         }
         else if (DEBUG_RESULTS) Slog.v(TAG_RESULTS, "No result destination from " + r);
@@ -4109,8 +4102,7 @@ public class ActivityStack extends ConfigurationContainer {
 
             // PICO (factory): the finish reason is kept, so a clear-task finish does not move
             // focus off a 2D app display (ExtActivityStackImpl.getNextFocusableStack).
-            adjustFocusedActivityStack(r, android.pico.utils.Features.isPvr2DEnabled()
-                    ? reason + " finishActivity" : "finishActivity");
+            adjustFocusedActivityStack(r, reason + " finishActivity");
 
             finishActivityResultsLocked(r, resultCode, resultData);
 
@@ -4707,6 +4699,11 @@ public class ActivityStack extends ConfigurationContainer {
      * but then create a new client-side object for this same HistoryRecord.
      */
     final boolean destroyActivityLocked(ActivityRecord r, boolean removeFromApp, String reason) {
+        // PICO (factory): an activity that is still the source of a pending startActivityAsCaller
+        // is destroyed 100 ms later.
+        if (mExt.delayDestroyActivityLocked(r, removeFromApp, reason)) {
+            return false;
+        }
         if (DEBUG_SWITCH || DEBUG_CLEANUP) Slog.v(TAG_SWITCH,
                 "Removing activity from " + reason + ": token=" + r
                         + ", app=" + (r.hasProcess() ? r.app.mName : "(null)"));
@@ -4803,7 +4800,8 @@ public class ActivityStack extends ConfigurationContainer {
             Slog.w(TAG, "Activity " + r + " being finished, but not in LRU list");
         }
 
-        mService.getActivityStartController().getExt().getSystemExt().handleDestroyActivity(r.info);
+        // PICO (factory): SystemExt learns about the destroyed activity.
+        mExt.onActivityDestroy(r);
         return removedFromHistory;
     }
 
@@ -5131,8 +5129,7 @@ public class ActivityStack extends ConfigurationContainer {
 
         // PICO (factory ExtActivityStackImpl.moveToBack): focus goes to the caller stack of this
         // one; when that is on another display the move is complete here.
-        if (android.pico.utils.Features.isPvr2DEnabled() && isFocused
-                && mExt.moveToBack("moveTaskToBackLocked")) {
+        if (isFocused && getExt().moveToBack("moveTaskToBackLocked")) {
             return true;
         }
 
@@ -5634,9 +5631,7 @@ public class ActivityStack extends ConfigurationContainer {
             ActivityOptions options) {
         // PICO (factory ExtActivityStackImpl.updateCaller): remember the 2D app stack that
         // launched this one, so focus returns there when this stack goes away.
-        if (android.pico.utils.Features.isPvr2DEnabled()) {
-            mExt.updateCaller(activity);
-        }
+        getExt().updateCaller(activity);
         final TaskRecord task = TaskRecord.create(
                 mService, taskId, info, intent, voiceSession, voiceInteractor);
         // add the task to stack first, mTaskPositioner might need the stack association
