@@ -5066,6 +5066,17 @@
                     android:resource="@xml/autofill_compat_accessibility_service" />
         </service>
 
+        <!-- PICO OS 5.13.7: Smartisan job services of the factory sysmonitor-services.jar. -->
+        <service android:name="com.android.server.power.SmtCollectPowerLogService"
+                 android:permission="android.permission.BIND_JOB_SERVICE"
+                 android:exported="true">
+        </service>
+
+        <service android:name="com.android.server.SmartPerformanceService"
+                 android:permission="android.permission.BIND_JOB_SERVICE"
+                 android:exported="true">
+        </service>
+
 </application>
 
     <!-- PICO OS 5.13.7 permissions. -->
