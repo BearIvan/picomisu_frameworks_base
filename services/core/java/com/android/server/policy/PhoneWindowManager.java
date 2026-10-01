@@ -445,6 +445,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     /** PICO VR key, home and power handling (factory IExtPhoneWindowManager mExt). */
     private IExtPhoneWindowManager mExt = new ExtPhoneWindowManagerImpl(this);
 
+    /** Smartisan starting window hooks of the factory (mHandler is still null here). */
+    private PhoneWindowManagerSmtBase mSmtEx = new PhoneWindowManagerSmtBase(this, mHandler);
+
     // FIXME This state is shared between the input reader and handler thread.
     // Technically it's broken and buggy but it has been like this for many years
     // and we have not yet seen any problems.  Someday we'll rewrite this logic
@@ -5740,5 +5743,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     /** PICO (factory): the IExtPhoneWindowManager extension. */
     public IExtPhoneWindowManager getExt() {
         return mExt;
+    }
+
+    @Override
+    public PhoneWindowManagerSmtBase getISmtEx() {
+        return mSmtEx;
     }
 }

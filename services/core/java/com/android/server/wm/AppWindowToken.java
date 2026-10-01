@@ -2261,6 +2261,9 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
         }
     };
 
+    /** Smartisan state of the factory (blurred starting window). */
+    private final AppWindowTokenSmtBase mAppWindowTokenSmtBase = new AppWindowTokenSmtBase(this);
+
     private int getStartingWindowType(boolean newTask, boolean taskSwitch, boolean processRunning,
             boolean allowTaskSnapshot, boolean activityCreated, boolean fromRecents,
             ActivityManager.TaskSnapshot snapshot) {
@@ -3280,5 +3283,9 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
             System.arraycopy(matrix, 0, mMatrix, 0, mMatrix.length);
             System.arraycopy(translation, 0, mTranslation, 0, mTranslation.length);
         }
+    }
+
+    public AppWindowTokenSmtBase getAppWindowTokenSmtBase() {
+        return mAppWindowTokenSmtBase;
     }
 }

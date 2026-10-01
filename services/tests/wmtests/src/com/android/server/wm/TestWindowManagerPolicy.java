@@ -39,6 +39,7 @@ import android.view.animation.Animation;
 
 import com.android.internal.policy.IKeyguardDismissCallback;
 import com.android.internal.policy.IShortcutService;
+import com.android.server.policy.PhoneWindowManagerSmtBase;
 import com.android.server.policy.WindowManagerPolicy;
 
 import java.io.PrintWriter;
@@ -407,5 +408,10 @@ class TestWindowManagerPolicy implements WindowManagerPolicy {
     @Override
     public boolean setAodShowing(boolean aodShowing) {
         return false;
+    }
+
+    @Override
+    public PhoneWindowManagerSmtBase getISmtEx() {
+        return null;
     }
 }

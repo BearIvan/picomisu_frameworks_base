@@ -1508,4 +1508,7 @@ public interface WindowManagerPolicy extends WindowManagerPolicyConstants {
      * @return whether the value was changed.
      */
     boolean setAodShowing(boolean aodShowing);
+
+    /** Smartisan starting window hooks (factory PICO OS 5.13.7). */
+    PhoneWindowManagerSmtBase getISmtEx();
 }

@@ -11,12 +11,9 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Objects;
-import java.util.function.Consumer;
 
 /**
- * Reconstructed from the PICO OS 5.13.7 factory services. Not ported: clearStartingWindowFiles()
- * of the Smartisan blurred starting window (SmartisanStartingWindowManager), whose call sites
- * are not ported.
+ * Reconstructed from the PICO OS 5.13.7 factory services.
  *
  * @hide
  */
@@ -122,6 +119,10 @@ public class WindowManagerServiceSmtBase {
         return this.mVisibleUids;
     }
 
+    void clearStartingWindowFiles() {
+        SmartisanStartingWindowManager.getInstance().clearStartingWindowFiles();
+    }
+
     public void dump(PrintWriter pw) {
         pw.print("  mVisibleUidsBK: {");
         for (Integer uid : this.mVisibleUidsBK) {
@@ -163,11 +164,8 @@ public class WindowManagerServiceSmtBase {
             try {
                 WindowManagerService.boostPriorityForLockedSection();
                 DisplayContent displayContent = this.mWmService.getDefaultDisplayContentLocked();
-                displayContent.forAllWindows(new Consumer() {
-                    @Override
-                    public final void accept(Object obj) {
-                        ((WindowState) obj).getWindowStateSmtBase().forceUpdateVisibleTime(screenOn);
-                    }
+                displayContent.forAllWindows(w -> {
+                    w.getWindowStateSmtBase().forceUpdateVisibleTime(screenOn);
                 }, true);
             } finally {
                 WindowManagerService.resetPriorityAfterLockedSection();
@@ -180,11 +178,8 @@ public class WindowManagerServiceSmtBase {
             try {
                 WindowManagerService.boostPriorityForLockedSection();
                 DisplayContent displayContent = this.mWmService.getDefaultDisplayContentLocked();
-                displayContent.forAllWindows(new Consumer() {
-                    @Override
-                    public final void accept(Object obj) {
-                        ((WindowState) obj).getWindowStateSmtBase().onDisplayFpsModeChanged(displayMode);
-                    }
+                displayContent.forAllWindows(w -> {
+                    w.getWindowStateSmtBase().onDisplayFpsModeChanged(displayMode);
                 }, true);
             } finally {
                 WindowManagerService.resetPriorityAfterLockedSection();

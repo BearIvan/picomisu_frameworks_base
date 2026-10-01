@@ -254,6 +254,9 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     /** PICO display extension (factory IExtDisplayContent). */
     private IExtDisplayContent mExt;
 
+    /** Smartisan display state of the factory (first-frame screenshot). */
+    private final DisplayContentSmtBase mDisplayContentSmtBase;
+
     /** The containers below are the only child containers the display can have. */
     // Contains all window containers that are related to apps (Activities)
     private final TaskStackContainers mTaskStackContainers = new TaskStackContainers(mWmService);
@@ -900,6 +903,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             ActivityDisplay activityDisplay) {
         super(service);
         mExt = new ExtDisplayContentImpl(this);
+        mDisplayContentSmtBase = new DisplayContentSmtBase(this);
         mAcitvityDisplay = activityDisplay;
         if (service.mRoot.getDisplayContent(display.getDisplayId()) != null) {
             throw new IllegalArgumentException("Display with ID=" + display.getDisplayId()
@@ -3995,7 +3999,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     }
 
     // TODO: Can this use createRotationMatrix()?
-    private static void convertCropForSurfaceFlinger(Rect crop, int rot, int dw, int dh) {
+    static void convertCropForSurfaceFlinger(Rect crop, int rot, int dw, int dh) {
         if (rot == Surface.ROTATION_90) {
             final int tmp = crop.top;
             crop.top = dw - crop.right;
@@ -4103,7 +4107,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         }
     }
 
-    private static final class ScreenshotApplicationState {
+    protected static final class ScreenshotApplicationState {
         WindowState appWin;
         int maxLayer;
         int minLayer;
@@ -4711,7 +4715,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
      * Window container class that contains all containers on this display that are not related to
      * Apps. E.g. status bar.
      */
-    private class NonAppWindowContainers extends DisplayChildWindowContainer<WindowToken> {
+    protected class NonAppWindowContainers extends DisplayChildWindowContainer<WindowToken> {
         /**
          * Compares two child window tokens returns -1 if the first is lesser than the second in
          * terms of z-order and 1 otherwise.
@@ -5458,5 +5462,9 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             mMetricsLogger = new MetricsLogger();
         }
         return mMetricsLogger;
+    }
+
+    public DisplayContentSmtBase getDisplayContentSmtBase() {
+        return mDisplayContentSmtBase;
     }
 }
