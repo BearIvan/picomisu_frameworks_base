@@ -8389,8 +8389,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         synchronized (this) {
             mProcessStats.shutdownLocked();
         }
-        // Smartisan (factory).
-        ActivityManagerServiceSmtBase.writeConfigFile();
+        // Smartisan (factory): static call through the instance, as on the factory.
+        mSmtEx.writeConfigFile();
 
         return timedout;
     }
@@ -18730,6 +18730,22 @@ public class ActivityManagerService extends IActivityManager.Stub
         @Override
         public int startActivityAsUserEmpty(Bundle options) {
             return ActivityManagerService.this.startActivityAsUserEmpty(options);
+        }
+
+        @Override
+        public boolean hasForegroundServiceNotification(String pkg, int userId,
+                String channelId) {
+            synchronized (ActivityManagerService.this) {
+                return mServices.hasForegroundServiceNotificationLocked(pkg, userId, channelId);
+            }
+        }
+
+        @Override
+        public void stopForegroundServicesForChannel(String pkg, int userId,
+                String channelId) {
+            synchronized (ActivityManagerService.this) {
+                mServices.stopForegroundServicesForChannelLocked(pkg, userId, channelId);
+            }
         }
 
         @Override

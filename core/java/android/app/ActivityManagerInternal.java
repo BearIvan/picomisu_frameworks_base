@@ -18,6 +18,7 @@ package android.app;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.UserIdInt;
 import android.content.ComponentName;
 import android.content.IIntentReceiver;
 import android.content.IIntentSender;
@@ -350,4 +351,19 @@ public abstract class ActivityManagerInternal {
 
     // Starts a process as empty.
     public abstract int startActivityAsUserEmpty(Bundle options);
+
+    /**
+     * Returns {@code true} if the given notification channel currently has a
+     * notification associated with a foreground service.  This is an AMS check
+     * because that is the source of truth for the FGS state.
+     */
+    public abstract boolean hasForegroundServiceNotification(String pkg, @UserIdInt int userId,
+            String channelId);
+
+    /**
+     * If the given app has any FGSs whose notifications are in the given channel,
+     * stop them.
+     */
+    public abstract void stopForegroundServicesForChannel(String pkg, @UserIdInt int userId,
+            String channelId);
 }
