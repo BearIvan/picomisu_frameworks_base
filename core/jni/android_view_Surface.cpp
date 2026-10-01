@@ -312,43 +312,6 @@ static void nativeUnlockCanvasAndPost(JNIEnv* env, jclass clazz,
     }
 }
 
-// PICO's VR skip-draw path uses a 1x1 opaque canvas without locking or queuing
-// a producer buffer. Keep its extra Surface reference until the Java finally.
-// Use an owned, full-size pixel allocation for each canvas; the factory uses
-// a shared one-byte malloc for a four-byte RGBA pixel.
-static jlong nativeLockCanvasFor2DVr(JNIEnv* env, jclass /* clazz */,
-        jlong nativeObject, jobject canvasObj) {
-    sp<Surface> surface(reinterpret_cast<Surface*>(nativeObject));
-    if (!isSurfaceValid(surface)) {
-        doThrowIAE(env);
-        return 0;
-    }
-    SkBitmap bitmap;
-    if (!bitmap.tryAllocPixels(SkImageInfo::Make(1, 1, kRGBA_8888_SkColorType,
-                                                kOpaque_SkAlphaType))) {
-        jniThrowException(env, OutOfResourcesException, nullptr);
-        return 0;
-    }
-    GraphicsJNI::getNativeCanvas(env, canvasObj)->setBitmap(bitmap);
-    surface->incStrong(&sRefBaseOwner);
-    return reinterpret_cast<jlong>(surface.get());
-}
-
-static void nativeUnlockCanvasAndPostFor2DVr(JNIEnv* env, jclass /* clazz */,
-        jlong nativeObject, jobject canvasObj) {
-    sp<Surface> surface(reinterpret_cast<Surface*>(nativeObject));
-    if (!isSurfaceValid(surface)) return;
-    GraphicsJNI::getNativeCanvas(env, canvasObj)->setBitmap(SkBitmap());
-}
-
-static const JNINativeMethod gExtSurfaceMethods[] = {
-    // The factory DEX and exported implementation return a Surface pointer;
-    // its registration table declares the lock return as V. Use the DEX signature.
-    {"nativeLockCanvasFor2DVr", "(JLandroid/graphics/Canvas;)J", (void*)nativeLockCanvasFor2DVr},
-    {"nativeUnlockCanvasAndPostFor2DVr", "(JLandroid/graphics/Canvas;)V", (void*)nativeUnlockCanvasAndPostFor2DVr},
-    {"nativeReleaseSurfaceObject", "(J)V", (void*)nativeRelease},
-};
-
 static void nativeAllocateBuffers(JNIEnv* /* env */ , jclass /* clazz */,
         jlong nativeObject) {
     sp<Surface> surface(reinterpret_cast<Surface *>(nativeObject));
@@ -638,9 +601,6 @@ int register_android_view_Surface(JNIEnv* env)
     gRectClassInfo.top = GetFieldIDOrDie(env, clazz, "top", "I");
     gRectClassInfo.right = GetFieldIDOrDie(env, clazz, "right", "I");
     gRectClassInfo.bottom = GetFieldIDOrDie(env, clazz, "bottom", "I");
-
-    RegisterMethodsOrDie(env, "android/view/ExtSurfaceImpl",
-            gExtSurfaceMethods, NELEM(gExtSurfaceMethods));
 
     return err;
 }

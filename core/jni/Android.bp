@@ -80,6 +80,7 @@ cc_library_shared {
         "android_view_RenderNode.cpp",
         "android_view_RenderNodeAnimator.cpp",
         "android_view_Surface.cpp",
+        "android_view_ExtSurfaceImpl.cpp",
         ":picomisu_surface_freeze_sources",
         "android_view_SurfaceControl.cpp",
         "android_view_SurfaceSession.cpp",
