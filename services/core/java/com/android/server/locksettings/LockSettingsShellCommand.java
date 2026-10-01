@@ -45,6 +45,7 @@ class LockSettingsShellCommand extends ShellCommand {
     private final LockPatternUtils mLockPatternUtils;
     private String mOld = "";
     private String mNew = "";
+    private IExtLockSettingsShellCommand mExt = new ExtLockSettingsShellCommandImpl(this);
 
     LockSettingsShellCommand(LockPatternUtils lockPatternUtils) {
         mLockPatternUtils = lockPatternUtils;
@@ -190,12 +191,18 @@ class LockSettingsShellCommand extends ShellCommand {
     }
 
     private void runSetPattern() {
+        if (mExt.disableAdbSetPassword()) {
+            return;
+        }
         byte[] oldBytes = mOld != null ? mOld.getBytes() : null;
         mLockPatternUtils.saveLockPattern(stringToPattern(mNew), oldBytes, mCurrentUserId);
         getOutPrintWriter().println("Pattern set to '" + mNew + "'");
     }
 
     private void runSetPassword() {
+        if (mExt.disableAdbSetPassword()) {
+            return;
+        }
         byte[] newBytes = mNew != null ? mNew.getBytes() : null;
         byte[] oldBytes = mOld != null ? mOld.getBytes() : null;
         mLockPatternUtils.saveLockPassword(newBytes, oldBytes, PASSWORD_QUALITY_ALPHABETIC,
@@ -204,6 +211,9 @@ class LockSettingsShellCommand extends ShellCommand {
     }
 
     private void runSetPin() {
+        if (mExt.disableAdbSetPassword()) {
+            return;
+        }
         byte[] newBytes = mNew != null ? mNew.getBytes() : null;
         byte[] oldBytes = mOld != null ? mOld.getBytes() : null;
         mLockPatternUtils.saveLockPassword(newBytes, oldBytes, PASSWORD_QUALITY_NUMERIC,
