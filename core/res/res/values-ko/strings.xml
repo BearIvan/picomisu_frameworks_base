@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"직접 공유가 지원되지 않음"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"앱 목록"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">시선 추적</string>
+    <string name="eye_tracking_permission_describe">시선 방향 및 이동 관련 정보에 대한 앱 접근 권한 허용</string>
+    <string name="face_tracking_permission_name">얼굴 추적</string>
+    <string name="face_tracking_permission_describe">얼굴 표정 관련 정보에 대한 앱 접근 권한 허용</string>
 </resources>

@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"无法使用直接分享功能"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"应用列表"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">视线追踪</string>
+    <string name="eye_tracking_permission_describe">允许应用获取你的视线状态</string>
+    <string name="face_tracking_permission_name">表情模拟</string>
+    <string name="face_tracking_permission_describe">允许应用获取你的面部动态和表情</string>
 </resources>

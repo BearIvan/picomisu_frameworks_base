@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"無法直接分享"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"應用程式清單"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">視線追蹤</string>
+    <string name="eye_tracking_permission_describe">允許應用程式獲取您的視線狀態</string>
+    <string name="face_tracking_permission_name">表情模擬</string>
+    <string name="face_tracking_permission_describe">允許應用程式獲取您的面部動態和表情</string>
 </resources>

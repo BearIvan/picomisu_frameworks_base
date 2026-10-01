@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"Det er ikke muligt at dele direkte"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"Liste over apps"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">Øjensporing</string>
+    <string name="eye_tracking_permission_describe">Tillad, at appen indsamler oplysninger om din synsretning og øjenbevægelse</string>
+    <string name="face_tracking_permission_name">Ansigtssporing</string>
+    <string name="face_tracking_permission_describe">Tillad, at appen indsamler oplysninger om dine ansigtsudtryk</string>
 </resources>

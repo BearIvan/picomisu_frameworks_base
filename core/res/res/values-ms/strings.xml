@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"Perkongsian langsung tidak tersedia"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"Senarai apl"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">Penjejakan Mata</string>
+    <string name="eye_tracking_permission_describe">Benarkan aplikasi mendapatkan maklumat tentang arah renungan dan pergerakan mata anda</string>
+    <string name="face_tracking_permission_name">Penjejakan Muka</string>
+    <string name="face_tracking_permission_describe">Benarkan aplikasi mendapatkan maklumat tentang ekspresi muka anda</string>
 </resources>

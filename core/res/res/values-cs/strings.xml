@@ -2122,4 +2122,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"Přímé sdílení není k dispozici"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"Seznam aplikací"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">Sledování očí</string>
+    <string name="eye_tracking_permission_describe">Aplikace může získávat informace o směru vašeho pohledu a pohybu očí</string>
+    <string name="face_tracking_permission_name">Sledování tváře</string>
+    <string name="face_tracking_permission_describe">Aplikace může získávat informace o výrazu vaší tváře</string>
 </resources>

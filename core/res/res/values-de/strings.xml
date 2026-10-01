@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"Direct Share nicht verfügbar"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"Liste der Apps"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">Blickverfolgung</string>
+    <string name="eye_tracking_permission_describe">Erlauben Sie der App, Informationen über Ihre Blickrichtung und Augenbewegung zu erhalten</string>
+    <string name="face_tracking_permission_name">Gesichtsverfolgung</string>
+    <string name="face_tracking_permission_describe">Erlauben Sie der App, Informationen über Ihre Gesichtsausdrücke zu erhalten</string>
 </resources>

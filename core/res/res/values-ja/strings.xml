@@ -2050,4 +2050,9 @@
     </plurals>
     <string name="chooser_no_direct_share_targets" msgid="492542066060841139">"ダイレクト シェアは利用できません"</string>
     <string name="chooser_all_apps_button_label" msgid="3230427756238666328">"アプリのリスト"</string>
+    <!-- PICO OS 5.13.7 eye and face tracking permissions. -->
+    <string name="eye_tracking_permission_name">アイトラッキング</string>
+    <string name="eye_tracking_permission_describe">アプリが視線の方向や目の動きに関する情報を取得することを許可する</string>
+    <string name="face_tracking_permission_name">フェイストラッキング</string>
+    <string name="face_tracking_permission_describe">アプリが顔の表情に関する情報を取得することを許可する</string>
 </resources>
