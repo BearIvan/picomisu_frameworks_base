@@ -10,7 +10,12 @@ package android.util;
  * @hide
  */
 public final class SmtSysLog {
+    public static final int LOG_ID_SYSEVENT = 8;
     public static final int LOG_ID_SYSFATAL = 9;
+
+    public static int i(String tag, String msg) {
+        return Log.println_native(LOG_ID_SYSEVENT, Log.INFO, tag, msg);
+    }
 
     public static int fatal(String tag, String msg) {
         return Log.println_native(LOG_ID_SYSFATAL, Log.ERROR, tag, msg);

@@ -289,6 +289,24 @@ public class Binder implements IBinder {
     public static final native int getTargetCalleePid(int pid, int tid);
 
     /**
+     * PICO OS 5.13.7 (Smartisan): getTargetCalleePid(clientPid, 1).
+     *
+     * @hide
+     */
+    public static final int getTargetCalleeServerPid(int clientPid) {
+        return getTargetCalleePid(clientPid, 1);
+    }
+
+    /**
+     * PICO OS 5.13.7 (Smartisan): getTargetCalleePid(serverPid, 0).
+     *
+     * @hide
+     */
+    public static final int getTargetCalleeClientPid(int serverPid) {
+        return getTargetCalleePid(serverPid, 0);
+    }
+
+    /**
      * PICO OS 5.13.7: processes serving Binder transactions of {@code pid} (at most ten), or
      * null.
      *

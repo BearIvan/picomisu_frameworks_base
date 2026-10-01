@@ -9,9 +9,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 
 /**
- * Smartisan process helpers. Reconstructed from the PICO OS 5.13.7 factory framework; the
- * factory setProcessGroupAll(int, int, int) is not present because it needs the Smartisan
- * native Process.getChildProcessViaGroup(int, int), which the Source framework lacks.
+ * Smartisan process helpers. Reconstructed from the PICO OS 5.13.7 factory framework.
  *
  * @hide
  */
@@ -55,6 +53,28 @@ public class ProcessSmtEx {
     public static void setIsDebugApp(boolean isDebug) {
         FeatLog.d(TAG, "FEAT_LOG_CONTROL", 50, "isDebug = " + isDebug);
         isDebugApp = isDebug;
+    }
+
+    /**
+     * Sets the process group of {@code pid} and of the processes in its cgroup
+     * ({@link Process#getChildProcessViaGroup}); for {@code group >= 1}, dex2oat children go to
+     * {@link #THREAD_GROUP_DEX2OAT}.
+     */
+    public static final void setProcessGroupAll(int uid, int pid, int group)
+            throws IllegalArgumentException, SecurityException {
+        Process.setProcessGroup(pid, group);
+        int[] childpids = Process.getChildProcessViaGroup(uid, pid);
+        if (childpids != null) {
+            final int N = childpids.length;
+            for (int i = 0; i < N; i++) {
+                String processName = getProcCmdLine(childpids[i], sBuffer);
+                if (group >= 1 && processName != null && processName.contains(sDex2oatCmd)) {
+                    Process.setProcessGroup(childpids[i], THREAD_GROUP_DEX2OAT);
+                } else {
+                    Process.setProcessGroup(childpids[i], group);
+                }
+            }
+        }
     }
 
     public static String getProcCmdLine(int pid, byte[] buffer) {
