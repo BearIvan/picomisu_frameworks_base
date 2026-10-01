@@ -269,6 +269,10 @@ public class NsdService extends INsdManager.Stub {
                         if (DBG) Slog.d(TAG, "Discover services");
                         servInfo = (NsdServiceInfo) msg.obj;
                         clientInfo = mClients.get(msg.replyTo);
+                        if (clientInfo == null) {
+                            Slog.e(TAG, "clientInfo is null, discover error!");
+                            break;
+                        }
 
                         if (requestLimitReached(clientInfo)) {
                             replyToMessage(msg, NsdManager.DISCOVER_SERVICES_FAILED,
