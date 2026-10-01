@@ -1510,8 +1510,13 @@ public class PackageManagerService extends IPackageManager.Stub
                         InstallArgs args = data.args;
                         PackageInstalledInfo parentRes = data.res;
 
-                        final boolean grantPermissions = (args.installFlags
+                        boolean grantPermissions = (args.installFlags
                                 & PackageManager.INSTALL_GRANT_RUNTIME_PERMISSIONS) != 0;
+                        // PICO: the ttvr app always gets its runtime permissions granted
+                        if (parentRes.pkg != null
+                                && TextUtils.equals("com.ss.android.ttvr", parentRes.pkg.packageName)) {
+                            grantPermissions = true;
+                        }
                         final boolean killApp = (args.installFlags
                                 & PackageManager.INSTALL_DONT_KILL_APP) == 0;
                         final boolean virtualPreload = ((args.installFlags
