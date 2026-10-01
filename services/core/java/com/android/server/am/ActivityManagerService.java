@@ -494,7 +494,13 @@ public class ActivityManagerService extends IActivityManager.Stub
     static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     // How many bytes to write into the dropbox log before truncating
-    static final int DROPBOX_MAX_SIZE = 192 * 1024;
+    // (PICO, factory: 5 MB instead of 192 KB).
+    static final int DROPBOX_MAX_SIZE = 5 * 1024 * 1024;
+    // PICO (factory): addErrorToDropBox log tag.
+    public static final String ADD_ERROR_TO_DROPBOX = "addErrorToDropBox";
+    // PICO (factory): system settings reported in the dropbox headers.
+    private static final String ENTER_IMMERSIVE_VALUE = "pvr.app.data.enter_immersive_value";
+    private static final String WINDOW_NUMBERS = "pvr.app.data.window_numbers";
     // Assumes logcat entries average around 100 bytes; that's not perfect stack traces count
     // as one line, but close enough for now.
     static final int RESERVED_BYTES_PER_LOGCAT_LINE = 100;
@@ -10078,12 +10084,28 @@ public class ActivityManagerService extends IActivityManager.Stub
         // otherwise the watchdog may be prevented from resetting the system.
 
         // Bail early if not published yet
-        if (ServiceManager.getService(Context.DROPBOX_SERVICE) == null) return;
+        Slog.i(ADD_ERROR_TO_DROPBOX, "Ready to get DropboxManagerService!");
+        if (ServiceManager.getService(Context.DROPBOX_SERVICE) == null) {
+            Slog.i(ADD_ERROR_TO_DROPBOX,
+                    "DropBoxManagerService didn't registered with ServiceManager,so return");
+            return;
+        }
         final DropBoxManager dbox = mContext.getSystemService(DropBoxManager.class);
 
         // Exit early if the dropbox isn't configured to accept this report type.
-        final String dropboxTag = processClass(process) + "_" + eventType;
-        if (dbox == null || !dbox.isTagEnabled(dropboxTag)) return;
+        // PICO (factory): an error without process record named "unknown" is tagged
+        // unknown_<eventType>.
+        final String dropboxTag;
+        if (process == null && "unknown".equals(processName)) {
+            dropboxTag = "unknown_" + eventType;
+        } else {
+            dropboxTag = processClass(process) + "_" + eventType;
+        }
+        if (dbox == null || !dbox.isTagEnabled(dropboxTag)) {
+            Slog.i(ADD_ERROR_TO_DROPBOX,
+                    "DropBoxManager is null or dropboxTag is not enabled,so return");
+            return;
+        }
 
         // Rate-limit how often we're willing to do the heavy lifting below to
         // collect and record logs; currently 5 logs per 10 second period.
@@ -10092,14 +10114,23 @@ public class ActivityManagerService extends IActivityManager.Stub
             mWtfClusterStart = now;
             mWtfClusterCount = 1;
         } else {
-            if (mWtfClusterCount++ >= 5) return;
+            if (mWtfClusterCount++ >= 5) {
+                Slog.i(ADD_ERROR_TO_DROPBOX,
+                        "It has been written five times in 10 seconds, so return");
+                return;
+            }
         }
+        Slog.i(ADD_ERROR_TO_DROPBOX, "processName: " + processName + " dropboxTag: "
+                + dropboxTag);
 
         final StringBuilder sb = new StringBuilder(1024);
         appendDropBoxProcessHeaders(process, processName, sb);
         if (process != null) {
             sb.append("Foreground: ")
                     .append(process.isInterestingToUserLocked() ? "Yes" : "No")
+                    .append("\n");
+            // PICO (factory).
+            sb.append("IsSilentAnr: ").append(process.isSilentAnr() ? "Yes" : "No")
                     .append("\n");
         }
         if (activityShortComponentName != null) {
@@ -10127,6 +10158,25 @@ public class ActivityManagerService extends IActivityManager.Stub
         if (mSmtEx != null) {
             sb.append("is_screen_on: ").append(mSmtEx.isScreenOn() ? "Yes" : "No").append("\n");
         }
+        // PICO (factory): immersive mode and number of windows.
+        String immersiveMode = "unknown";
+        int windowNumbers = 0;
+        try {
+            int immersiveValue = Settings.System.getInt(mContext.getContentResolver(),
+                    ENTER_IMMERSIVE_VALUE, 1);
+            if (immersiveValue == 0) {
+                immersiveMode = "perspective";
+            } else if (immersiveValue == 100) {
+                immersiveMode = "immersive";
+            }
+            windowNumbers = Settings.System.getInt(mContext.getContentResolver(),
+                    WINDOW_NUMBERS, 0);
+        } catch (Exception e) {
+            Slog.e(TAG, "add information to the header of the anr file failed!");
+            e.printStackTrace();
+        }
+        sb.append("immersiveMode: ").append(immersiveMode).append("\n");
+        sb.append("windowNumbers: ").append(windowNumbers).append("\n");
         if (crashInfo != null && crashInfo.crashTag != null && !crashInfo.crashTag.isEmpty()) {
             sb.append("Crash-Tag: ").append(crashInfo.crashTag).append("\n");
         }
@@ -10154,8 +10204,25 @@ public class ActivityManagerService extends IActivityManager.Stub
                 int lines = Settings.Global.getInt(mContext.getContentResolver(), setting, 0);
                 int maxDataFileSize = DROPBOX_MAX_SIZE - sb.length()
                         - lines * RESERVED_BYTES_PER_LOGCAT_LINE;
+                // PICO (factory): fixed logcat sizes per tag.
+                if (setting.equals("logcat_for_system_app_crash")
+                        || setting.equals("logcat_for_system_app_anr")
+                        || setting.equals("logcat_for_system_server_watchdog")
+                        || setting.equals("logcat_for_system_server_crash")) {
+                    lines = 25000;
+                }
+                if (setting.equals("logcat_for_data_app_crash")
+                        || setting.equals("logcat_for_data_app_native_crash")
+                        || setting.equals("logcat_for_data_app_anr")
+                        || setting.equals("logcat_for_system_app_wtf")
+                        || setting.equals("logcat_for_data_app_wtf")
+                        || setting.equals("logcat_for_system_server_wtf")) {
+                    lines = 5000;
+                }
 
                 if (dataFile != null && maxDataFileSize > 0) {
+                    Slog.i(TAG, "dataFile=" + dataFile.getName() + ", size="
+                            + dataFile.length());
                     try {
                         sb.append(FileUtils.readTextFile(dataFile, maxDataFileSize,
                                     "\n\n[[TRUNCATED]]"));
@@ -10169,14 +10236,17 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 if (lines > 0) {
                     sb.append("\n");
+                    sb.append("------------------------ start logcat to dropbox"
+                            + " ------------------------\n");
+                    sb.append("addErrorToDropBox header length: " + sb.length() + "\n");
 
-                    // Merge several logcat streams, and take the last N lines
+                    // PICO (factory): all logcat buffers, and take the last N lines
                     InputStreamReader input = null;
                     try {
                         java.lang.Process logcat = new ProcessBuilder(
                                 "/system/bin/timeout", "-k", "15s", "10s",
-                                "/system/bin/logcat", "-v", "threadtime", "-b", "events", "-b", "system",
-                                "-b", "main", "-b", "crash", "-t", String.valueOf(lines))
+                                "/system/bin/logcat", "-v", "threadtime", "-b", "all",
+                                "-t", String.valueOf(lines))
                                         .redirectErrorStream(true).start();
 
                         try { logcat.getOutputStream().close(); } catch (IOException e) {}
@@ -10190,6 +10260,31 @@ public class ActivityManagerService extends IActivityManager.Stub
                         Slog.e(TAG, "Error running logcat", e);
                     } finally {
                         if (input != null) try { input.close(); } catch (IOException e) {}
+                        Slog.i(TAG, "Finish appending logcat.");
+                    }
+                    sb.append("addErrorToDropBox header and log length: " + sb.length() + "\n");
+
+                    // PICO (factory): then the whole event log.
+                    try {
+                        sb.append("------------------------ start event log"
+                                + " ------------------------\n");
+                        java.lang.Process logcat = new ProcessBuilder(
+                                "/system/bin/timeout", "-k", "15s", "10s",
+                                "/system/bin/logcat", "-v", "threadtime", "-b", "events", "-d")
+                                        .redirectErrorStream(true).start();
+
+                        try { logcat.getOutputStream().close(); } catch (IOException e) {}
+                        try { logcat.getErrorStream().close(); } catch (IOException e) {}
+                        input = new InputStreamReader(logcat.getInputStream());
+
+                        int num;
+                        char[] buf = new char[8192];
+                        while ((num = input.read(buf)) > 0) sb.append(buf, 0, num);
+                    } catch (IOException e) {
+                        Slog.e(TAG, "Error running logcat", e);
+                    } finally {
+                        if (input != null) try { input.close(); } catch (IOException e) {}
+                        Slog.i(TAG, "Finish appending event log.");
                     }
                 }
 
@@ -10199,11 +10294,38 @@ public class ActivityManagerService extends IActivityManager.Stub
                     SysOptBridge.getFactory().getSchedLogdPriority().endSchedPriorityLogd(
                             process.pid);
                 }
+                // PICO (factory): a report above 10 MB is written whole to
+                // /data/syslog/.dropboxfiletoolarger.txt and cut to 10 MB; a CUSTOM_ERROR
+                // entry points to that file.
+                sb.append("addErrorToDropBox sb.length: " + sb.length() + "\n");
+                final int tooLargeSize = 10 * 1024 * 1024;
+                if (sb.length() > tooLargeSize) {
+                    Slog.i(TAG, "addErrorToDropBox sb.length: " + sb.length());
+                    StringBuilder customError = new StringBuilder(1024);
+                    try {
+                        FileOutputStream fos = new FileOutputStream(
+                                new File("/data/syslog/.dropboxfiletoolarger.txt"));
+                        customError.append("process:system_server_larger_lowmem\n");
+                        customError.append("utc:" + Build.TIME + "\n");
+                        customError.append("file size:" + sb.length() + "\n");
+                        fos.write(customError.toString().getBytes());
+                        fos.write(sb.toString().getBytes());
+                        fos.flush();
+                        fos.close();
+                        sb.delete(tooLargeSize, sb.length());
+                    } catch (Exception e) {
+                        Slog.e("tag", "", e);
+                    }
+                    customError.append("meminfo product file too larger\n");
+                    customError.append("log_path:/data/syslog/.dropboxfiletoolarger.txt\n");
+                    dbox.addText("CUSTOM_ERROR", customError.toString());
+                }
                 dbox.addText(dropboxTag, sb.toString());
             }
         };
 
-        if (process == null) {
+        // PICO (factory): also synchronously for the system server process.
+        if (process == null || process.pid == Process.myPid()) {
             // If process is null, we are being called from some internal code
             // and may be about to die -- run this synchronously.
             final int oldMask = StrictMode.allowThreadDiskWritesMask();

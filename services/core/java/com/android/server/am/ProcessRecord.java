@@ -1553,6 +1553,8 @@ public class ProcessRecord implements WindowProcessListener {
         }
         info.append("\n");
         info.append("PID: ").append(pid).append("\n");
+        // PICO (factory).
+        info.append("IsSilentAnr: ").append(isSilentAnr() ? "Yes" : "No").append("\n");
         // Smartisan (factory).
         if (!TextUtils.isEmpty(binderInfo)) {
             info.append(binderInfo).append("\n");
