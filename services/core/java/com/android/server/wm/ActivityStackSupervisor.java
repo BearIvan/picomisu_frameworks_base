@@ -141,8 +141,10 @@ import com.android.internal.os.TransferPipe;
 import com.android.internal.os.logging.MetricsLoggerWrapper;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.function.pooled.PooledLambda;
+import com.android.server.SysOptBridge;
 import com.android.server.am.ActivityManagerService;
 import com.android.server.am.EventLogTags;
+import com.android.server.am.ProcessRecord;
 import com.android.server.am.UserState;
 
 import java.io.FileDescriptor;
@@ -758,6 +760,9 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
             return false;
         }
 
+        // Smartisan (factory): back to the default process group before the start.
+        proc.getWPCSmtEx().bringProcessToDefaultLocked();
+
         // PICO OS 5.13.7 (Smartisan UI first): UI first level 4 for the launching process.
         if (mService.getSmtEx().uiFirstSwitch) {
             try {
@@ -1011,8 +1016,45 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
 
     void startSpecificActivityLocked(ActivityRecord r, boolean andResume, boolean checkConfig) {
         // Is this activity's application already running?
-        final WindowProcessController wpc =
+        WindowProcessController wpc =
                 mService.getProcessController(r.processName, r.info.applicationInfo.uid);
+
+        // Smartisan (factory): a frozen process is unfrozen to start the activity (not for a
+        // prefetched activity or on a display with flag 0x4000); a prefetched app's real start
+        // is reported to the prefetch manager.
+        if (wpc == null) {
+            wpc = mService.getSmtEx().getFrozenProcessController(r.processName,
+                    r.info.applicationInfo.uid);
+            if (wpc != null) {
+                if (wpc.getWPCSmtEx().freezeFromPrefetch) {
+                    r.getActivityRecordMonitorEx().launchTimeStatistics.setLaunchType(31);
+                } else {
+                    r.getActivityRecordMonitorEx().launchTimeStatistics.setLaunchType(30);
+                }
+                if (r.appInfo.getSmtEx().isPrefetch
+                        || (r.getDisplay().mDisplay.getFlags() & 0x4000) != 0) {
+                    return;
+                }
+                if (((ProcessRecord) wpc.mOwner).getSmtEx().isPrefetch) {
+                    r.getActivityRecordSmtEx().mSysLaunchType = 41;
+                }
+                ((WindowProcessControllerSmtBase) wpc.getSmtEx()).unFreezeProcIfNeedLocked(
+                        new StartActivityEvent(wpc));
+                getKeyguardController().isKeyguardLocked();
+                return;
+            }
+        } else if (r.getActivityRecordSmtEx().isPrefetchApp()) {
+            SysOptBridge.getFactory().getPrefetchManager().onRealStart(
+                    (ProcessRecord) r.app.mOwner);
+        }
+        if (wpc != null && r.getActivityRecordSmtEx().mSysLaunchType == 50) {
+            if (wpc.getWPCSmtEx().freezeFromPrefetch) {
+                r.getActivityRecordSmtEx().mSysLaunchType = 31;
+            } else {
+                r.getActivityRecordSmtEx().mSysLaunchType = 30;
+            }
+            wpc.getWPCSmtEx().freezeFromPrefetch = false;
+        }
 
         boolean knownToBeDead = false;
         if (wpc != null && wpc.hasThread()) {
@@ -2171,6 +2213,11 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
     }
 
     boolean reportResumedActivityLocked(ActivityRecord r) {
+        // Smartisan (factory): 2 = resumed.
+        if (r.mActivityComponent != null) {
+            SysOptBridge.getFactory().getActivityManager(mService.getSmtEx().mAMS)
+                    .notifyActivityLifeCycleStateChanged(r, 2);
+        }
         // A resumed activity cannot be stopping. remove from list
         mStoppingActivities.remove(r);
 

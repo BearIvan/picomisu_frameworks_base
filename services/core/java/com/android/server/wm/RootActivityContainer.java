@@ -113,6 +113,7 @@ import android.view.DisplayInfo;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.ResolverActivity;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.am.ActivityManagerService;
 import com.android.server.am.AppTimeTracker;
 import com.android.server.am.UserState;
@@ -769,12 +770,27 @@ public class RootActivityContainer extends ConfigurationContainer
             }
         }
 
+        // Smartisan (factory): on a VR display (type 1) the previous VR process is tracked
+        // separately.
+        boolean isVrDisplay = false;
+        if (SysOptBridge.getFactory().getAddVrPrevious().isEnable() && r.getDisplay() != null
+                && r.getDisplay().mDisplay != null && r.getDisplay().mDisplay.getType() == 1) {
+            isVrDisplay = true;
+        }
+
         // Now set this one as the previous process, only if that really makes sense to.
         if (r.hasProcess() && fgApp != null && r.app != fgApp
-                && r.lastVisibleTime > mService.mPreviousProcessVisibleTime
+                && (isVrDisplay
+                        ? r.lastVisibleTime > mService.getSmtEx().mPreviousVrProcessVisibleTime
+                        : r.lastVisibleTime > mService.mPreviousProcessVisibleTime)
                 && r.app != mService.mHomeProcess) {
-            mService.mPreviousProcess = r.app;
-            mService.mPreviousProcessVisibleTime = r.lastVisibleTime;
+            if (isVrDisplay) {
+                SysOptBridge.getFactory().getAddVrPrevious().updatePreviousVrProcess(r.app,
+                        r.lastVisibleTime);
+            } else {
+                mService.mPreviousProcess = r.app;
+                mService.mPreviousProcessVisibleTime = r.lastVisibleTime;
+            }
         }
     }
 
@@ -790,7 +806,11 @@ public class RootActivityContainer extends ConfigurationContainer
                 final int size = mTmpActivityList.size();
                 for (int i = 0; i < size; i++) {
                     final ActivityRecord activity = mTmpActivityList.get(i);
-                    if (activity.app == null && app.mUid == activity.info.applicationInfo.uid
+                    // Smartisan (factory): unfreeze reason check (as on the factory, the
+                    // activity must still have no process).
+                    if ((activity.app == null || ((WindowProcessControllerSmtBase) activity.app
+                            .getSmtEx()).unfreezeReason == 1)
+                            && activity.app == null && app.mUid == activity.info.applicationInfo.uid
                             && processName.equals(activity.processName)) {
                         try {
                             if (mStackSupervisor.realStartActivityLocked(activity, app,
@@ -1853,7 +1873,9 @@ public class RootActivityContainer extends ConfigurationContainer
         // Return the topmost valid stack on the display.
         for (int i = activityDisplay.getChildCount() - 1; i >= 0; --i) {
             final ActivityStack stack = activityDisplay.getChildAt(i);
-            if (isValidLaunchStack(stack, r, windowingMode)) {
+            // Smartisan (factory): only a prefetched activity reuses the topmost valid stack.
+            if (isValidLaunchStack(stack, r, windowingMode)
+                    && r.info.applicationInfo.getSmtEx().isPrefetch) {
                 return stack;
             }
         }

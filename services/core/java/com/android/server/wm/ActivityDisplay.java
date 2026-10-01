@@ -72,6 +72,8 @@ import android.util.BoostFramework;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.am.EventLogTags;
 
+import smartisanos.os.PeroptWhiteListParser;
+
 import java.io.PrintWriter;
 import java.util.ArrayList;
 
@@ -294,7 +296,9 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
         // we are looking for top focusable stack. The condition {@code wasContained} restricts the
         // preferred stack is set only when moving an existing stack to top instead of adding a new
         // stack that may be too early (e.g. in the middle of launching or reparenting).
-        if (wasContained && position >= mStacks.size() - 1 && stack.isFocusableAndVisible()) {
+        // Smartisan (factory): a prefetched stack is not the preferred top focusable stack.
+        if (wasContained && position >= mStacks.size() - 1 && stack.isFocusableAndVisible()
+                && !stack.getActivityStackSmtBase().isPrefetch) {
             mPreferredTopFocusableStack = stack;
         } else if (mPreferredTopFocusableStack == stack) {
             mPreferredTopFocusableStack = null;
@@ -550,7 +554,11 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
                 // than the next split-screen stack. Assistant stack, I am looking at you...
                 // We only move the focus to the primary-split screen stack if there isn't a
                 // better alternative.
-                candidate = stack;
+                // Smartisan (factory): not a stack with a prefetched resumed activity.
+                final ActivityRecord r = stack.getResumedActivity();
+                if (r == null || !r.info.applicationInfo.getSmtEx().isPrefetch) {
+                    candidate = stack;
+                }
                 continue;
             }
             if (candidate != null && stack.inSplitScreenSecondaryWindowingMode()) {
@@ -638,6 +646,20 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
            mPerfBoost = new BoostFramework();
        }
        if (mPerfBoost != null) {
+           // Smartisan (factory): perf-opt white list: VR shell flag and launch boost.
+           final PeroptWhiteListParser.WhiteItem wi =
+                   PeroptWhiteListParser.packageWhiteList.get(r.packageName);
+           if (wi != null && (wi.SMFlag & 0x100000) != 0 && (wi.SMFlag & 0x400000) != 0) {
+               Slog.d(TAG, "In packageWhiteList: " + r.packageName + " wi.SMFlag= " + wi.SMFlag);
+               r.appInfo.getSmtEx().isVrShell = true;
+           }
+           if (wi != null && (wi.SMFlag & 4) != 0) {
+               final int boostTime = (Integer) wi.SMValue.get("LaunchBoost");
+               Slog.d(TAG, "In packageWhiteList :" + r.packageName + " boostTime： " + boostTime);
+               if (boostTime > 0) {
+                   mPerfBoost.perfHint(0x1197, r.packageName, boostTime, 0);
+               }
+           }
            mPerfBoost.perfHint(BoostFramework.VENDOR_HINT_FIRST_LAUNCH_BOOST, r.packageName, -1, BoostFramework.Launch.BOOST_V1);
            mPerfSendTapHint = true;
            mPerfBoost.perfHint(BoostFramework.VENDOR_HINT_FIRST_LAUNCH_BOOST, r.packageName, -1, BoostFramework.Launch.BOOST_V2);
