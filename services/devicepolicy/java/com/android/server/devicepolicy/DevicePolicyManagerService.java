@@ -742,6 +742,8 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
     final Handler mHandler;
     final Handler mBackgroundHandler;
 
+    IExtDevicePolicyManagerService mExt;
+
     /** Listens only if mHasFeature == true. */
     final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
@@ -2203,6 +2205,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
 
     @VisibleForTesting
     DevicePolicyManagerService(Injector injector) {
+        mExt = new ExtDevicePolicyManagerServiceImpl(this);
         mInjector = injector;
         mContext = Preconditions.checkNotNull(injector.mContext);
         mHandler = new Handler(Preconditions.checkNotNull(injector.getMyLooper()));
@@ -2968,6 +2971,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
                             removePackageIfRequired(adminReceiver.getPackageName(), userHandle);
                         }
                     });
+            mExt.deleteActiveAdmin(adminReceiver);
         }
     }
 
@@ -3546,6 +3550,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
                 break;
             case SystemService.PHASE_BOOT_COMPLETED:
                 ensureDeviceOwnerUserStarted(); // TODO Consider better place to do this.
+                mExt.sendBootEventTrack(getUserData(UserHandle.USER_SYSTEM));
                 break;
         }
     }
@@ -3778,6 +3783,11 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
     @Override
     public void setActiveAdmin(ComponentName adminReceiver, boolean refreshing, int userHandle) {
         if (!mHasFeature) {
+            return;
+        }
+        // PICO: non-system admins need persist.sys.tob.dpm.enabled (always allowed on ToB).
+        if (!mExt.canSetActiveAdmin(adminReceiver.getPackageName())) {
+            Slog.w(LOG_TAG, "setActiveAdmin return by feature diable andmin=" + adminReceiver);
             return;
         }
         setActiveAdmin(adminReceiver, refreshing, userHandle, null);
@@ -4033,6 +4043,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
             Slog.i(LOG_TAG, "Admin " + adminReceiver + " removed from user " + userHandle);
         } finally {
             mInjector.binderRestoreCallingIdentity(ident);
+            mExt.deleteActiveAdmin(adminReceiver);
         }
     }
 
@@ -11958,7 +11969,10 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
                     return CODE_NOT_SYSTEM_USER;
                 }
                 // In non-split user mode, only provision DO before setup wizard completes
-                if (hasUserSetupCompleted(UserHandle.USER_SYSTEM)) {
+                // PICO: on ToB devices ManagedProvisioning and the ToB service may provision
+                // after setup.
+                if (!mExt.tobForceEnableDeviceOwnerProvisioning()
+                        && hasUserSetupCompleted(UserHandle.USER_SYSTEM)) {
                     return CODE_USER_SETUP_COMPLETED;
                 }
             } else {
@@ -14031,8 +14045,11 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         value.put(ENFORCE_KEY, enabled);
         final long id = mInjector.binderClearCallingIdentity();
         try {
-            mContext.getContentResolver().update(
-                    ENFORCE_MANAGED_URI, value, null, null);
+            // PICO: the telephony provider may be absent.
+            if (mExt.isPackageAvailable("com.android.providers.telephony", UserHandle.USER_ALL)) {
+                mContext.getContentResolver().update(
+                        ENFORCE_MANAGED_URI, value, null, null);
+            }
         } finally {
             mInjector.binderRestoreCallingIdentity(id);
         }
