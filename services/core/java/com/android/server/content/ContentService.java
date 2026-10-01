@@ -49,6 +49,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.FactoryTest;
+import android.os.FrozenObjectException;
 import android.os.IBinder;
 import android.os.Process;
 import android.os.RemoteException;
@@ -436,6 +437,7 @@ public final class ContentService extends IContentService.Stub {
                     oc.mObserver.onChange(oc.mSelfChange, uri, userHandle);
                     if (DEBUG) Slog.d(TAG, "Notified " + oc.mObserver + " of " + "update at "
                             + uri);
+                } catch (FrozenObjectException ex) {
                 } catch (RemoteException ex) {
                     synchronized (mRootNode) {
                         Log.w(TAG, "Found dead observer, removing");

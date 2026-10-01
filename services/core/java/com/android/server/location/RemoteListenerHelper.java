@@ -19,6 +19,7 @@ package com.android.server.location;
 import android.annotation.NonNull;
 import android.app.AppOpsManager;
 import android.content.Context;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IInterface;
@@ -281,6 +282,7 @@ public abstract class RemoteListenerHelper<TListener extends IInterface> {
             try {
                 mOperation.execute(mIdentifiedListener.mListener,
                         mIdentifiedListener.mCallerIdentity);
+            } catch (FrozenObjectException e) {
             } catch (RemoteException e) {
                 Log.v(mTag, "Error in monitored listener.", e);
             }

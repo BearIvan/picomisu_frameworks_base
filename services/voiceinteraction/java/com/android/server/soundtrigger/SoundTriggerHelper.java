@@ -36,6 +36,7 @@ import android.hardware.soundtrigger.SoundTrigger.SoundModelEvent;
 import android.hardware.soundtrigger.SoundTriggerModule;
 import android.os.Binder;
 import android.os.DeadObjectException;
+import android.os.FrozenObjectException;
 import android.os.PowerManager;
 import android.os.PowerManager.ServiceType;
 import android.os.RemoteException;
@@ -676,6 +677,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
 
         try {
             callback.onGenericSoundTriggerDetected((GenericRecognitionEvent) event);
+        } catch (FrozenObjectException e) {
         } catch (DeadObjectException e) {
             forceStopAndUnloadModelLocked(model, e);
             return;
@@ -766,6 +768,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
             modelData.setStopped();
             try {
                 modelData.getCallback().onRecognitionPaused();
+            } catch (FrozenObjectException e) {
             } catch (DeadObjectException e) {
                 forceStopAndUnloadModelLocked(modelData, e);
             } catch (RemoteException e) {
@@ -820,6 +823,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
 
         try {
             modelData.getCallback().onKeyphraseDetected((KeyphraseRecognitionEvent) event);
+        } catch (FrozenObjectException e) {
         } catch (DeadObjectException e) {
             forceStopAndUnloadModelLocked(modelData, e);
             return;
@@ -1155,6 +1159,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
             if (notify) {
                 try {
                     callback.onError(status);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     forceStopAndUnloadModelLocked(modelData, e);
                 } catch (RemoteException e) {
@@ -1169,6 +1174,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
             if (notify) {
                 try {
                     callback.onRecognitionResumed();
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     forceStopAndUnloadModelLocked(modelData, e);
                 } catch (RemoteException e) {
@@ -1199,6 +1205,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
             if (notify) {
                 try {
                     callback.onError(status);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     forceStopAndUnloadModelLocked(modelData, e);
                 } catch (RemoteException e) {
@@ -1212,6 +1219,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
             if (notify) {
                 try {
                     callback.onRecognitionPaused();
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     forceStopAndUnloadModelLocked(modelData, e);
                 } catch (RemoteException e) {

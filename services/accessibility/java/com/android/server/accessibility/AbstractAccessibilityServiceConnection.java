@@ -36,6 +36,7 @@ import android.graphics.Region;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -1120,6 +1121,7 @@ abstract class AbstractAccessibilityServiceConnection extends IAccessibilityServ
             if (DEBUG) {
                 Slog.i(LOG_TAG, "Event " + event + " sent to " + listener);
             }
+        } catch (FrozenObjectException e) {
         } catch (RemoteException re) {
             Slog.e(LOG_TAG, "Error during sending " + event + " to " + listener, re);
         } finally {

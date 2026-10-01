@@ -71,6 +71,7 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Debug;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IInterface;
@@ -3869,6 +3870,10 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
             case MSG_SET_ACTIVE:
                 try {
                     ((ClientState)msg.obj).client.setActive(msg.arg1 != 0, msg.arg2 != 0);
+                } catch (FrozenObjectException e) {
+                    Slog.w(TAG, "Got FrozenObjectException sending setActive(" + (msg.arg1 != 0)
+                            + ") notification to pid " + ((ClientState)msg.obj).pid + " uid "
+                            + ((ClientState)msg.obj).uid);
                 } catch (RemoteException e) {
                     Slog.w(TAG, "Got RemoteException sending setActive(false) notification to pid "
                             + ((ClientState)msg.obj).pid + " uid "

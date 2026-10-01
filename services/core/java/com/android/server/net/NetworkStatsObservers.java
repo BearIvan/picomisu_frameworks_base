@@ -26,6 +26,7 @@ import android.net.NetworkStats;
 import android.net.NetworkStatsHistory;
 import android.net.NetworkTemplate;
 import android.os.Bundle;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -300,6 +301,8 @@ class NetworkStatsObservers {
                             + " for " + mRequest);
                 }
                 mMessenger.send(msg);
+            } catch (FrozenObjectException e) {
+                Slog.w(TAG, "get FrozenObjectException e=" + e);
             } catch (RemoteException e) {
                 // May occur naturally in the race of binder death.
                 Slog.w(TAG, "RemoteException caught trying to send a callback msg for " + mRequest);

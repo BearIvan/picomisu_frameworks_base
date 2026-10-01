@@ -40,6 +40,7 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.DeadObjectException;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -593,6 +594,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 ISessionControllerCallbackHolder holder = mControllerCallbackHolders.get(i);
                 try {
                     holder.mCallback.onMetadataChanged(mMetadata);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushMetadataUpdate", holder, e);
@@ -613,6 +615,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 try {
                     holder.mCallback.onQueueChanged(mQueue == null ? null :
                             new ParceledListSlice<>(mQueue));
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushQueueUpdate", holder, e);
@@ -632,6 +635,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 ISessionControllerCallbackHolder holder = mControllerCallbackHolders.get(i);
                 try {
                     holder.mCallback.onQueueTitleChanged(mQueueTitle);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushQueueTitleUpdate",
@@ -652,6 +656,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 ISessionControllerCallbackHolder holder = mControllerCallbackHolders.get(i);
                 try {
                     holder.mCallback.onExtrasChanged(mExtras);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushExtrasUpdate", holder, e);
@@ -672,6 +677,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 ISessionControllerCallbackHolder holder = mControllerCallbackHolders.get(i);
                 try {
                     holder.mCallback.onVolumeInfoChanged(info);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushVolumeUpdate", holder, e);
@@ -691,6 +697,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 ISessionControllerCallbackHolder holder = mControllerCallbackHolders.get(i);
                 try {
                     holder.mCallback.onEvent(event, data);
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushEvent", holder, e);
@@ -712,6 +719,7 @@ public class MediaSessionRecord implements IBinder.DeathRecipient {
                 ISessionControllerCallbackHolder holder = mControllerCallbackHolders.get(i);
                 try {
                     holder.mCallback.onSessionDestroyed();
+                } catch (FrozenObjectException e) {
                 } catch (DeadObjectException e) {
                     mControllerCallbackHolders.remove(i);
                     logCallbackException("Removing dead callback in pushSessionDestroyed",

@@ -184,6 +184,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
+import android.os.FrozenObjectException;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.PersistableBundle;
@@ -720,7 +721,7 @@ public final class ActivityRecord extends ConfigurationContainer {
         if (!attachedToProcess()) {
             if (DEBUG_STATES || (hasProcess() && app.getWPCSmtEx().isFreezing())) {
                 Slog.w(TAG, "Can't report activity position update - client not running"
-                                + ", activityRecord=" + this);
+                                + ", activityRecord=" + this + ", onTop=" + onTop);
             }
             return false;
         }
@@ -731,6 +732,9 @@ public final class ActivityRecord extends ConfigurationContainer {
 
             mAtmService.getLifecycleManager().scheduleTransaction(app.getThread(), appToken,
                     TopResumedActivityChangeItem.obtain(onTop));
+        } catch (FrozenObjectException e) {
+            Slog.e(TAG, "schedule top resume activity change failed", e);
+            return false;
         } catch (RemoteException e) {
             // If process died, whatever.
             return false;

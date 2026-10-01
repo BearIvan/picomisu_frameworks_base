@@ -44,6 +44,7 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Build;
 import android.os.DeadObjectException;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -995,6 +996,7 @@ public class TrustManagerService extends SystemService {
         for (int i = 0; i < mTrustListeners.size(); i++) {
             try {
                 mTrustListeners.get(i).onTrustChanged(enabled, userId, flags);
+            } catch (FrozenObjectException e) {
             } catch (DeadObjectException e) {
                 Slog.d(TAG, "Removing dead TrustListener.");
                 mTrustListeners.remove(i);
@@ -1012,6 +1014,7 @@ public class TrustManagerService extends SystemService {
         for (int i = 0; i < mTrustListeners.size(); i++) {
             try {
                 mTrustListeners.get(i).onTrustManagedChanged(managed, userId);
+            } catch (FrozenObjectException e) {
             } catch (DeadObjectException e) {
                 Slog.d(TAG, "Removing dead TrustListener.");
                 mTrustListeners.remove(i);
@@ -1029,6 +1032,7 @@ public class TrustManagerService extends SystemService {
         for (int i = 0; i < mTrustListeners.size(); i++) {
             try {
                 mTrustListeners.get(i).onTrustError(message);
+            } catch (FrozenObjectException e) {
             } catch (DeadObjectException e) {
                 Slog.d(TAG, "Removing dead TrustListener.");
                 mTrustListeners.remove(i);
