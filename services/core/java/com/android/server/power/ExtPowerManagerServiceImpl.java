@@ -86,18 +86,6 @@ public class ExtPowerManagerServiceImpl implements IExtPowerManagerService {
     String readString = null;
     String dpChargeVolutage = "";
     String dpState = "";
-    private IBinder.DeathRecipient mDeathRecipient = new IBinder.DeathRecipient() {
-        @Override
-        public void binderDied() {
-            Log.i(TAG, "app die reset sensor control screen feature mCurrentToken = "
-                    + mCurrentToken);
-            synchronized (mLock) {
-                changeFeatureSwitch(true);
-                mCurrentToken.unlinkToDeath(this, 0);
-                mCurrentToken = null;
-            }
-        }
-    };
 
     public ExtPowerManagerServiceImpl(PowerManagerService base) {
         mBase = base;
@@ -274,6 +262,11 @@ public class ExtPowerManagerServiceImpl implements IExtPowerManagerService {
         AsyncTask task = new AsyncTask() {
             @Override
             protected Object doInBackground(Object[] objects) {
+                // Captures fileName like the factory anonymous class (val$fileName), which only
+                // uses it in compiled-out debug code.
+                if (DEBUG) {
+                    Log.d(TAG, "readFileByLines " + fileName);
+                }
                 reader = null;
                 try {
                     reader = new BufferedReader(new FileReader(mReadFile));
@@ -306,6 +299,21 @@ public class ExtPowerManagerServiceImpl implements IExtPowerManagerService {
         }
         return readString;
     }
+
+    // Declared after readFileByLines so that, as in the factory PICO OS 5.13.7, the AsyncTask is
+    // ExtPowerManagerServiceImpl$1 and this death recipient $2 (still the last field initialized).
+    private IBinder.DeathRecipient mDeathRecipient = new IBinder.DeathRecipient() {
+        @Override
+        public void binderDied() {
+            Log.i(TAG, "app die reset sensor control screen feature mCurrentToken = "
+                    + mCurrentToken);
+            synchronized (mLock) {
+                changeFeatureSwitch(true);
+                mCurrentToken.unlinkToDeath(this, 0);
+                mCurrentToken = null;
+            }
+        }
+    };
 
     private final class BootReceiver extends BroadcastReceiver {
         private BootReceiver() {
