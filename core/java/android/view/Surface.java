@@ -31,6 +31,7 @@ import android.graphics.SurfaceTexture;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.util.Log;
+import android.util.Slog;
 
 import dalvik.system.CloseGuard;
 
@@ -229,6 +230,7 @@ public class Surface implements Parcelable {
         mIsSingleBuffered = surfaceTexture.isSingleBuffered();
         synchronized (mLock) {
             mName = surfaceTexture.toString();
+            Slog.i(TAG, "create surface : " + this + " from : " + surfaceTexture.getName());
             setNativeObjectLocked(nativeCreateFromSurfaceTexture(surfaceTexture));
         }
     }
@@ -648,6 +650,14 @@ public class Surface implements Parcelable {
             return "Surface(name=" + mName + ")/@0x" +
                     Integer.toHexString(System.identityHashCode(this));
         }
+    }
+
+    /**
+     * Returns the name this Surface was created with from a SurfaceTexture.
+     * @hide
+     */
+    public String getTextureName() {
+        return mName;
     }
 
     private void setNativeObjectLocked(long ptr) {
