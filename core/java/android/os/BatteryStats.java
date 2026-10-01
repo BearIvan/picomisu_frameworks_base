@@ -1099,6 +1099,15 @@ public abstract class BatteryStats implements Parcelable {
                 public abstract int getLaunches(int which);
             }
         }
+
+        /**
+         * Smartisan per-uid battery stats extension (PICO OS 5.13.7);
+         * BatteryStatsImpl.Uid returns its BatteryStatsImplSmtEx.UidSmtEx.
+         * @hide
+         */
+        public Object getBatteryStatsImplUidSmtEx() {
+            return null;
+        }
     }
 
     public static final class LevelStepTracker {

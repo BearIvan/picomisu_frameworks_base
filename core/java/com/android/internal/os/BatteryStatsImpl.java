@@ -6722,6 +6722,16 @@ public class BatteryStatsImpl extends BatteryStats {
          */
         final SparseArray<Pid> mPids = new SparseArray<>();
 
+        // Smartisan extension (PICO OS 5.13.7).
+        private BatteryStatsImplSmtEx.UidSmtEx mBatteryStatsImplUidSmtEx =
+                new BatteryStatsImplSmtEx.UidSmtEx(this);
+
+        /** @hide */
+        @Override
+        public Object getBatteryStatsImplUidSmtEx() {
+            return mBatteryStatsImplUidSmtEx;
+        }
+
         public Uid(BatteryStatsImpl bsi, int uid) {
             mBsi = bsi;
             mUid = uid;
@@ -10389,6 +10399,16 @@ public class BatteryStatsImpl extends BatteryStats {
     }
 
     public boolean isScreenOn(int state) {
+        return state == Display.STATE_ON || state == Display.STATE_VR
+            || state == Display.STATE_ON_SUSPEND;
+    }
+
+    /**
+     * Whether the current screen state is on (PICO OS 5.13.7 factory).
+     * @hide
+     */
+    public boolean isScreenOn() {
+        final int state = mScreenState;
         return state == Display.STATE_ON || state == Display.STATE_VR
             || state == Display.STATE_ON_SUSPEND;
     }
