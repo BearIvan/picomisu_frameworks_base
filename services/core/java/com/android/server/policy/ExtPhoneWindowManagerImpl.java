@@ -17,12 +17,12 @@ import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.IAudioService;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
-import android.os.IBinder;
-import android.os.Looper;
 import android.os.Message;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.pico.utils.Features;
@@ -31,11 +31,11 @@ import android.security.KeyStore;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Slog;
+import android.view.Display;
 import android.view.KeyEvent;
 import android.view.WindowManager;
 
 import com.android.server.api.ApiLayerService;
-import com.android.server.policy.WindowManagerPolicy.WindowState;
 import com.android.server.wm.SystemExt;
 import com.pvr.IPvrManagerService;
 import com.pvr.pxrnotification.aidl.IPxrNotificationService;
@@ -46,7 +46,7 @@ import java.util.Properties;
 
 /**
  * PICO VR key, home and power handling of the window policy (factory PICO OS 5.13.7
- * com.android.server.policy.ExtPhoneWindowManagerImpl).
+ * com.android.server.policy.ExtPhoneWindowManagerImpl), ported method by method.
  *
  * Every key first goes through {@link #processKey}: keys are reported to pvr_manager
  * ("vr2d_key_event") and, when handled or BACK, to the API layer clients; the headset HOME key
@@ -58,265 +58,406 @@ import java.util.Properties;
  * Intentionally NOT ported: the factory checkADBPwd key-sequence password and the "open adb"
  * HOME + volume key combinations of checkMulKeyAction, which switch on ADB (adb_enabled) from
  * keys. The device owner has not approved enabling USB/ADB debugging from key presses.
- * Also not ported: the ToB composite key (volume down + confirm, dead code on phoenix) and
- * the Smartisan quick boot on power long press.
+ * Also not ported: the Smartisan quick boot on power long press (PhoneWindowManager side).
+ *
+ * Differences of form, not of behaviour: the factory SettingsObserverExt flags are read from
+ * Settings.Global directly, pxr_notification is looked up through ServiceManager instead of the
+ * statically linked PxrNotificationService.getInstance, and the factory
+ * IExtActivityTaskManagerInternal.getTopAppExt is ActivityTaskManagerInternal
+ * .getPicoTopResumedActivityInfo.
+ *
+ * @hide
  */
-public class ExtPhoneWindowManagerImpl {
-    static final String TAG = "WindowManagerExt";
-    private static final boolean DEBUG = Build.IS_DEBUGGABLE;
-
+public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
+    private static final String HMD_USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP =
+            "hmd_action_home_double_tap";
+    private static final String HMD_USER_KEY_CONFIG_ACTION_HOMELONGPRESS =
+            "hmd_action_home_long_press";
+    private static final String HMD_USER_KEY_CONFIG_ACTION_HOMESINGLETAP =
+            "hmd_action_home_single_tap";
+    private static final String HMD_USER_KEY_CONFIG_TIME_HOMEDOUBLETAP = "hmd_time_home_double_tap";
+    private static final String HMD_USER_KEY_CONFIG_TIME_HOMELONGPRESS = "hmd_time_home_long_press";
     private static final String HOME_DISALBE_FOR_PVR = "android.intent.disablehome_pvr";
+    private static final String LCTL_USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP =
+            "lctl_action_home_double_tap";
+    private static final String LCTL_USER_KEY_CONFIG_ACTION_HOMELONGPRESS =
+            "lctl_action_home_long_press";
+    private static final String LCTL_USER_KEY_CONFIG_ACTION_HOMESINGLETAP =
+            "lctl_action_home_single_tap";
+    private static final String LCTL_USER_KEY_CONFIG_TIME_HOMEDOUBLETAP =
+            "lctl_time_home_double_tap";
+    private static final String LCTL_USER_KEY_CONFIG_TIME_HOMELONGPRESS =
+            "lctl_time_home_long_press";
+    private static final String MDM_KEY_CONFIG_PATH = "/data/local/tmp/PxrSystemKeyConfig.prop";
+    private static final String OEM_KEY_CONFIG_PATH = "/data/misc/pxr/PxrSystemKeyConfig.prop";
     private static final String POWER_DISALBE_FOR_HCIT = "android.intent.disalbepower_hcit";
-    private static final String USER_KEY_CONFIG_CHANGE = "android.intent.user_keyconfig_change";
     private static final String PXR_NOTIFICATION_NAME_MULTI_KEY_PRESSED =
             "pxr.notification.key.multi_key_pressed";
-    private static final String NOTIFICATION_MSG_BACK_LONG_PRESS = "long.tap.back";
-    private static final String NOTIFICATION_MSG_HOME_LONG_PRESS = "long.tap.home";
+    private static final String RCTL_USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP =
+            "rctl_action_home_double_tap";
+    private static final String RCTL_USER_KEY_CONFIG_ACTION_HOMELONGPRESS =
+            "rctl_action_home_long_press";
+    private static final String RCTL_USER_KEY_CONFIG_ACTION_HOMESINGLETAP =
+            "rctl_action_home_single_tap";
+    private static final String RCTL_USER_KEY_CONFIG_TIME_HOMEDOUBLETAP =
+            "rctl_time_home_double_tap";
+    private static final String RCTL_USER_KEY_CONFIG_TIME_HOMELONGPRESS =
+            "rctl_time_home_long_press";
     private static final String SHORTCT_SHOW_ON_3D = "shortct_show_on_3d";
-    private static final String SCREEN_RECORD_CAP_PACKAGE = "com.bytedance.pico.screencapture";
-
-    // ToB key configuration files (ro.pxr.externalfunc=1 only), in lookup order.
-    private static final String MDM_KEY_CONFIG_PATH = "/data/local/tmp/PxrSystemKeyConfig.prop";
+    static final String TAG = "WindowManagerExt";
+    private static final String USER_KEY_CONFIG_ACTION_BACK = "action_key_back";
+    private static final String USER_KEY_CONFIG_ACTION_CLASS = "_class";
+    private static final String USER_KEY_CONFIG_ACTION_CONFIRM = "action_key_enter";
+    private static final String USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP = "action_home_double_tap";
+    private static final String USER_KEY_CONFIG_ACTION_HOMELONGPRESS = "action_home_long_press";
+    private static final String USER_KEY_CONFIG_ACTION_HOMESINGLETAP = "action_home_single_tap";
+    private static final String USER_KEY_CONFIG_ACTION_PACKAGE = "_package";
+    private static final String USER_KEY_CONFIG_ACTION_POWERLONGPRESS = "action_power_long_press";
+    private static final String USER_KEY_CONFIG_ACTION_POWERSINGLETAP = "action_power_single_tap";
+    private static final String USER_KEY_CONFIG_ACTION_VOLUMEDOWN = "action_key_volumedown";
+    private static final String USER_KEY_CONFIG_ACTION_VOLUMEUP = "action_key_volumeup";
+    private static final String USER_KEY_CONFIG_CHANGE = "android.intent.user_keyconfig_change";
     private static final String USER_KEY_CONFIG_PATH = "/data/local/tmp/SystemKeyConfig.prop";
-    private static final String OEM_KEY_CONFIG_PATH = "/data/misc/pxr/PxrSystemKeyConfig.prop";
     private static final String USER_KEY_CONFIG_PATH_DEFAULT = "/system/etc/SystemKeyConfig.prop";
+    private static final String USER_KEY_CONFIG_TIME_HOMEDOUBLETAP = "time_home_double_tap";
+    private static final String USER_KEY_CONFIG_TIME_HOMELONGPRESS = "time_home_long_press";
+    private static final String USER_KEY_CONFIG_TIME_POWERLONGPRESS = "time_power_long_press";
+    private static final String notification_msg_back_long_press = "long.tap.back";
+    private static final String notification_msg_home_long_press = "long.tap.home";
 
-    // Settings.Global values kept by the factory SettingsObserverExt.
+    /**
+     * The build project. The factory compares it with "phoenix" as a compile-time constant, so
+     * every "not phoenix" branch below is dead code on this product, as on the factory.
+     */
+    private static final String BUILD_PROJECT = Features.PROJECT_PHOENIX;
+
+    // Factory SettingsObserverExt keys (Settings.Global).
     private static final String PVR_SETUP_WIZARD_COMPLETE = "pvr.config.provision2.complete";
     private static final String SETTINGS_DISABLE_CAMERA_KEY = "pvr.app.data.disable_camera_key";
     private static final String SETTINGS_DOCK_SHOWING = "pvr.app.data.dock_visible_state";
     private static final String SETTINGS_SCREENSHOT_TOAST_SHOWING =
             "pvr.settings.screenshot_toast_showing";
 
-    private static final int KEYCODE_LEFT_CONTROLLER_HOME = 901;
-    private static final int KEYCODE_RIGHT_CONTROLLER_HOME = 902;
-    private static final int KEYCODE_CONFIRM = 1001;
-    private static final int KEYCODE_RECENTER = 1004;
-    private static final int DEVICE_GESTURE_LEFT_HAND = 20001;
-    private static final int DEVICE_GESTURE_RIGHT_HAND = 20002;
-    private static final int DEVICE_HEAD_CONTROL_HANDLE_MIN = 100000;
-
-    private static final int MSG_HMD_HOME_TAP = 101;
-    private static final int MSG_LCONTROLLER_HOME_TAP = 102;
-    private static final int MSG_RCONTROLLER_HOME_TAP = 103;
-    private static final int MSG_RCAPTURE_TAP = 104;
-
-    private static final int ACTION_PXR_UNDEFINED = -1;
-    private static final int ACTION_PXR_GOHOME = 2;
-    private static final int ACTION_PXR_DASHBOARD = 3;
-    private static final int ACTION_PXR_RECENTER = 6;
-    private static final int ACTION_PXR_GLOBAL_NAVIGATION = 11;
-    private static final int ACTION_PXR_SCREENCAP = 104;
-    private static final int ACTION_PXR_SCREENRECORD = 105;
-
-    private static boolean sHomeDisabledForPvr = false;
-    private static boolean sPowerDisabledForHcit = false;
-
-    private final PhoneWindowManager mBase;
-    private final Handler mKeyActionHandler = new SystemKeyHandler(Looper.getMainLooper());
-    private final SystemKeyAction mHmdHomeKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mLctlHomeKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mRctlHomeKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mHmdConfirmKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mHmdVolumeUpKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mHmdVolumeDownKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mHmdBackKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mHmdPowerKeyAction = new SystemKeyAction();
-    private final SystemKeyAction mRctlCaptureKeyAction = new SystemKeyAction();
-    private final boolean mIsDefectiveDevice;
+    private String backKeyConfig;
+    private boolean backKeyConfigDefined;
+    private String doubleTapOnHomeTimeConfig;
+    private String doubleTapOnHomeUserConfig;
+    private String enterKeyConfig;
+    private boolean enterKeyConfigDefined;
+    private String hmd_doubleTapOnHomeTimeConfig;
+    private String hmd_doubleTapOnHomeUserConfig;
+    private String hmd_longPressOnHomeTimeConfig;
+    private String hmd_longPressOnHomeUserConfig;
+    private boolean hmd_mDoubleTapOnHomeTimeDefined;
+    private boolean hmd_mDoubleTapOnHomeUserDefined;
+    private boolean hmd_mLongPressOnHomeTimeDefined;
+    private boolean hmd_mLongPressOnHomeUserDefined;
+    private boolean hmd_mSingleTapOnHomeUserDefined;
+    private String hmd_singleTapOnHomeUserConfig;
+    private SystemKeyAction hmdback_KeyAction;
+    private SystemKeyAction hmdconfirm_KeyAction;
+    private SystemKeyAction hmdhome_KeyAction;
+    private SystemKeyAction hmdpower_KeyAction;
+    private SystemKeyAction hmdvolumedown_KeyAction;
+    private SystemKeyAction hmdvolumeup_KeyAction;
+    private boolean isDefectiveDevice;
+    private String lctl_doubleTapOnHomeTimeConfig;
+    private String lctl_doubleTapOnHomeUserConfig;
+    private String lctl_longPressOnHomeTimeConfig;
+    private String lctl_longPressOnHomeUserConfig;
+    private boolean lctl_mDoubleTapOnHomeTimeDefined;
+    private boolean lctl_mDoubleTapOnHomeUserDefined;
+    private boolean lctl_mLongPressOnHomeTimeDefined;
+    private boolean lctl_mLongPressOnHomeUserDefined;
+    private boolean lctl_mSingleTapOnHomeUserDefined;
+    private String lctl_singleTapOnHomeUserConfig;
+    private SystemKeyAction lctlhome_KeyAction;
+    private String longPressOnHomeTimeConfig;
+    private String longPressOnHomeUserConfig;
+    private String longPressOnPowerTimeConfig;
+    private String longPressOnPowerUserConfig;
+    ActivityManager mActivityManager;
     private IAudioService mAudioService;
-    private IPvrManagerService mPvrManagerService;
+    private long mBackDownTime;
+    private PhoneWindowManager mBase;
+    private boolean mCompositeKeyTriggered;
+    private long mConFirmKeyDownTime;
+    private boolean mConFirmKeyTriggered;
+    private boolean mDoubleTapOnHomeTimeDefined;
+    private boolean mDoubleTapOnHomeUserDefined;
+    private long mHomeDownTime;
     private boolean mIsToBDevice;
-    private boolean mWillSendKeyBC;
+    private Handler mKeyActionHandler;
+    private boolean mLongPressOnHomeTimeDefined;
+    private boolean mLongPressOnHomeUserDefined;
+    private boolean mLongPressOnMenuUserDefined;
+    private boolean mLongPressOnPowerTimeDefined;
+    private boolean mLongPressOnPowerUserDefined;
+    private IPvrManagerService mPvrManagerService;
+    BroadcastReceiver mPxrKeyActionReceiver;
+    private long mRepeatBackTime;
+    private long mRepeatHomeTime;
     private boolean mShortctShowOn3d;
-    private long mHomeDownTime = -1;
-    private long mBackDownTime = -1;
+    private boolean mSingleTapOnHomeUserDefined;
+    private boolean mSingleTapOnPowerUserDefined;
+    private boolean mUsbModeInit;
+    private long mVolumeDownKeyDownTime;
+    private boolean mVolumeDownKeyTriggered;
+    private String rctl_doubleTapOnHomeTimeConfig;
+    private String rctl_doubleTapOnHomeUserConfig;
+    private String rctl_longPressOnHomeTimeConfig;
+    private String rctl_longPressOnHomeUserConfig;
+    private boolean rctl_mDoubleTapOnHomeTimeDefined;
+    private boolean rctl_mDoubleTapOnHomeUserDefined;
+    private boolean rctl_mLongPressOnHomeTimeDefined;
+    private boolean rctl_mLongPressOnHomeUserDefined;
+    private boolean rctl_mSingleTapOnHomeUserDefined;
+    private String rctl_singleTapOnHomeUserConfig;
+    private SystemKeyAction rctlcapture_KeyAction;
+    private SystemKeyAction rctlhome_KeyAction;
+    private String singleTapOnHomeUserConfig;
+    private String singleTapOnPowerUserConfig;
+    private String volumedownKeyConfig;
+    private boolean volumedownKeyConfigDefined;
+    private String volumeupKeyConfig;
+    private boolean volumeupKeyConfigDefined;
+    private boolean willSendKeyBC;
+    private static final boolean DEBUG = Build.IS_DEBUGGABLE;
+    private static boolean mHomeDisabledForPvr = false;
+    private static boolean mPowerDisabledForHcit = false;
+    private static boolean mFactoryTestRunning = false;
+    private static boolean mCitUnregisterListener = false;
+    private final int LEFT_CONTROLLER_KEYCODE = 901;
+    private final int RIGHT_CONTROLLER_KEYCODE = 902;
+    private final int MSG_HMD_HOME_TAP = 101;
+    private final int MSG_LCONTROLLER_HOME_TAP = 102;
+    private final int MSG_RCONTROLLER_HOME_TAP = 103;
+    private final int MSG_RCAPTURE_TAP = 104;
+    private final int ACTION_PXR_UNDEFINED = -1;
+    private final int ACTION_PXR_GOHOME = 2;
+    private final int ACTION_PXR_DASHBOARD = 3;
+    private final int ACTION_PXR_RECENTER = 6;
+    private final int ACTION_PXR_GLOBAL_NAVIGATION = 11;
+    private final int ACTION_PXR_SCREENCAP = 104;
+    private final int ACTION_PXR_SCREENRECOARD = 105;
+    private String SCREEN_RECOARD_CAP_PACKAGE_DEFAULT = "com.bytedance.pico.screencapture";
 
-    private final BroadcastReceiver mPxrKeyActionReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            Slog.d(TAG, "mPxrKeyActionReceiver get action " + action);
-            if (POWER_DISALBE_FOR_HCIT.equals(action)) {
-                sPowerDisabledForHcit = intent.getBooleanExtra("state", false);
-            } else if (HOME_DISALBE_FOR_PVR.equals(action)) {
-                sHomeDisabledForPvr = intent.getBooleanExtra("state", false);
-            } else if (USER_KEY_CONFIG_CHANGE.equals(action)) {
-                updateSystemKeyConfig();
+    /** Factory WindowManagerServiceSmtBase.MSG_HIDE_STATUS_BAR_TIMEOUT, sent as a virtual key. */
+    private static final int MSG_HIDE_STATUS_BAR_TIMEOUT = 1005;
+
+    protected ExtPhoneWindowManagerImpl(PhoneWindowManager base) {
+        hmdhome_KeyAction = new SystemKeyAction();
+        lctlhome_KeyAction = new SystemKeyAction();
+        rctlhome_KeyAction = new SystemKeyAction();
+        hmdconfirm_KeyAction = new SystemKeyAction();
+        hmdvolumeup_KeyAction = new SystemKeyAction();
+        hmdvolumedown_KeyAction = new SystemKeyAction();
+        hmdback_KeyAction = new SystemKeyAction();
+        hmdpower_KeyAction = new SystemKeyAction();
+        rctlcapture_KeyAction = new SystemKeyAction();
+        mKeyActionHandler = new SystemKeyHandler();
+        willSendKeyBC = SystemProperties.getInt("persit.pxr.keybc.enable", 0) == 1;
+        singleTapOnHomeUserConfig = null;
+        doubleTapOnHomeUserConfig = null;
+        longPressOnHomeUserConfig = null;
+        doubleTapOnHomeTimeConfig = null;
+        longPressOnHomeTimeConfig = null;
+        longPressOnPowerTimeConfig = null;
+        singleTapOnPowerUserConfig = null;
+        longPressOnPowerUserConfig = null;
+        enterKeyConfig = null;
+        volumeupKeyConfig = null;
+        volumedownKeyConfig = null;
+        backKeyConfig = null;
+        hmd_singleTapOnHomeUserConfig = null;
+        hmd_doubleTapOnHomeUserConfig = null;
+        hmd_longPressOnHomeUserConfig = null;
+        hmd_doubleTapOnHomeTimeConfig = null;
+        hmd_longPressOnHomeTimeConfig = null;
+        lctl_singleTapOnHomeUserConfig = null;
+        lctl_doubleTapOnHomeUserConfig = null;
+        lctl_longPressOnHomeUserConfig = null;
+        lctl_doubleTapOnHomeTimeConfig = null;
+        lctl_longPressOnHomeTimeConfig = null;
+        rctl_singleTapOnHomeUserConfig = null;
+        rctl_doubleTapOnHomeUserConfig = null;
+        rctl_longPressOnHomeUserConfig = null;
+        rctl_doubleTapOnHomeTimeConfig = null;
+        rctl_longPressOnHomeTimeConfig = null;
+        mSingleTapOnHomeUserDefined = false;
+        mDoubleTapOnHomeUserDefined = false;
+        mLongPressOnHomeUserDefined = false;
+        mDoubleTapOnHomeTimeDefined = false;
+        mLongPressOnHomeTimeDefined = false;
+        mLongPressOnPowerTimeDefined = false;
+        mSingleTapOnPowerUserDefined = false;
+        mLongPressOnPowerUserDefined = false;
+        mLongPressOnMenuUserDefined = false;
+        enterKeyConfigDefined = false;
+        volumeupKeyConfigDefined = false;
+        volumedownKeyConfigDefined = false;
+        backKeyConfigDefined = false;
+        hmd_mSingleTapOnHomeUserDefined = false;
+        hmd_mDoubleTapOnHomeUserDefined = false;
+        hmd_mLongPressOnHomeUserDefined = false;
+        hmd_mDoubleTapOnHomeTimeDefined = false;
+        hmd_mLongPressOnHomeTimeDefined = false;
+        lctl_mSingleTapOnHomeUserDefined = false;
+        lctl_mDoubleTapOnHomeUserDefined = false;
+        lctl_mLongPressOnHomeUserDefined = false;
+        lctl_mDoubleTapOnHomeTimeDefined = false;
+        lctl_mLongPressOnHomeTimeDefined = false;
+        rctl_mSingleTapOnHomeUserDefined = false;
+        rctl_mDoubleTapOnHomeUserDefined = false;
+        rctl_mLongPressOnHomeUserDefined = false;
+        rctl_mDoubleTapOnHomeTimeDefined = false;
+        rctl_mLongPressOnHomeTimeDefined = false;
+        isDefectiveDevice = "A7L10".equals(SystemProperties.get("pxr.vendorhw.product.name"))
+                || "A7J10".equals(SystemProperties.get("pxr.vendorhw.product.name"));
+        mHomeDownTime = -1L;
+        mBackDownTime = -1L;
+        mUsbModeInit = true;
+        mPxrKeyActionReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String intentaction = intent.getAction();
+                Slog.d(TAG, "mPxrKeyActionReceiver get action " + intentaction);
+                if (POWER_DISALBE_FOR_HCIT.equals(intentaction)) {
+                    if (intent.getBooleanExtra("state", false)) {
+                        mPowerDisabledForHcit = true;
+                    } else {
+                        mPowerDisabledForHcit = false;
+                    }
+                    return;
+                }
+                if (HOME_DISALBE_FOR_PVR.equals(intentaction)) {
+                    if (intent.getBooleanExtra("state", false)) {
+                        mHomeDisabledForPvr = true;
+                    } else {
+                        mHomeDisabledForPvr = false;
+                    }
+                    return;
+                }
+                if (USER_KEY_CONFIG_CHANGE.equals(intentaction)) {
+                    updateSystemKeyConfig();
+                }
             }
-        }
-    };
-
-    ExtPhoneWindowManagerImpl(PhoneWindowManager base) {
+        };
         mBase = base;
-        final String product = SystemProperties.get("pxr.vendorhw.product.name");
-        mIsDefectiveDevice = "A7L10".equals(product) || "A7J10".equals(product);
-        mWillSendKeyBC = SystemProperties.getInt("persit.pxr.keybc.enable", 0) == 1;
         mAudioService = IAudioService.Stub.asInterface(ServiceManager.checkService("audio"));
     }
 
     /** End of PhoneWindowManager.init. */
-    void init(Context context) {
-        final IntentFilter filter = new IntentFilter();
-        filter.addAction(POWER_DISALBE_FOR_HCIT);
-        filter.addAction(HOME_DISALBE_FOR_PVR);
-        filter.addAction(USER_KEY_CONFIG_CHANGE);
-        mBase.mContext.registerReceiver(mPxrKeyActionReceiver, filter);
+    @Override
+    public void init(Context context) {
+        initSystemKey();
         updateSystemKeyConfig();
         mIsToBDevice = SystemProperties.getInt("ro.pxr.externalfunc", 0) != 0
                 || Settings.Global.getInt(mBase.mContext.getContentResolver(),
                         "ro.pxr.externalfunc.test", 0) != 0;
-        if (mIsDefectiveDevice) {
+        mActivityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (isDefectiveDevice) {
             mBase.mVeryLongPressTimeout = 3000;
         }
         mBase.mScreenshotChordEnabled = mBase.mScreenshotChordEnabled
                 && SystemProperties.getInt("persist.pvr.screenshot.enable", 1) == 1;
     }
 
-    void updateSystemKeyConfig() {
+    @Override
+    public void initSystemKey() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(POWER_DISALBE_FOR_HCIT);
+        filter.addAction(HOME_DISALBE_FOR_PVR);
+        filter.addAction(USER_KEY_CONFIG_CHANGE);
+        mBase.mContext.registerReceiver(mPxrKeyActionReceiver, filter);
+    }
+
+    @Override
+    public void updateSystemKeyConfig() {
         Slog.d(TAG, "updateSystemKeyConfig call");
-        mHmdHomeKeyAction.reset();
-        mLctlHomeKeyAction.reset();
-        mRctlHomeKeyAction.reset();
-        mHmdConfirmKeyAction.reset();
-        mHmdVolumeUpKeyAction.reset();
-        mHmdVolumeDownKeyAction.reset();
-        mHmdBackKeyAction.reset();
-        mHmdPowerKeyAction.reset();
-        mHmdHomeKeyAction.defined = 1;
-        mLctlHomeKeyAction.defined = 1;
-        mRctlHomeKeyAction.defined = 1;
-        mRctlCaptureKeyAction.defined = 1;
-        mRctlCaptureKeyAction.enableDoubleTap = false;
-        mLctlHomeKeyAction.tapAction = SystemProperties.getInt("persist.pxr.lcontroller.tap",
+        hmdhome_KeyAction.reset();
+        lctlhome_KeyAction.reset();
+        rctlhome_KeyAction.reset();
+        hmdconfirm_KeyAction.reset();
+        hmdvolumeup_KeyAction.reset();
+        hmdvolumedown_KeyAction.reset();
+        hmdback_KeyAction.reset();
+        hmdpower_KeyAction.reset();
+        hmdhome_KeyAction.defined = 1;
+        lctlhome_KeyAction.defined = 1;
+        rctlhome_KeyAction.defined = 1;
+        rctlcapture_KeyAction.defined = 1;
+        rctlcapture_KeyAction.enableDoubleTap = false;
+        lctlhome_KeyAction.tap_action = SystemProperties.getInt("persist.pxr.lcontroller.tap",
                 ACTION_PXR_GLOBAL_NAVIGATION);
-        mRctlHomeKeyAction.tapAction = SystemProperties.getInt("persist.pxr.rcontroller.tap",
+        rctlhome_KeyAction.tap_action = SystemProperties.getInt("persist.pxr.rcontroller.tap",
                 ACTION_PXR_GLOBAL_NAVIGATION);
-        mHmdHomeKeyAction.tapAction = SystemProperties.getInt("persist.pxr.hmd.tap",
+        hmdhome_KeyAction.tap_action = SystemProperties.getInt("persist.pxr.hmd.tap",
                 ACTION_PXR_GLOBAL_NAVIGATION);
-        // Not phoenix only: double tap = screen record, no capture key.
-        if (!Features.PROJECT_PHOENIX.equals(Features.getProjectName())) {
-            mLctlHomeKeyAction.doubleTapAction = SystemProperties.getInt(
-                    "persist.pxr.lcontroller.doubletap", ACTION_PXR_SCREENRECORD);
-            mRctlHomeKeyAction.doubleTapAction = SystemProperties.getInt(
-                    "persist.pxr.rcontroller.doubletap", ACTION_PXR_SCREENRECORD);
-            mHmdHomeKeyAction.doubleTapAction = SystemProperties.getInt(
-                    "persist.pxr.hmd.doubletap", ACTION_PXR_SCREENRECORD);
-            mRctlCaptureKeyAction.enable = 0;
-            mRctlCaptureKeyAction.defined = 0;
+        if (!Features.PROJECT_PHOENIX.equals(BUILD_PROJECT)) {
+            lctlhome_KeyAction.doubletap_action = SystemProperties.getInt(
+                    "persist.pxr.lcontroller.doubletap", ACTION_PXR_SCREENRECOARD);
+            rctlhome_KeyAction.doubletap_action = SystemProperties.getInt(
+                    "persist.pxr.rcontroller.doubletap", ACTION_PXR_SCREENRECOARD);
+            hmdhome_KeyAction.doubletap_action = SystemProperties.getInt(
+                    "persist.pxr.hmd.doubletap", ACTION_PXR_SCREENRECOARD);
+            rctlcapture_KeyAction.enable = 0;
+            rctlcapture_KeyAction.defined = 0;
         }
-        mLctlHomeKeyAction.longPressAction = SystemProperties.getInt(
+        lctlhome_KeyAction.longpress_action = SystemProperties.getInt(
                 "persist.pxr.lcontroller.longpress", ACTION_PXR_RECENTER);
-        mRctlHomeKeyAction.longPressAction = SystemProperties.getInt(
+        rctlhome_KeyAction.longpress_action = SystemProperties.getInt(
                 "persist.pxr.rcontroller.longpress", ACTION_PXR_RECENTER);
-        mHmdHomeKeyAction.longPressAction = SystemProperties.getInt(
+        hmdhome_KeyAction.longpress_action = SystemProperties.getInt(
                 "persist.pxr.hmd.longpress", ACTION_PXR_RECENTER);
-        mRctlCaptureKeyAction.longPressActionTime = SystemProperties.getInt(
+        rctlcapture_KeyAction.longpress_action_time = SystemProperties.getInt(
                 "persist.pxr.capture.longpresstime", 300);
-        mRctlCaptureKeyAction.longPressAction = SystemProperties.getInt(
-                "persist.pxr.capture.longpress", ACTION_PXR_SCREENRECORD);
-        mWillSendKeyBC = SystemProperties.getInt("persit.pxr.keybc.enable", 0) == 1;
+        rctlcapture_KeyAction.longpress_action = SystemProperties.getInt(
+                "persist.pxr.capture.longpress", ACTION_PXR_SCREENRECOARD);
+        willSendKeyBC = SystemProperties.getInt("persit.pxr.keybc.enable", 0) == 1;
         updateUserKeyConfig();
     }
 
-    private static String getPropValue(Properties prop, String key) {
-        return prop.containsKey(key) ? prop.get(key).toString() : null;
-    }
-
-    /** ToB devices: key actions from the first existing key configuration file. */
-    private void updateUserKeyConfig() {
-        try {
-            if (SystemProperties.getInt("ro.pxr.externalfunc", -1) != 1) {
-                return;
-            }
-            File keyConfigFile = null;
-            for (String path : new String[] {MDM_KEY_CONFIG_PATH, USER_KEY_CONFIG_PATH,
-                    OEM_KEY_CONFIG_PATH, USER_KEY_CONFIG_PATH_DEFAULT}) {
-                final File file = new File(path);
-                if (file.exists()) {
-                    keyConfigFile = file;
-                    break;
-                }
-            }
-            if (keyConfigFile == null) {
-                Slog.i(TAG, "key config file do not exists, so we do not do any change to key"
-                        + " action");
-                return;
-            }
-            Slog.i(TAG, "we get key config file " + keyConfigFile + " so change key action");
-            final Properties config = new Properties();
-            try (FileInputStream in = new FileInputStream(keyConfigFile)) {
-                config.load(in);
-            }
-            final String powerLongPressTime = getPropValue(config, "time_power_long_press");
-            if (powerLongPressTime != null) {
-                mHmdPowerKeyAction.defined = 1;
-                mHmdPowerKeyAction.longPressActionTime = Integer.parseInt(powerLongPressTime);
-            }
-            if (getPropValue(config, "action_power_single_tap") != null) {
-                mHmdPowerKeyAction.defined = 1;
-                mHmdPowerKeyAction.tapAction = 0;
-            }
-            if (getPropValue(config, "action_power_long_press") != null) {
-                mHmdPowerKeyAction.defined = 1;
-                mHmdPowerKeyAction.longPressAction = 0;
-            }
-            mHmdConfirmKeyAction.defined = getPropValue(config, "action_key_enter") != null ? 1 : 0;
-            mHmdVolumeUpKeyAction.defined =
-                    getPropValue(config, "action_key_volumeup") != null ? 1 : 0;
-            mHmdVolumeDownKeyAction.defined =
-                    getPropValue(config, "action_key_volumedown") != null ? 1 : 0;
-            mHmdBackKeyAction.defined = getPropValue(config, "action_key_back") != null ? 1 : 0;
-            // Generic home value first, then the per-device (hmd_/lctl_/rctl_) override.
-            applyHomeConfig(config, "action_home_single_tap", 0);
-            applyHomeConfig(config, "action_home_double_tap", 1);
-            applyHomeConfig(config, "action_home_long_press", 2);
-            applyHomeConfig(config, "time_home_double_tap", 3);
-            applyHomeConfig(config, "time_home_long_press", 4);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void applyHomeConfig(Properties config, String key, int field) {
-        final String all = getPropValue(config, key);
-        final SystemKeyAction[] actions = {mHmdHomeKeyAction, mLctlHomeKeyAction,
-                mRctlHomeKeyAction};
-        final String[] prefixes = {"hmd_", "lctl_", "rctl_"};
-        for (int i = 0; i < actions.length; i++) {
-            final String own = getPropValue(config, prefixes[i] + key);
-            final String value = own != null ? own : all;
-            if (value == null) {
-                continue;
-            }
-            final int v = Integer.parseInt(value);
-            switch (field) {
-                case 0: actions[i].tapAction = v; break;
-                case 1: actions[i].doubleTapAction = v; break;
-                case 2: actions[i].longPressAction = v; break;
-                case 3: actions[i].doubleTapActionTime = v; break;
-                default: actions[i].longPressActionTime = v; break;
-            }
-        }
-    }
-
     private boolean isMulKeyEnable() {
-        final boolean inDPMode = SystemProperties.getInt("sys.pxr.vxr7200.status", 0) == 1;
+        boolean inDPMode = SystemProperties.getInt("sys.pxr.vxr7200.status", 0) == 1;
         return !inDPMode && SystemProperties.getInt("persist.pvr.mulkey.enable", 1) == 1;
     }
 
     private void launchSettings() {
-        final Intent extraIntent = new Intent();
-        extraIntent.setComponent(new ComponentName("com.android.settings",
-                "com.android.settings.Settings"));
-        final Intent intent = new Intent("pvr.intent.action.VRSHELL");
+        Intent extraIntent = new Intent();
+        ComponentName settingcomp = new ComponentName("com.android.settings",
+                "com.android.settings.Settings");
+        extraIntent.setComponent(settingcomp);
+        Intent intent = new Intent("pvr.intent.action.VRSHELL");
         intent.putExtra("intent", extraIntent);
         mBase.startActivityAsUser(intent, UserHandle.CURRENT_OR_SELF);
     }
 
+    /** Opens PICO VR settings, directly over VRShell or wrapped in a VRSHELL intent. */
+    private void launchVRSettings() {
+        ActivityInfo topActivityInfo = mBase.mActivityTaskManagerInternal
+                .getPicoTopResumedActivityInfo(Display.DEFAULT_DISPLAY);
+        if (topActivityInfo == null) {
+            return;
+        }
+        Intent extraIntent = new Intent();
+        ComponentName settingcomp = new ComponentName("com.picovr.settings",
+                "com.picovr.vrsettingslib.UnityActivity");
+        extraIntent.setComponent(settingcomp);
+        if ("com.pvr.vrshell".equals(topActivityInfo.packageName)) {
+            extraIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            mBase.startActivityAsUser(extraIntent, UserHandle.CURRENT_OR_SELF);
+        } else {
+            Intent intent = new Intent("pvr.intent.action.VRSHELL");
+            intent.putExtra("intent", extraIntent);
+            mBase.startActivityAsUser(intent, UserHandle.CURRENT_OR_SELF);
+        }
+    }
+
     private void sendPvrBroadCast(String action) {
-        mBase.mContext.sendOrderedBroadcastAsUser(new Intent(action), UserHandle.ALL, null, null,
-                null, 0, null, null);
+        Intent pvrIntent = new Intent(action);
+        mBase.mContext.sendOrderedBroadcastAsUser(pvrIntent, UserHandle.ALL, null, null, null, 0,
+                null, null);
     }
 
     private static IPxrNotificationService getPxrNotificationService() {
@@ -326,38 +467,45 @@ public class ExtPhoneWindowManagerImpl {
 
     /**
      * HOME long press + confirm held: BACK opens Android settings, volume down disconnects the
-     * controllers. The factory's ADB password sequence and its HOME + volume "open adb"
-     * combinations are intentionally not ported (see the class comment).
+     * controllers. The factory ADB password key sequence at the start of this method and its
+     * HOME + volume "open adb" branches are intentionally not ported (see the class comment).
      */
-    private void checkMulKeyAction(KeyEvent event) {
-        if (!isMulKeyEnable() || !mHmdHomeKeyAction.isLongPressed
-                || !mHmdConfirmKeyAction.isPressed) {
-            return;
-        }
-        if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) {
-            return;
-        }
-        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            Slog.d(TAG, "checkMulKeyAction do launchSettings");
-            launchSettings();
-        } else if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            Slog.w(TAG, "checkMulKeyAction do disconnect controller");
-            sendPvrBroadCast("android.intent.pvrcon.disconnect");
-            final IPxrNotificationService notification = getPxrNotificationService();
-            if (notification != null) {
-                Log.w(TAG, "send pxr notification when multi key pressed");
-                try {
-                    notification.sendPxrMessage(PXR_NOTIFICATION_NAME_MULTI_KEY_PRESSED, -1,
-                            "3;25;1001", -1, "");
-                } catch (Exception e) {
-                    e.printStackTrace();
+    private boolean checkMulKeyAction(KeyEvent event) {
+        if (isMulKeyEnable() && hmdhome_KeyAction.isLongPressed) {
+            if (hmdconfirm_KeyAction.isPressed) {
+                if (event.getKeyCode() == KeyEvent.KEYCODE_BACK
+                        && event.getAction() == KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) {
+                    Slog.d(TAG, "checkMulKeyAction do launchSettings");
+                    launchSettings();
+                    return true;
                 }
+                if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN
+                        && event.getAction() == KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) {
+                    Slog.w(TAG, "checkMulKeyAction do disconnect controller");
+                    sendPvrBroadCast("android.intent.pvrcon.disconnect");
+                    IPxrNotificationService notification = getPxrNotificationService();
+                    if (notification != null) {
+                        Log.w(TAG, "send pxr notification when multi key pressed");
+                        try {
+                            notification.sendPxrMessage(PXR_NOTIFICATION_NAME_MULTI_KEY_PRESSED,
+                                    -1, "3;25;1001", -1, "");
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    return true;
+                }
+                return false;
             }
+            return false;
         }
+        return false;
     }
 
     private void sendKeyBroadCast(int keycode, int action, int status) {
-        final Intent keyIntent = new Intent("android.intent.keybroadcast");
+        Intent keyIntent = new Intent("android.intent.keybroadcast");
         keyIntent.putExtra("keycode", keycode);
         keyIntent.putExtra("action", action);
         keyIntent.putExtra("status", status);
@@ -365,8 +513,12 @@ public class ExtPhoneWindowManagerImpl {
                 null, null);
     }
 
-    private boolean checkSomeDefinedHome(String winPackage) {
-        if (sHomeDisabledForPvr) {
+    private boolean checkSomeDefinedCase(String winpackage) {
+        return SystemProperties.getInt("sys.pxr.vxr7200.status", 0) == 1;
+    }
+
+    private boolean checkSomeDefinedHome(String winpackage) {
+        if (mHomeDisabledForPvr) {
             Slog.d(TAG, "checkSomeDefinedHome retun true by home disabled for pvr");
             return true;
         }
@@ -374,191 +526,901 @@ public class ExtPhoneWindowManagerImpl {
             Slog.d(TAG, "checkSomeDefinedHome retun true by vxr7200 status");
             return true;
         }
-        if ("com.pvr.seethrough.setting".equals(winPackage)) {
+        if ("com.pvr.seethrough.setting".equals(winpackage)) {
             Slog.d(TAG, "checkSomeDefinedHome retun true by seethrough");
             return true;
         }
-        if (Features.PROJECT_PHOENIX.equals(Features.getProjectName())
-                && Features.isKeyguardEnabled() && mBase.isKeyguardShowingAndNotOccluded()) {
-            Slog.d(TAG, "checkSomeDefinedHome retun true by Keyguard");
-            return true;
+        if (!Features.PROJECT_PHOENIX.equals(BUILD_PROJECT) || !Features.isKeyguardEnabled()
+                || !mBase.isKeyguardShowingAndNotOccluded()) {
+            return false;
         }
-        return false;
+        Slog.d(TAG, "checkSomeDefinedHome retun true by Keyguard");
+        return true;
     }
 
-    private boolean getPowerDefined() {
-        return mHmdPowerKeyAction.defined == 1;
+    @Override
+    public int getPowerTapStauts() {
+        return hmdpower_KeyAction.tap_action;
+    }
+
+    @Override
+    public int getPowerLongPressStauts() {
+        return hmdpower_KeyAction.longpress_action;
+    }
+
+    @Override
+    public int getPowerLongPressTime() {
+        return hmdpower_KeyAction.longpress_action_time;
+    }
+
+    @Override
+    public boolean getPowerDefined() {
+        return hmdpower_KeyAction.defined == 1;
     }
 
     /**
      * interceptKeyBeforeDispatchingInner, before anything else: 1 = continue the normal policy,
      * 0 = pass the key to the app, -1 = consume it.
      */
-    int processKey(KeyEvent event, WindowState win) {
-        final int keyCode = event.getKeyCode();
-        final WindowManager.LayoutParams attrs = win != null ? win.getAttrs() : null;
-        final boolean result = handleKey(event, attrs != null ? attrs.packageName : "unknown");
+    @Override
+    public int processKey(KeyEvent event, WindowManagerPolicy.WindowState win) {
+        int keyCode = event.getKeyCode();
+        WindowManager.LayoutParams attrsPres = win != null ? win.getAttrs() : null;
+        boolean result = handleKey(event, attrsPres != null ? attrsPres.packageName : "unknown");
         Slog.d(TAG, "handleKey result=" + result + ",event=" + event);
-        if ((result || keyCode == KeyEvent.KEYCODE_BACK) && !injectBackKeyDirectly()) {
+        if ((result || KeyEvent.KEYCODE_BACK == keyCode) && !injectBackKeyDirectly()) {
             ApiLayerService.getInstance().onKeyEvent(event);
         }
-        if (result) {
-            return 1;
+        if (!result) {
+            if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == 1001 || keyCode == 1004
+                    || keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                    || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                return -1;
+            }
+            return 0;
         }
-        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KEYCODE_CONFIRM
-                || keyCode == KEYCODE_RECENTER || keyCode == KeyEvent.KEYCODE_VOLUME_UP
-                || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            return -1;
-        }
-        return 0;
+        return 1;
     }
 
     private boolean injectBackKeyDirectly() {
-        return mIsToBDevice && SystemProperties.getInt("pvr.active.input_device", 0) == -1
+        boolean ret = mIsToBDevice && SystemProperties.getInt("pvr.active.input_device", 0) == -1
                 && SystemProperties.getBoolean("pvr.tob.inject.backkey.direct", false);
+        return ret;
     }
 
     /** True: the normal policy handles the key; false: PICO handled it. */
-    private boolean handleKey(KeyEvent event, String winPackage) {
+    @Override
+    public boolean handleKey(KeyEvent event, String winpackage) {
         if (event.getRepeatCount() == 0 && DEBUG) {
             Slog.d(TAG, "we get the handleKey " + event.getKeyCode() + ", action "
                     + event.getAction() + ", deviceId " + event.getDeviceId());
         }
-        final int keyCode = event.getKeyCode();
+        int handkeycode = event.getKeyCode();
+        if (mIsToBDevice && !Features.PROJECT_PHOENIX.equals(BUILD_PROJECT) && isMulKeyEnable()) {
+            handleCompositeKey(event);
+        }
         sendKeyToPvrManager(event);
         checkMulKeyAction(event);
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_HOME:
-                return handleHomeKey(mHmdHomeKeyAction, event, winPackage, null);
-            case KeyEvent.KEYCODE_BACK:
-                if (event.getDeviceId() < DEVICE_HEAD_CONTROL_HANDLE_MIN
-                        && !injectBackKeyDirectly()) {
-                    return false;
-                }
-                return handleConfigurableKey(mHmdBackKeyAction, event);
-            case KeyEvent.KEYCODE_VOLUME_UP:
-                return handleConfigurableKey(mHmdVolumeUpKeyAction, event);
-            case KeyEvent.KEYCODE_VOLUME_DOWN:
-                return handleConfigurableKey(mHmdVolumeDownKeyAction, event);
-            case KeyEvent.KEYCODE_CAMERA:
-                if (mRctlCaptureKeyAction.defined != 1) {
-                    return mRctlCaptureKeyAction.enable != 0;
-                }
-                mRctlCaptureKeyAction.handleEvent(event);
-                if (mRctlHomeKeyAction.down) {
-                    Slog.d(TAG, "camera key conflict with right controller key");
-                    mRctlHomeKeyAction.setConflictWithOtherKeys();
-                    mRctlCaptureKeyAction.setConflictWithOtherKeys();
-                }
+        if (handkeycode == KeyEvent.KEYCODE_HOME) {
+            hmdhome_KeyAction.down = event.getAction() == KeyEvent.ACTION_DOWN;
+            if (checkSomeDefinedHome(winpackage)) {
                 return false;
-            case KEYCODE_CONFIRM:
-                if (SystemProperties.getInt("sys.pxr.vxr7200.status", 0) == 1) {
-                    return false;
-                }
-                return handleConfigurableKey(mHmdConfirmKeyAction, event);
-            case KEYCODE_RECENTER:
-                if (event.getAction() == KeyEvent.ACTION_UP) {
-                    Slog.w(TAG, "launchRecenter by keyevent KEYCODE_RECENTER");
-                    mBase.sendCloseSystemWindows("recenter");
-                }
-                return false;
-            case KEYCODE_LEFT_CONTROLLER_HOME:
-                return handleHomeKey(mLctlHomeKeyAction, event, winPackage, null);
-            case KEYCODE_RIGHT_CONTROLLER_HOME:
-                return handleHomeKey(mRctlHomeKeyAction, event, winPackage,
-                        mRctlCaptureKeyAction);
-            default:
-                return true;
-        }
-    }
-
-    private boolean handleHomeKey(SystemKeyAction action, KeyEvent event, String winPackage,
-            SystemKeyAction conflicting) {
-        action.down = event.getAction() == KeyEvent.ACTION_DOWN;
-        if (checkSomeDefinedHome(winPackage)) {
+            }
+            if (hmdhome_KeyAction.defined != 1) {
+                return hmdhome_KeyAction.enable != 0;
+            }
+            hmdhome_KeyAction.handleEvent(event);
             return false;
         }
-        if (action.defined != 1) {
-            return action.enable != 0;
+        if (handkeycode == KeyEvent.KEYCODE_BACK) {
+            if (event.getDeviceId() < 100000 && !injectBackKeyDirectly()) {
+                return false;
+            }
+            hmdback_KeyAction.handleEvent(event);
+            return hmdback_KeyAction.defined != 1 && hmdback_KeyAction.enable != 0;
         }
-        action.handleEvent(event);
-        if (conflicting != null && conflicting.down) {
+        if (handkeycode == KeyEvent.KEYCODE_VOLUME_UP) {
+            hmdvolumeup_KeyAction.handleEvent(event);
+            return hmdvolumeup_KeyAction.defined != 1 && hmdvolumeup_KeyAction.enable != 0;
+        }
+        if (handkeycode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            hmdvolumedown_KeyAction.handleEvent(event);
+            return hmdvolumedown_KeyAction.defined != 1 && hmdvolumedown_KeyAction.enable != 0;
+        }
+        if (handkeycode == KeyEvent.KEYCODE_CAMERA) {
+            if (rctlcapture_KeyAction.defined != 1) {
+                return rctlcapture_KeyAction.enable != 0;
+            }
+            rctlcapture_KeyAction.handleEvent(event);
+            if (rctlhome_KeyAction.down) {
+                Slog.d(TAG, "camera key conflict with right controller key");
+                rctlhome_KeyAction.setConflictWithOtherKeys();
+                rctlcapture_KeyAction.setConflictWithOtherKeys();
+            }
+            return false;
+        }
+        if (handkeycode == 1001) {
+            if (checkSomeDefinedCase(winpackage)) {
+                return false;
+            }
+            hmdconfirm_KeyAction.handleEvent(event);
+            return hmdconfirm_KeyAction.defined != 1 && hmdconfirm_KeyAction.enable != 0;
+        }
+        if (handkeycode == 1004) {
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                Slog.w(TAG, "launchRecenter by keyevent KEYCODE_RECENTER");
+                mBase.sendCloseSystemWindows("recenter");
+            }
+            return false;
+        }
+        if (handkeycode == LEFT_CONTROLLER_KEYCODE) {
+            lctlhome_KeyAction.down = event.getAction() == KeyEvent.ACTION_DOWN;
+            if (checkSomeDefinedHome(winpackage)) {
+                return false;
+            }
+            if (lctlhome_KeyAction.defined != 1) {
+                return lctlhome_KeyAction.enable != 0;
+            }
+            lctlhome_KeyAction.handleEvent(event);
+            return false;
+        }
+        if (handkeycode != RIGHT_CONTROLLER_KEYCODE) {
+            return true;
+        }
+        rctlhome_KeyAction.down = event.getAction() == KeyEvent.ACTION_DOWN;
+        if (checkSomeDefinedHome(winpackage)) {
+            return false;
+        }
+        if (rctlhome_KeyAction.defined != 1) {
+            return rctlhome_KeyAction.enable != 0;
+        }
+        rctlhome_KeyAction.handleEvent(event);
+        if (rctlcapture_KeyAction.down) {
             Slog.d(TAG, "right controller key conflict with camera key");
-            action.setConflictWithOtherKeys();
-            conflicting.setConflictWithOtherKeys();
+            rctlhome_KeyAction.setConflictWithOtherKeys();
+            rctlcapture_KeyAction.setConflictWithOtherKeys();
         }
         return false;
     }
 
-    private static boolean handleConfigurableKey(SystemKeyAction action, KeyEvent event) {
-        action.handleEvent(event);
-        return action.defined != 1 && action.enable != 0;
-    }
-
     /** Reports each key press / release to pvr_manager ("vr2d_key_event"). */
     private void sendKeyToPvrManager(KeyEvent event) {
-        final int keyCode = event.getKeyCode();
-        if (keyCode == KeyEvent.KEYCODE_BACK && event.getScanCode() == 10001) {
+        int handkeycode = event.getKeyCode();
+        if (handkeycode == KeyEvent.KEYCODE_BACK && event.getScanCode() == 10001) {
             return;
         }
         try {
             if (mPvrManagerService == null || mPvrManagerService.asBinder() == null
                     || !mPvrManagerService.asBinder().isBinderAlive()) {
-                final IBinder binder = ServiceManager.checkService("pvr_manager");
-                if (binder != null) {
-                    mPvrManagerService = IPvrManagerService.Stub.asInterface(binder);
+                if (ServiceManager.getService("pvr_manager") != null) {
+                    mPvrManagerService = IPvrManagerService.Stub.asInterface(
+                            ServiceManager.getService("pvr_manager"));
                 } else {
                     Slog.w(TAG, "pvr_manager has not been added to ServiceManager,do nothing.");
                 }
             }
             if (mPvrManagerService != null && event.getRepeatCount() == 0) {
-                if (keyCode == KEYCODE_CONFIRM && mHmdConfirmKeyAction.defined == 1) {
+                if (handkeycode == 1001 && hmdconfirm_KeyAction.defined == 1) {
                     Slog.w(TAG, "confirm key is defined so do nothing");
                 } else {
                     mPvrManagerService.sendPvrMessages("vr2d_key_event",
-                            event.getAction() + ":" + keyCode + ":" + event.getDeviceId());
+                            event.getAction() + ":" + handkeycode + ":" + event.getDeviceId());
                 }
             }
-            if (mWillSendKeyBC) {
-                sendKeyBroadCast(keyCode, -1, event.getAction());
+            if (willSendKeyBC) {
+                sendKeyBroadCast(handkeycode, -1, event.getAction());
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    /** Tap / double-tap / long-press state and actions of one PICO key. */
+    private class SystemKeyAction {
+        public String action;
+        public boolean canceled;
+        private boolean conflictWithOtherKeys;
+        public int defined;
+        public int displayId;
+        public int doubletap_action;
+        public int doubletap_action_time;
+        public boolean down;
+        public int enable;
+        public boolean enableDoubleTap;
+        public boolean isConsumed;
+        public boolean isLongPressed;
+        public boolean isPressed;
+        public int keycode;
+        public int longpress_action;
+        public int longpress_action_time;
+        public boolean mDoubleTapPending;
+        public long mHomeDownTime;
+        public int repeatCount;
+        public boolean tapMessageHold;
+        public int tap_action;
+
+        private SystemKeyAction() {
+            enable = -1;
+            defined = 0;
+            tap_action = -1;
+            doubletap_action = -1;
+            longpress_action = -1;
+            doubletap_action_time = 300;
+            longpress_action_time = 500;
+            action = "";
+            enableDoubleTap = true;
+            down = false;
+            canceled = false;
+            displayId = -1;
+            repeatCount = -1;
+            keycode = -1;
+            mHomeDownTime = -1L;
+            mDoubleTapPending = false;
+            isPressed = false;
+            isLongPressed = false;
+            isConsumed = false;
+            tapMessageHold = true;
+            conflictWithOtherKeys = false;
+        }
+
+        public void init() {
+        }
+
+        public void setConflictWithOtherKeys() {
+            conflictWithOtherKeys = true;
+            cancelKeyTapActionDelay(keycode);
+            mDoubleTapPending = false;
+            isPressed = false;
+            isLongPressed = false;
+            isConsumed = false;
+        }
+
+        public void handleEvent(KeyEvent event) {
+            doKeyAction(event);
+            down = event.getAction() == KeyEvent.ACTION_DOWN;
+            canceled = event.isCanceled();
+            displayId = event.getDisplayId();
+            repeatCount = event.getRepeatCount();
+            keycode = event.getKeyCode();
+            if ((down && repeatCount == 0) || !down) {
+                conflictWithOtherKeys = false;
+            }
+        }
+
+        public void doKeyAction(KeyEvent event) {
+            if (conflictWithOtherKeys) {
+                return;
+            }
+            Slog.d(TAG, "doKeyAction event: " + event + " mDoubleTapPending is "
+                    + mDoubleTapPending + ",longpress_action_time=" + longpress_action_time
+                    + ",doubletap_action_time=" + doubletap_action_time + ",isConsumed="
+                    + isConsumed);
+            if (mDoubleTapPending) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    isPressed = true;
+                    mHomeDownTime = -1L;
+                    mDoubleTapPending = true;
+                    isLongPressed = false;
+                    cancelKeyTapActionDelay(event.getKeyCode());
+                    return;
+                }
+                isPressed = false;
+                mHomeDownTime = -1L;
+                mDoubleTapPending = false;
+                isLongPressed = false;
+                doKeyDoubleTapAction();
+                return;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                isPressed = true;
+                mDoubleTapPending = false;
+                if (event.getRepeatCount() == 0) {
+                    isConsumed = false;
+                    mHomeDownTime = System.currentTimeMillis();
+                    isLongPressed = false;
+                    return;
+                }
+                if (!isLongPressed
+                        && System.currentTimeMillis() - mHomeDownTime > longpress_action_time) {
+                    isLongPressed = true;
+                    doKeyLongPressAction();
+                }
+                return;
+            }
+            isPressed = false;
+            isLongPressed = false;
+            if (!isConsumed) {
+                if (!enableDoubleTap) {
+                    mHomeDownTime = -1L;
+                    doKeyTapAction();
+                } else if (System.currentTimeMillis() - mHomeDownTime < doubletap_action_time) {
+                    mDoubleTapPending = true;
+                    mHomeDownTime = -1L;
+                    doKeyTapActionDelay(event.getKeyCode());
+                }
+            }
+            mHomeDownTime = -1L;
+        }
+
+        public void cancelKeyTapActionDelay(int keycode) {
+            if (DEBUG) {
+                Slog.d(TAG, "we cancelKeyTapActionDelay " + keycode);
+            }
+            if (keycode == KeyEvent.KEYCODE_HOME) {
+                if (tapMessageHold) {
+                    mKeyActionHandler.removeMessages(MSG_HMD_HOME_TAP);
+                    tapMessageHold = false;
+                }
+                return;
+            }
+            if (keycode == KeyEvent.KEYCODE_CAMERA) {
+                if (tapMessageHold) {
+                    mKeyActionHandler.removeMessages(MSG_RCAPTURE_TAP);
+                    tapMessageHold = false;
+                }
+                return;
+            }
+            if (keycode == LEFT_CONTROLLER_KEYCODE) {
+                if (tapMessageHold) {
+                    mKeyActionHandler.removeMessages(MSG_LCONTROLLER_HOME_TAP);
+                    tapMessageHold = false;
+                }
+                return;
+            }
+            if (keycode == RIGHT_CONTROLLER_KEYCODE && tapMessageHold) {
+                mKeyActionHandler.removeMessages(MSG_RCONTROLLER_HOME_TAP);
+                tapMessageHold = false;
+            }
+        }
+
+        public void doKeyTapActionDelay(int keycode) {
+            Message msg = new Message();
+            if (keycode == KeyEvent.KEYCODE_HOME) {
+                msg.what = MSG_HMD_HOME_TAP;
+                tapMessageHold = true;
+                mKeyActionHandler.sendMessageDelayed(msg, doubletap_action_time);
+                return;
+            }
+            if (keycode == KeyEvent.KEYCODE_CAMERA) {
+                msg.what = MSG_RCAPTURE_TAP;
+                tapMessageHold = true;
+                mKeyActionHandler.sendMessageDelayed(msg, doubletap_action_time);
+            } else if (keycode == LEFT_CONTROLLER_KEYCODE) {
+                msg.what = MSG_LCONTROLLER_HOME_TAP;
+                tapMessageHold = true;
+                mKeyActionHandler.sendMessageDelayed(msg, doubletap_action_time);
+            } else if (keycode == RIGHT_CONTROLLER_KEYCODE) {
+                msg.what = MSG_RCONTROLLER_HOME_TAP;
+                tapMessageHold = true;
+                mKeyActionHandler.sendMessageDelayed(msg, doubletap_action_time);
+            }
+        }
+
+        public void doKeyTapAction() {
+            Slog.i(TAG, "we doKeyTapAction " + keycode + " , resume " + isConsumed);
+            notifyHomeKeyActionIfNeeded(keycode, 1);
+            tapMessageHold = false;
+            mDoubleTapPending = false;
+            int i = keycode;
+            if (i == KeyEvent.KEYCODE_HOME) {
+                if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1
+                        && !Features.PROJECT_PHOENIX.equals(BUILD_PROJECT)) {
+                    Slog.i(TAG, "doKeyTapAction shortcut preview");
+                    launchScreenAction("pvr.intent.action.SCREEN_SHOT", "system_key");
+                    isConsumed = true;
+                    return;
+                }
+            } else if (i != KeyEvent.KEYCODE_CAMERA) {
+                if (i == LEFT_CONTROLLER_KEYCODE || i == RIGHT_CONTROLLER_KEYCODE) {
+                    if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1) {
+                        Slog.i(TAG, "doKeyTapAction shortcut preview");
+                        launchScreenAction("pvr.intent.action.SCREEN_SHOT", "system_key");
+                        isConsumed = true;
+                        return;
+                    }
+                }
+            } else if (isSetupWizardComplete()) {
+                launchScreenAction("pvr.intent.action.SCREEN_SHOT", "capture_key");
+                isConsumed = true;
+                return;
+            }
+            if (!isConsumed) {
+                isConsumed = true;
+                doKeyActionReal(tap_action);
+            }
+        }
+
+        public void doKeyDoubleTapAction() {
+            if (DEBUG) {
+                Slog.i(TAG, "we doKeyDoubleTapAction " + keycode);
+            }
+            notifyHomeKeyActionIfNeeded(keycode, 2);
+            if (!isConsumed) {
+                isConsumed = true;
+                doKeyActionReal(doubletap_action);
+            }
+        }
+
+        public void doKeyLongPressAction() {
+            notifyHomeKeyActionIfNeeded(keycode, 3);
+            if (!isConsumed) {
+                isConsumed = true;
+                doKeyActionReal(longpress_action);
+            }
+        }
+
+        /** ToB: HOME key actions (1 tap, 2 double tap, 3 long press) are broadcast. */
+        private void notifyHomeKeyActionIfNeeded(final int keycode, final int action) {
+            if (mIsToBDevice && !isConsumed) {
+                if (keycode == KeyEvent.KEYCODE_HOME || keycode == LEFT_CONTROLLER_KEYCODE
+                        || keycode == RIGHT_CONTROLLER_KEYCODE) {
+                    mBase.mHandler.post(() -> {
+                        Intent intent = new Intent("pxr.intent.action.home_key");
+                        intent.putExtra("keycode", keycode);
+                        intent.putExtra("action", action);
+                        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
+                        mBase.mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
+                        Log.d(TAG, "notifyHomeKeyAction keycode : " + keycode + ", action : "
+                                + action);
+                    });
+                }
+            }
+        }
+
+        private void launchPUItobLauncherFunc(int value) {
+            Intent intent = new Intent("pvr.intent.action.LAUNCHER_MAIN");
+            intent.putExtra("func", value);
+            intent.setPackage(SystemExt.sCurrentPkg);
+            mBase.mContext.startService(intent);
+        }
+
+        private void launchShortcutCheck() {
+            ActivityInfo topActivityInfo = mBase.mActivityTaskManagerInternal
+                    .getPicoTopResumedActivityInfo(Display.DEFAULT_DISPLAY);
+            Slog.d(TAG, "launchShortcutCheck topActivity : " + topActivityInfo);
+            if (topActivityInfo != null && !topIsVrPermissionActivity()) {
+                dispatchHomeToNS();
+            }
+        }
+
+        /** Factory method without a caller (the shortcut panel service of older products). */
+        private void launchShortcut() {
+            Slog.d(TAG, "launchShortcut");
+            Intent intent = new Intent();
+            intent.setPackage("com.pvr.shortcut");
+            intent.setClassName("com.pvr.shortcut", "com.pvr.shortcut.service.ShortcutService");
+            intent.putExtra("show_shortcut", true);
+            mBase.mContext.startService(intent);
+        }
+
+        private void launchRecenter() {
+            Slog.i(TAG, "launchRecenter");
+            mBase.sendCloseSystemWindows("recenter");
+        }
+
+        private void launchScreenAction(String screenaction, String from) {
+            Slog.d(TAG, "launchScreenAction " + screenaction + " from " + from);
+            if (Features.isKeyguardEnabled()
+                    && KeyStore.getInstance().state() == KeyStore.State.LOCKED) {
+                Intent i = new Intent("pvr.intent.action.vrdisplay");
+                i.setPackage("com.pvr.vrdisplay");
+                i.putExtra("action_type", 93);
+                i.putExtra("remind_type", 3);
+                mBase.mContext.startService(i);
+                return;
+            }
+            if ("capture_key".equals(from) && getGlobalFlag(SETTINGS_DISABLE_CAMERA_KEY)
+                    && !getGlobalFlag(SETTINGS_DOCK_SHOWING)) {
+                if ("pvr.intent.action.SCREEN_SHOT".equals(screenaction)
+                        && !getGlobalFlag(SETTINGS_SCREENSHOT_TOAST_SHOWING)) {
+                    Slog.d(TAG, "ignore screenshot, camera key disabled by the top app");
+                    return;
+                }
+                if ("pvr.intent.action.SCREEN_RECORD".equals(screenaction)) {
+                    Slog.d(TAG, "ignore screen record, camera key disabled by the top app");
+                    return;
+                }
+            }
+            Intent intent = new Intent(screenaction);
+            intent.setPackage(SCREEN_RECOARD_CAP_PACKAGE_DEFAULT);
+            intent.putExtra("from", from);
+            Slog.d(TAG, "launchScreenAction intent : " + intent + " from : " + from);
+            mBase.mContext.startService(intent);
+        }
+
+        private boolean doKeyActionReal(int realaction) {
+            if (DEBUG) {
+                Slog.w(TAG, "doKeyActionReal " + realaction);
+            }
+            if (realaction == ACTION_PXR_UNDEFINED) {
+                return true;
+            }
+            if (realaction == ACTION_PXR_RECENTER) {
+                launchRecenter();
+                return true;
+            }
+            if (realaction == ACTION_PXR_GLOBAL_NAVIGATION) {
+                launchShortcutCheck();
+                return true;
+            }
+            if (realaction == ACTION_PXR_GOHOME) {
+                launchPUItobLauncherFunc(ACTION_PXR_GOHOME);
+                return true;
+            }
+            if (realaction == ACTION_PXR_DASHBOARD) {
+                launchQuickSettings();
+                return true;
+            }
+            if (realaction == ACTION_PXR_SCREENCAP) {
+                if (keycode == KeyEvent.KEYCODE_CAMERA && !isSetupWizardComplete()) {
+                    return false;
+                }
+                launchScreenAction("pvr.intent.action.SCREEN_SHOT",
+                        keycode != KeyEvent.KEYCODE_CAMERA ? "system_key" : "capture_key");
+                return true;
+            }
+            if (realaction != ACTION_PXR_SCREENRECOARD) {
+                return false;
+            }
+            if (keycode == KeyEvent.KEYCODE_CAMERA && !isSetupWizardComplete()) {
+                return false;
+            }
+            launchScreenAction("pvr.intent.action.SCREEN_RECORD",
+                    keycode != KeyEvent.KEYCODE_CAMERA ? "system_key" : "capture_key");
+            return true;
+        }
+
+        public void reset() {
+            enable = -1;
+            defined = -1;
+            tap_action = -1;
+            doubletap_action = -1;
+            longpress_action = -1;
+            doubletap_action_time = 300;
+            longpress_action_time = 500;
+            down = false;
+            canceled = false;
+            displayId = -1;
+            repeatCount = -1;
+            mHomeDownTime = -1L;
+            mDoubleTapPending = false;
+            isLongPressed = false;
+            isConsumed = false;
+        }
+
+        private void launchQuickSettings() {
+            Slog.w(TAG, "launchQuickSettings !");
+            Intent intent = new Intent("pui.settings.action.QUICK_SETINGS");
+            intent.setPackage("com.picovr.settings");
+            mBase.startActivityAsUser(intent, UserHandle.CURRENT_OR_SELF);
+        }
+    }
+
+    private class SystemKeyHandler extends Handler {
+        private SystemKeyHandler() {
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case MSG_HMD_HOME_TAP:
+                    hmdhome_KeyAction.doKeyTapAction();
+                    break;
+                case MSG_LCONTROLLER_HOME_TAP:
+                    lctlhome_KeyAction.doKeyTapAction();
+                    break;
+                case MSG_RCONTROLLER_HOME_TAP:
+                    rctlhome_KeyAction.doKeyTapAction();
+                    break;
+                case MSG_RCAPTURE_TAP:
+                    rctlcapture_KeyAction.doKeyTapAction();
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    /** Factory SettingsObserverExt.isSetupWizardComplete (pvr.config.provision2.complete). */
     private boolean isSetupWizardComplete() {
         return Settings.Global.getInt(mBase.mContext.getContentResolver(),
                 PVR_SETUP_WIZARD_COMPLETE, 0) != 0;
     }
 
+    /** Factory SettingsObserverExt flags (dock showing, screenshot toast, camera key off). */
     private boolean getGlobalFlag(String name) {
         return Settings.Global.getInt(mBase.mContext.getContentResolver(), name, 0) != 0;
     }
 
-    private static boolean topIsVrPermissionActivity() {
+    private String getPropValue(Properties prop, String key) {
+        if (!prop.containsKey(key)) {
+            return null;
+        }
+        return prop.get(key).toString();
+    }
+
+    /**
+     * ToB devices (ro.pxr.externalfunc=1) only: key actions from the first existing key
+     * configuration file (MDM, user, OEM, system default). Generic home values apply to the
+     * headset and both controllers, then the hmd_/lctl_/rctl_ values override them.
+     */
+    private void updateUserKeyConfig() {
+        Slog.d(TAG, "updateSystemKeyConfig call");
         try {
-            final ActivityManager.StackInfo stackInfo =
+            boolean enabletob = SystemProperties.getInt("ro.pxr.externalfunc", -1) == 1;
+            if (!enabletob) {
+                return;
+            }
+            Slog.d(TAG, "updateSystemKeyConfig enabletob so check key config file");
+            File oemKeyConfigFile = new File(OEM_KEY_CONFIG_PATH);
+            File keyConfigFile = new File(MDM_KEY_CONFIG_PATH);
+            File oldkeyConfigFile = new File(USER_KEY_CONFIG_PATH);
+            File syskeyConfigFile = new File(USER_KEY_CONFIG_PATH_DEFAULT);
+            if (keyConfigFile.exists()) {
+                keyConfigFile = new File(MDM_KEY_CONFIG_PATH);
+                Slog.i(TAG, "mdm init user key config file exists");
+            } else if (oldkeyConfigFile.exists()) {
+                keyConfigFile = new File(USER_KEY_CONFIG_PATH);
+                Slog.i(TAG, "system init user key config file exists");
+            } else if (oemKeyConfigFile.exists()) {
+                keyConfigFile = new File(OEM_KEY_CONFIG_PATH);
+                Slog.i(TAG, "oem init user key config file exists");
+            } else if (syskeyConfigFile.exists()) {
+                keyConfigFile = new File(USER_KEY_CONFIG_PATH_DEFAULT);
+                Slog.i(TAG, "system default key config file exists");
+            }
+            if (!keyConfigFile.exists()) {
+                Slog.i(TAG, "key config file do not exists, so we do not do any change to key"
+                        + " action");
+                return;
+            }
+            Slog.i(TAG, "we get key config file so change key action");
+            Properties keyConfig = new Properties();
+            keyConfig.load(new FileInputStream(keyConfigFile));
+            singleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_ACTION_HOMESINGLETAP);
+            doubleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP);
+            longPressOnHomeUserConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_ACTION_HOMELONGPRESS);
+            doubleTapOnHomeTimeConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_TIME_HOMEDOUBLETAP);
+            longPressOnHomeTimeConfig = getPropValue(keyConfig, USER_KEY_CONFIG_TIME_HOMELONGPRESS);
+            longPressOnPowerTimeConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_TIME_POWERLONGPRESS);
+            singleTapOnPowerUserConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_ACTION_POWERSINGLETAP);
+            longPressOnPowerUserConfig = getPropValue(keyConfig,
+                    USER_KEY_CONFIG_ACTION_POWERLONGPRESS);
+            hmd_singleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    HMD_USER_KEY_CONFIG_ACTION_HOMESINGLETAP);
+            hmd_doubleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    HMD_USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP);
+            hmd_longPressOnHomeUserConfig = getPropValue(keyConfig,
+                    HMD_USER_KEY_CONFIG_ACTION_HOMELONGPRESS);
+            hmd_doubleTapOnHomeTimeConfig = getPropValue(keyConfig,
+                    HMD_USER_KEY_CONFIG_TIME_HOMEDOUBLETAP);
+            hmd_longPressOnHomeTimeConfig = getPropValue(keyConfig,
+                    HMD_USER_KEY_CONFIG_TIME_HOMELONGPRESS);
+            lctl_singleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    LCTL_USER_KEY_CONFIG_ACTION_HOMESINGLETAP);
+            lctl_doubleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    LCTL_USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP);
+            lctl_longPressOnHomeUserConfig = getPropValue(keyConfig,
+                    LCTL_USER_KEY_CONFIG_ACTION_HOMELONGPRESS);
+            lctl_doubleTapOnHomeTimeConfig = getPropValue(keyConfig,
+                    LCTL_USER_KEY_CONFIG_TIME_HOMEDOUBLETAP);
+            lctl_longPressOnHomeTimeConfig = getPropValue(keyConfig,
+                    LCTL_USER_KEY_CONFIG_TIME_HOMELONGPRESS);
+            rctl_singleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    RCTL_USER_KEY_CONFIG_ACTION_HOMESINGLETAP);
+            rctl_doubleTapOnHomeUserConfig = getPropValue(keyConfig,
+                    RCTL_USER_KEY_CONFIG_ACTION_HOMEDOUBLETAP);
+            rctl_longPressOnHomeUserConfig = getPropValue(keyConfig,
+                    RCTL_USER_KEY_CONFIG_ACTION_HOMELONGPRESS);
+            rctl_doubleTapOnHomeTimeConfig = getPropValue(keyConfig,
+                    RCTL_USER_KEY_CONFIG_TIME_HOMEDOUBLETAP);
+            rctl_longPressOnHomeTimeConfig = getPropValue(keyConfig,
+                    RCTL_USER_KEY_CONFIG_TIME_HOMELONGPRESS);
+            enterKeyConfig = getPropValue(keyConfig, USER_KEY_CONFIG_ACTION_CONFIRM);
+            volumeupKeyConfig = getPropValue(keyConfig, USER_KEY_CONFIG_ACTION_VOLUMEUP);
+            volumedownKeyConfig = getPropValue(keyConfig, USER_KEY_CONFIG_ACTION_VOLUMEDOWN);
+            backKeyConfig = getPropValue(keyConfig, USER_KEY_CONFIG_ACTION_BACK);
+            mSingleTapOnHomeUserDefined = singleTapOnHomeUserConfig != null;
+            mDoubleTapOnHomeUserDefined = doubleTapOnHomeUserConfig != null;
+            mLongPressOnHomeUserDefined = longPressOnHomeUserConfig != null;
+            mDoubleTapOnHomeTimeDefined = doubleTapOnHomeTimeConfig != null;
+            mLongPressOnHomeTimeDefined = longPressOnHomeTimeConfig != null;
+            mLongPressOnPowerTimeDefined = longPressOnPowerTimeConfig != null;
+            mSingleTapOnPowerUserDefined = singleTapOnPowerUserConfig != null;
+            mLongPressOnPowerUserDefined = longPressOnPowerUserConfig != null;
+            hmd_mSingleTapOnHomeUserDefined = hmd_singleTapOnHomeUserConfig != null;
+            hmd_mDoubleTapOnHomeUserDefined = hmd_doubleTapOnHomeUserConfig != null;
+            hmd_mLongPressOnHomeUserDefined = hmd_longPressOnHomeUserConfig != null;
+            hmd_mDoubleTapOnHomeTimeDefined = hmd_doubleTapOnHomeTimeConfig != null;
+            hmd_mLongPressOnHomeTimeDefined = hmd_longPressOnHomeTimeConfig != null;
+            lctl_mSingleTapOnHomeUserDefined = lctl_singleTapOnHomeUserConfig != null;
+            lctl_mDoubleTapOnHomeUserDefined = lctl_doubleTapOnHomeUserConfig != null;
+            lctl_mLongPressOnHomeUserDefined = lctl_longPressOnHomeUserConfig != null;
+            lctl_mDoubleTapOnHomeTimeDefined = lctl_doubleTapOnHomeTimeConfig != null;
+            lctl_mLongPressOnHomeTimeDefined = lctl_longPressOnHomeTimeConfig != null;
+            rctl_mSingleTapOnHomeUserDefined = rctl_singleTapOnHomeUserConfig != null;
+            rctl_mDoubleTapOnHomeUserDefined = rctl_doubleTapOnHomeUserConfig != null;
+            rctl_mLongPressOnHomeUserDefined = rctl_longPressOnHomeUserConfig != null;
+            rctl_mDoubleTapOnHomeTimeDefined = rctl_doubleTapOnHomeTimeConfig != null;
+            rctl_mLongPressOnHomeTimeDefined = rctl_longPressOnHomeTimeConfig != null;
+            enterKeyConfigDefined = enterKeyConfig != null;
+            volumeupKeyConfigDefined = volumeupKeyConfig != null;
+            volumedownKeyConfigDefined = volumedownKeyConfig != null;
+            backKeyConfigDefined = backKeyConfig != null;
+            Slog.i(TAG, "system init user key config mSingleTapOnHomeUserDefined = "
+                    + singleTapOnHomeUserConfig);
+            Slog.i(TAG, "system init user key config mDoubleTapOnHomeUserDefined = "
+                    + doubleTapOnHomeUserConfig);
+            Slog.i(TAG, "system init user key config mLongPressOnHomeUserDefined = "
+                    + longPressOnHomeUserConfig);
+            Slog.i(TAG, "system init user key config mDoubleTapOnHomeTimeDefined = "
+                    + doubleTapOnHomeTimeConfig);
+            Slog.i(TAG, "system init user key config mLongPressOnHomeTimeDefined = "
+                    + longPressOnHomeTimeConfig);
+            Slog.i(TAG, "system init user key config mLongPressOnPowerTimeDefined = "
+                    + longPressOnPowerTimeConfig);
+            Slog.i(TAG, "system init user key config mSingleTapOnPowerUserDefined = "
+                    + singleTapOnPowerUserConfig);
+            Slog.i(TAG, "system init user key config mLongPressOnPowerUserDefined = "
+                    + longPressOnPowerUserConfig);
+            if (mLongPressOnPowerTimeDefined) {
+                hmdpower_KeyAction.defined = 1;
+                hmdpower_KeyAction.longpress_action_time =
+                        Integer.valueOf(longPressOnPowerTimeConfig).intValue();
+            }
+            if (mSingleTapOnPowerUserDefined) {
+                hmdpower_KeyAction.defined = 1;
+                hmdpower_KeyAction.tap_action = 0;
+            }
+            if (mLongPressOnPowerUserDefined) {
+                hmdpower_KeyAction.defined = 1;
+                hmdpower_KeyAction.longpress_action = 0;
+            }
+            hmdconfirm_KeyAction.defined = 0;
+            if (enterKeyConfigDefined) {
+                hmdconfirm_KeyAction.defined = 1;
+            }
+            hmdvolumeup_KeyAction.defined = 0;
+            if (volumeupKeyConfigDefined) {
+                hmdvolumeup_KeyAction.defined = 1;
+            }
+            hmdvolumedown_KeyAction.defined = 0;
+            if (volumedownKeyConfigDefined) {
+                hmdvolumedown_KeyAction.defined = 1;
+            }
+            hmdback_KeyAction.defined = 0;
+            if (backKeyConfigDefined) {
+                hmdback_KeyAction.defined = 1;
+            }
+            if (mSingleTapOnHomeUserDefined) {
+                hmdhome_KeyAction.tap_action = Integer.valueOf(singleTapOnHomeUserConfig).intValue();
+                lctlhome_KeyAction.tap_action =
+                        Integer.valueOf(singleTapOnHomeUserConfig).intValue();
+                rctlhome_KeyAction.tap_action =
+                        Integer.valueOf(singleTapOnHomeUserConfig).intValue();
+            }
+            if (hmd_mSingleTapOnHomeUserDefined) {
+                hmdhome_KeyAction.tap_action =
+                        Integer.valueOf(hmd_singleTapOnHomeUserConfig).intValue();
+            }
+            if (lctl_mSingleTapOnHomeUserDefined) {
+                lctlhome_KeyAction.tap_action =
+                        Integer.valueOf(lctl_singleTapOnHomeUserConfig).intValue();
+            }
+            if (rctl_mSingleTapOnHomeUserDefined) {
+                rctlhome_KeyAction.tap_action =
+                        Integer.valueOf(rctl_singleTapOnHomeUserConfig).intValue();
+            }
+            if (mDoubleTapOnHomeUserDefined) {
+                hmdhome_KeyAction.doubletap_action =
+                        Integer.valueOf(doubleTapOnHomeUserConfig).intValue();
+                lctlhome_KeyAction.doubletap_action =
+                        Integer.valueOf(doubleTapOnHomeUserConfig).intValue();
+                rctlhome_KeyAction.doubletap_action =
+                        Integer.valueOf(doubleTapOnHomeUserConfig).intValue();
+            }
+            if (hmd_mDoubleTapOnHomeUserDefined) {
+                hmdhome_KeyAction.doubletap_action =
+                        Integer.valueOf(hmd_doubleTapOnHomeUserConfig).intValue();
+            }
+            if (lctl_mDoubleTapOnHomeUserDefined) {
+                lctlhome_KeyAction.doubletap_action =
+                        Integer.valueOf(lctl_doubleTapOnHomeUserConfig).intValue();
+            }
+            if (rctl_mDoubleTapOnHomeUserDefined) {
+                rctlhome_KeyAction.doubletap_action =
+                        Integer.valueOf(rctl_doubleTapOnHomeUserConfig).intValue();
+            }
+            if (mLongPressOnHomeUserDefined) {
+                hmdhome_KeyAction.longpress_action =
+                        Integer.valueOf(longPressOnHomeUserConfig).intValue();
+                lctlhome_KeyAction.longpress_action =
+                        Integer.valueOf(longPressOnHomeUserConfig).intValue();
+                rctlhome_KeyAction.longpress_action =
+                        Integer.valueOf(longPressOnHomeUserConfig).intValue();
+            }
+            if (hmd_mLongPressOnHomeUserDefined) {
+                hmdhome_KeyAction.longpress_action =
+                        Integer.valueOf(hmd_longPressOnHomeUserConfig).intValue();
+            }
+            if (lctl_mLongPressOnHomeUserDefined) {
+                lctlhome_KeyAction.longpress_action =
+                        Integer.valueOf(lctl_longPressOnHomeUserConfig).intValue();
+            }
+            if (rctl_mLongPressOnHomeUserDefined) {
+                rctlhome_KeyAction.longpress_action =
+                        Integer.valueOf(rctl_longPressOnHomeUserConfig).intValue();
+            }
+            if (mDoubleTapOnHomeTimeDefined) {
+                hmdhome_KeyAction.doubletap_action_time =
+                        Integer.valueOf(doubleTapOnHomeTimeConfig).intValue();
+                lctlhome_KeyAction.doubletap_action_time =
+                        Integer.valueOf(doubleTapOnHomeTimeConfig).intValue();
+                rctlhome_KeyAction.doubletap_action_time =
+                        Integer.valueOf(doubleTapOnHomeTimeConfig).intValue();
+            }
+            if (hmd_mDoubleTapOnHomeTimeDefined) {
+                hmdhome_KeyAction.doubletap_action_time =
+                        Integer.valueOf(hmd_doubleTapOnHomeTimeConfig).intValue();
+            }
+            if (lctl_mDoubleTapOnHomeTimeDefined) {
+                lctlhome_KeyAction.doubletap_action_time =
+                        Integer.valueOf(lctl_doubleTapOnHomeTimeConfig).intValue();
+            }
+            if (rctl_mDoubleTapOnHomeTimeDefined) {
+                rctlhome_KeyAction.doubletap_action_time =
+                        Integer.valueOf(rctl_doubleTapOnHomeTimeConfig).intValue();
+            }
+            if (mLongPressOnHomeTimeDefined) {
+                hmdhome_KeyAction.longpress_action_time =
+                        Integer.valueOf(longPressOnHomeTimeConfig).intValue();
+                lctlhome_KeyAction.longpress_action_time =
+                        Integer.valueOf(longPressOnHomeTimeConfig).intValue();
+                rctlhome_KeyAction.longpress_action_time =
+                        Integer.valueOf(longPressOnHomeTimeConfig).intValue();
+            }
+            if (hmd_mLongPressOnHomeTimeDefined) {
+                hmdhome_KeyAction.longpress_action_time =
+                        Integer.valueOf(hmd_longPressOnHomeTimeConfig).intValue();
+            }
+            if (lctl_mLongPressOnHomeTimeDefined) {
+                lctlhome_KeyAction.longpress_action_time =
+                        Integer.valueOf(lctl_longPressOnHomeTimeConfig).intValue();
+            }
+            if (rctl_mLongPressOnHomeTimeDefined) {
+                rctlhome_KeyAction.longpress_action_time =
+                        Integer.valueOf(rctl_longPressOnHomeTimeConfig).intValue();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private boolean topIsVrPermissionActivity() {
+        try {
+            ActivityManager.StackInfo stackInfo =
                     ActivityManager.getService().getFocusedStackInfo();
-            return stackInfo != null && stackInfo.topActivity != null
+            if (stackInfo != null && stackInfo.topActivity != null
                     && TextUtils.equals(stackInfo.topActivity.getClassName(),
                             "com.android.packageinstaller.permission.ui.pico"
-                                    + ".VrGrantPermissionsActivity");
+                                    + ".VrGrantPermissionsActivity")) {
+                return true;
+            }
+            return false;
         } catch (RemoteException e) {
             e.printStackTrace();
             return false;
         }
     }
 
-    /** Tells SystemExt that HOME was pressed (it shows the dock / home panel). */
-    void dispatchHomeToNS() {
-        Slog.w(TAG, "dispatchHomeToNS");
-        final Intent intent = new Intent(SystemExt.sAction);
-        intent.setPackage(SystemExt.sCurrentPkg);
-        mBase.mContext.startService(intent);
-    }
-
-    boolean isShortctShowOn3dApp(Context context, int repeatCount) {
+    @Override
+    public boolean isShortctShowOn3dApp(Context context, int repeatCount) {
         if (repeatCount == 0) {
             mShortctShowOn3d = Settings.Global.getInt(context.getContentResolver(),
                     SHORTCT_SHOW_ON_3D, 0) == 1;
@@ -567,7 +1429,8 @@ public class ExtPhoneWindowManagerImpl {
     }
 
     /** Volume keys while the shortcut panel shows over a 3D app: adjust the volume directly. */
-    void interceptVolumeEventAndApply(Context context, KeyEvent event) {
+    @Override
+    public void interceptVolumeEventAndApply(Context context, KeyEvent event) {
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
             return;
         }
@@ -579,29 +1442,35 @@ public class ExtPhoneWindowManagerImpl {
         }
         final int flags = AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND
                 | AudioManager.FLAG_FROM_KEY;
-        final String pkgName = context.getOpPackageName();
-        try {
-            switch (event.getKeyCode()) {
-                case KeyEvent.KEYCODE_VOLUME_UP:
-                    mAudioService.adjustSuggestedStreamVolume(AudioManager.ADJUST_RAISE,
-                            AudioManager.USE_DEFAULT_STREAM_TYPE, flags, pkgName, TAG);
-                    break;
-                case KeyEvent.KEYCODE_VOLUME_DOWN:
-                    mAudioService.adjustSuggestedStreamVolume(AudioManager.ADJUST_LOWER,
-                            AudioManager.USE_DEFAULT_STREAM_TYPE, flags, pkgName, TAG);
-                    break;
-                case KeyEvent.KEYCODE_VOLUME_MUTE:
-                    if (event.getRepeatCount() == 0) {
-                        mAudioService.adjustSuggestedStreamVolume(
-                                AudioManager.ADJUST_TOGGLE_MUTE,
-                                AudioManager.USE_DEFAULT_STREAM_TYPE, flags, pkgName, TAG);
-                    }
-                    break;
-                default:
-                    break;
+        int keyCode = event.getKeyCode();
+        String pkgName = context.getOpPackageName();
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            try {
+                mAudioService.adjustSuggestedStreamVolume(AudioManager.ADJUST_RAISE,
+                        AudioManager.USE_DEFAULT_STREAM_TYPE, flags, pkgName, TAG);
+            } catch (Exception e) {
+                Slog.e(TAG, "Error dispatching volume up in dispatchTvAudioEvent.", e);
             }
-        } catch (Exception e) {
-            Slog.e(TAG, "Error dispatching volume key in interceptVolumeEventAndApply.", e);
+            return;
+        }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            try {
+                mAudioService.adjustSuggestedStreamVolume(AudioManager.ADJUST_LOWER,
+                        AudioManager.USE_DEFAULT_STREAM_TYPE, flags, pkgName, TAG);
+            } catch (Exception e) {
+                Slog.e(TAG, "Error dispatching volume down in dispatchTvAudioEvent.", e);
+            }
+            return;
+        }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+            try {
+                if (event.getRepeatCount() == 0) {
+                    mAudioService.adjustSuggestedStreamVolume(AudioManager.ADJUST_TOGGLE_MUTE,
+                            AudioManager.USE_DEFAULT_STREAM_TYPE, flags, pkgName, TAG);
+                }
+            } catch (Exception e) {
+                Slog.e(TAG, "Error dispatching mute in dispatchTvAudioEvent.", e);
+            }
         }
     }
 
@@ -609,102 +1478,140 @@ public class ExtPhoneWindowManagerImpl {
      * interceptKeyBeforeDispatching: HOME is consumed unless it comes from a gesture hand (then
      * it goes to the app). -1 = no change.
      */
-    long adjustResultFromInterceptKeyBeforeDispatchingInner(WindowState win, KeyEvent event,
-            int policyFlags, long result) {
-        if (event == null || event.getKeyCode() != KeyEvent.KEYCODE_HOME) {
-            return -1;
+    @Override
+    public long adjustResultFromInterceptKeyBeforeDispatchingInner(
+            WindowManagerPolicy.WindowState win, KeyEvent event, int policyFlags, long result) {
+        if (event != null && event.getKeyCode() == KeyEvent.KEYCODE_HOME) {
+            int deviceId = event.getDeviceId();
+            if (deviceId == 20001 || deviceId == 20002) {
+                Slog.w(TAG, "adjustResultFromInterceptKeyBeforeDispatchingInner");
+                return 0L;
+            }
+            return -1L;
         }
-        final int deviceId = event.getDeviceId();
-        if (deviceId == DEVICE_GESTURE_LEFT_HAND || deviceId == DEVICE_GESTURE_RIGHT_HAND) {
-            Slog.w(TAG, "adjustResultFromInterceptKeyBeforeDispatchingInner");
-            return 0;
+        return -1L;
+    }
+
+    /**
+     * ToB, not phoenix (dead code on this product, as on the factory): volume down + confirm
+     * pressed within 300 ms of each other send virtual key 1005 to the API layer clients and
+     * open PICO VR settings.
+     */
+    private boolean handleCompositeKey(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        long eventTime = event.getEventTime();
+        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        if (keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (keyCode == 1001) {
+                if (down) {
+                    if (mCompositeKeyTriggered) {
+                        return true;
+                    }
+                    mConFirmKeyTriggered = true;
+                    mConFirmKeyDownTime = event.getDownTime();
+                    if (eventTime - mConFirmKeyDownTime >= 300) {
+                        return false;
+                    }
+                    if (mVolumeDownKeyTriggered && eventTime - mVolumeDownKeyDownTime < 300) {
+                        mCompositeKeyTriggered = true;
+                        sendVirtualKey(MSG_HIDE_STATUS_BAR_TIMEOUT, KeyEvent.ACTION_DOWN);
+                        launchVRSettings();
+                    }
+                    return true;
+                }
+                mConFirmKeyTriggered = false;
+                if (mCompositeKeyTriggered) {
+                    if (!mVolumeDownKeyTriggered && !mConFirmKeyTriggered) {
+                        mCompositeKeyTriggered = false;
+                    }
+                    return true;
+                }
+            }
+        } else {
+            if (down) {
+                if (mCompositeKeyTriggered) {
+                    return true;
+                }
+                mVolumeDownKeyTriggered = true;
+                mVolumeDownKeyDownTime = event.getDownTime();
+                if (eventTime - mVolumeDownKeyDownTime >= 300) {
+                    return false;
+                }
+                if (mConFirmKeyTriggered && eventTime - mConFirmKeyDownTime < 300) {
+                    mCompositeKeyTriggered = true;
+                    sendVirtualKey(MSG_HIDE_STATUS_BAR_TIMEOUT, KeyEvent.ACTION_DOWN);
+                    launchVRSettings();
+                }
+                return true;
+            }
+            mVolumeDownKeyTriggered = false;
+            if (mCompositeKeyTriggered) {
+                if (!mVolumeDownKeyTriggered && !mConFirmKeyTriggered) {
+                    mCompositeKeyTriggered = false;
+                }
+                return true;
+            }
         }
-        return -1;
+        return false;
     }
 
     /** powerPress: the short press does nothing (key config, psensor near, DP mode). */
-    boolean interruptPowerPress() {
-        if (getPowerDefined() && mHmdPowerKeyAction.tapAction == 0) {
+    @Override
+    public boolean interruptPowerPress() {
+        if (getPowerDefined() && getPowerTapStauts() == 0) {
             Log.w(TAG, "interruptPowerPress by power defined");
             return true;
         }
         if (SystemProperties.getInt("sys.pxr.psensor.status", 1) == 0
                 && SystemProperties.getInt("persist.pxr.psensor.powermode", 1) == 1
-                && mIsDefectiveDevice && mBase.isScreenOn()) {
+                && isDefectiveDevice && mBase.isScreenOn()) {
             Log.w(TAG, "KeyEvent.KEYCODE_POWER press but no effect for psensor is near status");
             return true;
         }
-        if (SystemProperties.getInt("sys.pxr.vxr7200.status", 0) == 1) {
-            Log.w(TAG, "interruptPowerPress by vxr7200");
-            return true;
+        if (SystemProperties.getInt("sys.pxr.vxr7200.status", 0) != 1) {
+            return false;
         }
-        return false;
+        Log.w(TAG, "interruptPowerPress by vxr7200");
+        return true;
     }
 
-    boolean interruptPowerLongPress() {
-        if (getPowerDefined() && mHmdPowerKeyAction.longPressAction == 0) {
+    @Override
+    public boolean interruptPowerLongPress() {
+        if (getPowerDefined() && getPowerLongPressStauts() == 0) {
             Log.w(TAG, "interruptPowerLongPress by power defined");
             return true;
         }
         return false;
     }
 
-    /** The power key always waits for a possible double press. */
-    int getDefaultMaxMultiPressPowerCount() {
-        return 2;
-    }
-
-    boolean isPowerDisabledForHcit() {
-        return sPowerDisabledForHcit;
-    }
-
-    boolean denyBackKeyIn2DApp() {
-        return Features.isDenyBackKeyIn2dApp();
-    }
-
     /** DisplayHomeButtonHandler: HOME held for over 5 s is reported as pxr notification. */
-    void sendTapHomeMsgIfNeeded(KeyEvent event) {
-        if (event.getRepeatCount() == 0) {
+    @Override
+    public void sendTapHomeMsgIfNeeded(KeyEvent event) {
+        int repeatCount = event.getRepeatCount();
+        if (repeatCount == 0) {
             mHomeDownTime = System.currentTimeMillis();
             return;
         }
         if ((event.getFlags() & KeyEvent.FLAG_LONG_PRESS) != 0) {
             return;
         }
-        final long repeatHomeTime = System.currentTimeMillis() - mHomeDownTime;
-        if (mHomeDownTime != -1 && repeatHomeTime > 5000) {
-            sendLongPressNotification(NOTIFICATION_MSG_HOME_LONG_PRESS, repeatHomeTime);
-            mHomeDownTime = -1;
-        }
-    }
-
-    /** interceptKeyBeforeDispatchingInner: BACK held for over 8 s is reported. */
-    void dispatchBackKeyTapMsg(KeyEvent event) {
-        if (event.getKeyCode() != KeyEvent.KEYCODE_BACK) {
-            return;
-        }
-        if (event.getRepeatCount() == 0) {
-            mBackDownTime = System.currentTimeMillis();
-            return;
-        }
-        final long repeatBackTime = System.currentTimeMillis() - mBackDownTime;
-        if (mBackDownTime != -1 && repeatBackTime > 8000) {
-            sendLongPressNotification(NOTIFICATION_MSG_BACK_LONG_PRESS, repeatBackTime);
-            mBackDownTime = -1;
-        }
-    }
-
-    private static void sendLongPressNotification(String msg, long duration) {
-        try {
-            final IPxrNotificationService notification = getPxrNotificationService();
-            if (notification != null) {
-                Log.w(TAG, "long tap, send notification msg " + msg);
-                notification.sendPxrMessage(msg, 1, "", (int) duration, "");
-            } else {
-                Log.w(TAG, "pxr_notification is null ,do nothing ...");
+        long now = System.currentTimeMillis();
+        long downTime = mHomeDownTime;
+        mRepeatHomeTime = now - downTime;
+        if (downTime != -1 && mRepeatHomeTime > 5000) {
+            try {
+                IPxrNotificationService notification = getPxrNotificationService();
+                if (notification != null) {
+                    Log.w(TAG, "long tap home ,send notification msg");
+                    notification.sendPxrMessage(notification_msg_home_long_press, 1, "",
+                            (int) mRepeatHomeTime, "");
+                } else {
+                    Log.w(TAG, "pxr_notification is null ,do nothing ...");
+                }
+            } catch (RemoteException e) {
+                Log.e(TAG, "invoke pxrnotification send home long press Exception:" + e);
             }
-        } catch (RemoteException e) {
-            Log.e(TAG, "invoke pxrnotification send " + msg + " Exception:" + e);
+            mHomeDownTime = -1L;
         }
     }
 
@@ -712,7 +1619,8 @@ public class ExtPhoneWindowManagerImpl {
      * checkAddPermission: apps marked as VR apps in their metadata need SYSTEM_ALERT_WINDOW for
      * system windows.
      */
-    boolean needCheckSystemAlertWindowPermission(Context context,
+    @Override
+    public boolean needCheckSystemAlertWindowPermission(Context context,
             WindowManager.LayoutParams attrs, int callingUid) {
         ApplicationInfo applicationInfo;
         try {
@@ -722,340 +1630,125 @@ public class ExtPhoneWindowManagerImpl {
         } catch (PackageManager.NameNotFoundException e) {
             applicationInfo = null;
         }
-        if (applicationInfo == null || applicationInfo.metaData == null) {
-            return false;
+        String[] vrTagArray = {"com.picovr.type", "pvr.app.type"};
+        if (applicationInfo != null && applicationInfo.metaData != null) {
+            for (String tag : vrTagArray) {
+                String value = applicationInfo.metaData.getString(tag);
+                if (value != null) {
+                    return true;
+                }
+            }
         }
-        return applicationInfo.metaData.getString("com.picovr.type") != null
-                || applicationInfo.metaData.getString("pvr.app.type") != null;
+        return false;
+    }
+
+    /** interceptKeyBeforeDispatchingInner: BACK held for over 8 s is reported. */
+    @Override
+    public void dispatchBackKeyTapMsg(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        if (keyCode != KeyEvent.KEYCODE_BACK) {
+            return;
+        }
+        if (event.getRepeatCount() == 0) {
+            mBackDownTime = System.currentTimeMillis();
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long downTime = mBackDownTime;
+        mRepeatBackTime = now - downTime;
+        if (downTime != -1 && mRepeatBackTime > 8000) {
+            try {
+                IPxrNotificationService notification = getPxrNotificationService();
+                if (notification != null) {
+                    Log.w(TAG, "long tap back ,send notification msg");
+                    notification.sendPxrMessage(notification_msg_back_long_press, 1, "",
+                            (int) mRepeatBackTime, "");
+                } else {
+                    Log.w(TAG, "pxr_notification is null ,do nothing ...");
+                }
+            } catch (RemoteException e) {
+                Log.e(TAG, "invoke pxrnotification send back long press Exception:" + e);
+            }
+            mBackDownTime = -1L;
+        }
+    }
+
+    @Override
+    public boolean isPowerDisabledForHcit() {
+        return mPowerDisabledForHcit;
+    }
+
+    /** Factory interface method without a caller in system_server. */
+    @Override
+    public void doMediaScan(Context context) {
+        Bundle args = new Bundle();
+        args.putString("volume", "external");
+        Intent startScan = new Intent();
+        startScan.putExtras(args);
+        startScan.setComponent(new ComponentName("com.android.providers.media",
+                "com.android.providers.media.MediaScannerService"));
+        context.startService(startScan);
     }
 
     /** startDockOrHome: test mode goes to Launcher3 when it is installed. */
-    boolean startLauncher3IfNeeded() {
-        if (!SystemProperties.getBoolean("persist.pxr.testmode", false)) {
-            return false;
+    @Override
+    public boolean startLauncher3IfNeeded() {
+        if (SystemProperties.getBoolean("persist.pxr.testmode", false)) {
+            boolean isLauncher3Exists = false;
+            try {
+                mBase.mContext.getPackageManager().getApplicationInfo("com.android.launcher3", 0);
+                isLauncher3Exists = true;
+            } catch (Exception e) {
+            }
+            if (isLauncher3Exists) {
+                Intent intent = new Intent();
+                ComponentName comp = new ComponentName("com.android.launcher3",
+                        "com.android.launcher3.Launcher");
+                intent.setComponent(comp);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                mBase.startActivityAsUser(intent, UserHandle.CURRENT_OR_SELF);
+                return true;
+            }
         }
-        try {
-            mBase.mContext.getPackageManager().getApplicationInfo("com.android.launcher3", 0);
-        } catch (Exception e) {
-            return false;
-        }
-        final Intent intent = new Intent();
-        intent.setComponent(new ComponentName("com.android.launcher3",
-                "com.android.launcher3.Launcher"));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        mBase.startActivityAsUser(intent, UserHandle.CURRENT_OR_SELF);
-        return true;
+        return false;
     }
 
     /** startDockOrHome: HOME goes to SystemExt instead of the Android home activity. */
-    boolean launchDockIfNeeded() {
+    @Override
+    public boolean launchDockIfNeeded() {
         dispatchHomeToNS();
         return true;
     }
 
-    /** Tap / double-tap / long-press state and actions of one PICO key. */
-    private final class SystemKeyAction {
-        int enable = -1;
-        int defined = 0;
-        int tapAction = ACTION_PXR_UNDEFINED;
-        int doubleTapAction = ACTION_PXR_UNDEFINED;
-        int longPressAction = ACTION_PXR_UNDEFINED;
-        int doubleTapActionTime = 300;
-        int longPressActionTime = 500;
-        boolean enableDoubleTap = true;
-        boolean down = false;
-        int keycode = -1;
-        long downTime = -1;
-        boolean doubleTapPending = false;
-        boolean isPressed = false;
-        boolean isLongPressed = false;
-        boolean isConsumed = false;
-        boolean tapMessageHold = true;
-        private boolean conflictWithOtherKeys = false;
-
-        void setConflictWithOtherKeys() {
-            conflictWithOtherKeys = true;
-            cancelKeyTapActionDelay(keycode);
-            doubleTapPending = false;
-            isPressed = false;
-            isLongPressed = false;
-            isConsumed = false;
-        }
-
-        void handleEvent(KeyEvent event) {
-            doKeyAction(event);
-            down = event.getAction() == KeyEvent.ACTION_DOWN;
-            keycode = event.getKeyCode();
-            if (!down || event.getRepeatCount() == 0) {
-                conflictWithOtherKeys = false;
-            }
-        }
-
-        private void doKeyAction(KeyEvent event) {
-            if (conflictWithOtherKeys) {
-                return;
-            }
-            Slog.d(TAG, "doKeyAction event: " + event + " mDoubleTapPending is "
-                    + doubleTapPending + ",longpress_action_time=" + longPressActionTime
-                    + ",doubletap_action_time=" + doubleTapActionTime + ",isConsumed="
-                    + isConsumed);
-            final boolean isDown = event.getAction() == KeyEvent.ACTION_DOWN;
-            if (doubleTapPending) {
-                downTime = -1;
-                isLongPressed = false;
-                if (isDown) {
-                    isPressed = true;
-                    cancelKeyTapActionDelay(event.getKeyCode());
-                    return;
-                }
-                isPressed = false;
-                doubleTapPending = false;
-                doKeyDoubleTapAction();
-                return;
-            }
-            if (isDown) {
-                isPressed = true;
-                if (event.getRepeatCount() == 0) {
-                    isConsumed = false;
-                    downTime = System.currentTimeMillis();
-                    isLongPressed = false;
-                } else if (!isLongPressed
-                        && System.currentTimeMillis() - downTime > longPressActionTime) {
-                    isLongPressed = true;
-                    doKeyLongPressAction();
-                }
-                return;
-            }
-            isPressed = false;
-            isLongPressed = false;
-            if (!isConsumed) {
-                if (!enableDoubleTap) {
-                    downTime = -1;
-                    doKeyTapAction();
-                } else if (System.currentTimeMillis() - downTime < doubleTapActionTime) {
-                    doubleTapPending = true;
-                    downTime = -1;
-                    doKeyTapActionDelay(event.getKeyCode());
-                }
-            }
-            downTime = -1;
-        }
-
-        private int tapMessageFor(int code) {
-            switch (code) {
-                case KeyEvent.KEYCODE_HOME: return MSG_HMD_HOME_TAP;
-                case KeyEvent.KEYCODE_CAMERA: return MSG_RCAPTURE_TAP;
-                case KEYCODE_LEFT_CONTROLLER_HOME: return MSG_LCONTROLLER_HOME_TAP;
-                case KEYCODE_RIGHT_CONTROLLER_HOME: return MSG_RCONTROLLER_HOME_TAP;
-                default: return -1;
-            }
-        }
-
-        private void cancelKeyTapActionDelay(int code) {
-            if (DEBUG) {
-                Slog.d(TAG, "we cancelKeyTapActionDelay " + code);
-            }
-            final int what = tapMessageFor(code);
-            if (what != -1 && tapMessageHold) {
-                mKeyActionHandler.removeMessages(what);
-                tapMessageHold = false;
-            }
-        }
-
-        private void doKeyTapActionDelay(int code) {
-            final int what = tapMessageFor(code);
-            if (what != -1) {
-                tapMessageHold = true;
-                mKeyActionHandler.sendEmptyMessageDelayed(what, doubleTapActionTime);
-            }
-        }
-
-        void doKeyTapAction() {
-            Slog.i(TAG, "we doKeyTapAction " + keycode + " , resume " + isConsumed);
-            notifyHomeKeyActionIfNeeded(keycode, 1);
-            tapMessageHold = false;
-            doubleTapPending = false;
-            if (keycode == KeyEvent.KEYCODE_HOME) {
-                if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1
-                        && !Features.PROJECT_PHOENIX.equals(Features.getProjectName())) {
-                    Slog.i(TAG, "doKeyTapAction shortcut preview");
-                    launchScreenAction("pvr.intent.action.SCREEN_SHOT", "system_key");
-                    isConsumed = true;
-                    return;
-                }
-            } else if (keycode == KeyEvent.KEYCODE_CAMERA) {
-                if (isSetupWizardComplete()) {
-                    launchScreenAction("pvr.intent.action.SCREEN_SHOT", "capture_key");
-                    isConsumed = true;
-                    return;
-                }
-            } else if (keycode == KEYCODE_LEFT_CONTROLLER_HOME
-                    || keycode == KEYCODE_RIGHT_CONTROLLER_HOME) {
-                if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1) {
-                    Slog.i(TAG, "doKeyTapAction shortcut preview");
-                    launchScreenAction("pvr.intent.action.SCREEN_SHOT", "system_key");
-                    isConsumed = true;
-                    return;
-                }
-            }
-            if (!isConsumed) {
-                isConsumed = true;
-                doKeyActionReal(tapAction);
-            }
-        }
-
-        private void doKeyDoubleTapAction() {
-            if (DEBUG) {
-                Slog.i(TAG, "we doKeyDoubleTapAction " + keycode);
-            }
-            notifyHomeKeyActionIfNeeded(keycode, 2);
-            if (!isConsumed) {
-                isConsumed = true;
-                doKeyActionReal(doubleTapAction);
-            }
-        }
-
-        private void doKeyLongPressAction() {
-            notifyHomeKeyActionIfNeeded(keycode, 3);
-            if (!isConsumed) {
-                isConsumed = true;
-                doKeyActionReal(longPressAction);
-            }
-        }
-
-        /** ToB: HOME key actions (1 tap, 2 double tap, 3 long press) are broadcast. */
-        private void notifyHomeKeyActionIfNeeded(final int code, final int action) {
-            if (!mIsToBDevice || isConsumed || (code != KeyEvent.KEYCODE_HOME
-                    && code != KEYCODE_LEFT_CONTROLLER_HOME
-                    && code != KEYCODE_RIGHT_CONTROLLER_HOME)) {
-                return;
-            }
-            mBase.mHandler.post(() -> {
-                final Intent intent = new Intent("pxr.intent.action.home_key");
-                intent.putExtra("keycode", code);
-                intent.putExtra("action", action);
-                intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
-                mBase.mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
-                Log.d(TAG, "notifyHomeKeyAction keycode : " + code + ", action : " + action);
-            });
-        }
-
-        private void launchScreenAction(String screenAction, String from) {
-            Slog.d(TAG, "launchScreenAction " + screenAction + " from " + from);
-            if (Features.isKeyguardEnabled()
-                    && KeyStore.getInstance().state() == KeyStore.State.LOCKED) {
-                final Intent i = new Intent("pvr.intent.action.vrdisplay");
-                i.setPackage("com.pvr.vrdisplay");
-                i.putExtra("action_type", 93);
-                i.putExtra("remind_type", 3);
-                mBase.mContext.startService(i);
-                return;
-            }
-            if ("capture_key".equals(from) && getGlobalFlag(SETTINGS_DISABLE_CAMERA_KEY)
-                    && !getGlobalFlag(SETTINGS_DOCK_SHOWING)) {
-                if ("pvr.intent.action.SCREEN_SHOT".equals(screenAction)
-                        && !getGlobalFlag(SETTINGS_SCREENSHOT_TOAST_SHOWING)) {
-                    Slog.d(TAG, "ignore screenshot, camera key disabled by the top app");
-                    return;
-                }
-                if ("pvr.intent.action.SCREEN_RECORD".equals(screenAction)) {
-                    Slog.d(TAG, "ignore screen record, camera key disabled by the top app");
-                    return;
-                }
-            }
-            final Intent intent = new Intent(screenAction);
-            intent.setPackage(SCREEN_RECORD_CAP_PACKAGE);
-            intent.putExtra("from", from);
-            Slog.d(TAG, "launchScreenAction intent : " + intent + " from : " + from);
-            mBase.mContext.startService(intent);
-        }
-
-        private void doKeyActionReal(int realAction) {
-            if (DEBUG) {
-                Slog.w(TAG, "doKeyActionReal " + realAction);
-            }
-            switch (realAction) {
-                case ACTION_PXR_RECENTER:
-                    Slog.i(TAG, "launchRecenter");
-                    mBase.sendCloseSystemWindows("recenter");
-                    break;
-                case ACTION_PXR_GLOBAL_NAVIGATION: {
-                    final ActivityInfo top = mBase.mActivityTaskManagerInternal
-                            .getPicoTopResumedActivityInfo(android.view.Display.DEFAULT_DISPLAY);
-                    Slog.d(TAG, "launchShortcutCheck topActivity : " + top);
-                    if (top != null && !topIsVrPermissionActivity()) {
-                        dispatchHomeToNS();
-                    }
-                    break;
-                }
-                case ACTION_PXR_GOHOME: {
-                    final Intent intent = new Intent("pvr.intent.action.LAUNCHER_MAIN");
-                    intent.putExtra("func", ACTION_PXR_GOHOME);
-                    intent.setPackage(SystemExt.sCurrentPkg);
-                    mBase.mContext.startService(intent);
-                    break;
-                }
-                case ACTION_PXR_DASHBOARD: {
-                    Slog.w(TAG, "launchQuickSettings !");
-                    final Intent intent = new Intent("pui.settings.action.QUICK_SETINGS");
-                    intent.setPackage("com.picovr.settings");
-                    mBase.startActivityAsUser(intent, UserHandle.CURRENT_OR_SELF);
-                    break;
-                }
-                case ACTION_PXR_SCREENCAP:
-                case ACTION_PXR_SCREENRECORD:
-                    if (keycode == KeyEvent.KEYCODE_CAMERA && !isSetupWizardComplete()) {
-                        break;
-                    }
-                    launchScreenAction(realAction == ACTION_PXR_SCREENCAP
-                                    ? "pvr.intent.action.SCREEN_SHOT"
-                                    : "pvr.intent.action.SCREEN_RECORD",
-                            keycode != KeyEvent.KEYCODE_CAMERA ? "system_key" : "capture_key");
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        void reset() {
-            enable = -1;
-            defined = -1;
-            tapAction = ACTION_PXR_UNDEFINED;
-            doubleTapAction = ACTION_PXR_UNDEFINED;
-            longPressAction = ACTION_PXR_UNDEFINED;
-            doubleTapActionTime = 300;
-            longPressActionTime = 500;
-            down = false;
-            downTime = -1;
-            doubleTapPending = false;
-            isLongPressed = false;
-            isConsumed = false;
-        }
+    /** Tells SystemExt that HOME was pressed (it shows the dock / home panel). */
+    private void dispatchHomeToNS() {
+        Slog.w(TAG, "dispatchHomeToNS");
+        Intent intent = new Intent(SystemExt.sAction);
+        intent.setPackage(SystemExt.sCurrentPkg);
+        mBase.mContext.startService(intent);
     }
 
-    private final class SystemKeyHandler extends Handler {
-        SystemKeyHandler(Looper looper) {
-            super(looper);
-        }
+    /** The power key always waits for a possible double press. */
+    @Override
+    public int getDefaultMaxMultiPressPowerCount() {
+        return 2;
+    }
 
-        @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
-                case MSG_HMD_HOME_TAP:
-                    mHmdHomeKeyAction.doKeyTapAction();
-                    break;
-                case MSG_LCONTROLLER_HOME_TAP:
-                    mLctlHomeKeyAction.doKeyTapAction();
-                    break;
-                case MSG_RCONTROLLER_HOME_TAP:
-                    mRctlHomeKeyAction.doKeyTapAction();
-                    break;
-                case MSG_RCAPTURE_TAP:
-                    mRctlCaptureKeyAction.doKeyTapAction();
-                    break;
-                default:
-                    break;
-            }
+    @Override
+    public boolean denyBackKeyIn2DApp() {
+        return Features.isDenyBackKeyIn2dApp();
+    }
+
+    /** Sends a synthetic key (down, keyCode) to the API layer clients. */
+    private void sendVirtualKey(int keyCode, int action) {
+        try {
+            long time = SystemClock.uptimeMillis();
+            KeyEvent event = KeyEvent.obtain(time, time, action, keyCode, 0, 0, 0, 0, 0, 0, 0,
+                    null);
+            ApiLayerService.getInstance().onKeyEvent(event);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

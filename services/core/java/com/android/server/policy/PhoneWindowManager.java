@@ -438,8 +438,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     GlobalActions mGlobalActions;
     Handler mHandler;
 
-    /** PICO VR key, home and power handling (factory ExtPhoneWindowManagerImpl). */
-    final ExtPhoneWindowManagerImpl mPicoExt = new ExtPhoneWindowManagerImpl(this);
+    /** PICO VR key, home and power handling (factory IExtPhoneWindowManager mExt). */
+    private IExtPhoneWindowManager mExt = new ExtPhoneWindowManagerImpl(this);
 
     // FIXME This state is shared between the input reader and handler thread.
     // Technically it's broken and buggy but it has been like this for many years
@@ -1123,7 +1123,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             powerMultiPressAction(eventTime, interactive, mTriplePressOnPowerBehavior);
         } else if (interactive && !mBeganFromNonInteractive
                 // PICO (factory): key config, psensor-near and DP mode suppress the press.
-                && !mPicoExt.interruptPowerPress()) {
+                && !mExt.interruptPowerPress()) {
             switch (mShortPressOnPowerBehavior) {
                 case SHORT_PRESS_POWER_NOTHING:
                     break;
@@ -1254,7 +1254,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             return 2;
         }
         // PICO (factory): the power key always waits for a possible double press.
-        final int picoCount = mPicoExt.getDefaultMaxMultiPressPowerCount();
+        final int picoCount = mExt.getDefaultMaxMultiPressPowerCount();
         if (picoCount > 0) {
             return picoCount;
         }
@@ -1263,7 +1263,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
     private void powerLongPress() {
         // PICO (factory): a ToB key configuration can switch the long press off.
-        if (mPicoExt.interruptPowerLongPress()) {
+        if (mExt.interruptPowerLongPress()) {
             return;
         }
         final int behavior = getResolvedLongPressOnPowerBehavior();
@@ -1709,7 +1709,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 }
             }
             // PICO (factory): HOME held for over 5 s is reported as a pxr notification.
-            mPicoExt.sendTapHomeMsgIfNeeded(event);
+            mExt.sendTapHomeMsgIfNeeded(event);
             return -1;
         }
 
@@ -1993,7 +1993,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                         mWindowManagerFuncs.onKeyguardShowingAndNotOccludedChanged();
                     }
                 });
-        mPicoExt.init(context);
+        mExt.init(context);
     }
 
     /**
@@ -2173,7 +2173,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
         // PICO (factory): VR apps (com.picovr.type / pvr.app.type metadata) may add alert
         // windows with SYSTEM_ALERT_WINDOW.
-        if (mPicoExt.needCheckSystemAlertWindowPermission(mContext, attrs, callingUid)) {
+        if (mExt.needCheckSystemAlertWindowPermission(mContext, attrs, callingUid)) {
             return mContext.checkCallingOrSelfPermission(
                     android.Manifest.permission.SYSTEM_ALERT_WINDOW) == PERMISSION_GRANTED
                     ? ADD_OKAY : ADD_PERMISSION_DENIED;
@@ -2640,7 +2640,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     public long interceptKeyBeforeDispatching(WindowState win, KeyEvent event, int policyFlags) {
         final long result = interceptKeyBeforeDispatchingInner(win, event, policyFlags);
         // PICO (factory): HOME is consumed here unless a gesture hand sent it.
-        final long picoResult = mPicoExt.adjustResultFromInterceptKeyBeforeDispatchingInner(win,
+        final long picoResult = mExt.adjustResultFromInterceptKeyBeforeDispatchingInner(win,
                 event, policyFlags, result);
         if (picoResult != -1) {
             return picoResult;
@@ -2690,7 +2690,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
         // PICO (factory ExtPhoneWindowManagerImpl.processKey): PICO keys, key reports to
         // pvr_manager and the API layer; 1 continues the normal policy.
-        final int picoResult = mPicoExt.processKey(event, win);
+        final int picoResult = mExt.processKey(event, win);
         if (picoResult != 1) {
             return picoResult;
         }
@@ -2913,9 +2913,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
             // PICO (factory): while the shortcut panel shows over a 3D app the volume is
             // adjusted here instead of by the app.
-            if (mPicoExt.isShortctShowOn3dApp(mContext, repeatCount)) {
+            if (mExt.isShortctShowOn3dApp(mContext, repeatCount)) {
                 Log.d(TAG, "shortct show on 3d app so adjust volume here");
-                mPicoExt.interceptVolumeEventAndApply(mContext, event);
+                mExt.interceptVolumeEventAndApply(mContext, event);
                 return -1;
             }
         } else if (keyCode == KeyEvent.KEYCODE_TAB && event.isMetaPressed()) {
@@ -2934,7 +2934,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
 
         // PICO (factory): BACK held for over 8 s is reported as a pxr notification.
-        mPicoExt.dispatchBackKeyTapMsg(event);
+        mExt.dispatchBackKeyTapMsg(event);
 
         // Toggle Caps Lock on META-ALT.
         boolean actionTriggered = false;
@@ -3816,7 +3816,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         // Handle special keys.
         switch (keyCode) {
             case KeyEvent.KEYCODE_BACK: {
-                if (mPicoExt.denyBackKeyIn2DApp()) {
+                if (mExt.denyBackKeyIn2DApp()) {
                     // PICO (factory): pvr.2d_screen.reposition=1 (panel repositioning).
                     Log.e(TAG, "back key is deny in 2d screen reposition mode");
                 } else if (down) {
@@ -3976,7 +3976,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
             case KeyEvent.KEYCODE_POWER: {
                 // PICO (factory): the factory keypad test (HCIT) can switch the power key off.
-                if (mPicoExt.isPowerDisabledForHcit()) {
+                if (mExt.isPowerDisabledForHcit()) {
                     Log.e("factorytest", "ignore KEYCODE_POWER when test keypad in HCIT.");
                     return result;
                 }
@@ -5293,7 +5293,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
 
         // PICO (factory): persist.pxr.testmode goes to Launcher3 when it is installed.
-        if (mPicoExt.startLauncher3IfNeeded()) {
+        if (mExt.startLauncher3IfNeeded()) {
             return;
         }
 
@@ -5317,7 +5317,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
         // PICO (factory launchDockIfNeeded): HOME goes to SystemExt
         // (picovr.system_ext.action.HOME to com.picovr.systemext), not to a home activity.
-        if (mPicoExt.launchDockIfNeeded()) {
+        if (mExt.launchDockIfNeeded()) {
             return;
         }
 
@@ -5844,4 +5844,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
     }
 
+    /** PICO (factory): the IExtPhoneWindowManager extension. */
+    public IExtPhoneWindowManager getExt() {
+        return mExt;
+    }
 }
