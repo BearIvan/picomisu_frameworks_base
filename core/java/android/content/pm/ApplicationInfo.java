@@ -1326,6 +1326,23 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         return mSmtEx;
     }
 
+    // Smartisan system monitor extension (PICO OS 5.13.7); not parcelled or copied.
+    private ApplicationInfoMonitorEx mMonitorEx = new ApplicationInfoMonitorEx();
+
+    /** @hide */
+    public ApplicationInfoMonitorEx getMonitorEx() {
+        return mMonitorEx;
+    }
+
+    /**
+     * Returns the uid, or the Smartisan per-package uid for a package that runs as the system
+     * uid.
+     * @hide
+     */
+    public int getSmtUid() {
+        return mMonitorEx.getSmtUid(uid, packageName);
+    }
+
     private IExtApplicationInfo mExt = new ExtApplicationInfoImpl(this);
 
     /**
