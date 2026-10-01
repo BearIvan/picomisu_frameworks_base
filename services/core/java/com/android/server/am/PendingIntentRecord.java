@@ -40,6 +40,7 @@ import android.util.TimeUtils;
 
 import com.android.internal.os.IResultReceiver;
 import com.android.internal.util.function.pooled.PooledLambda;
+import com.android.server.SysOptBridge;
 import com.android.server.wm.SafeActivityOptions;
 
 import java.io.PrintWriter;
@@ -427,6 +428,12 @@ public final class PendingIntentRecord extends IIntentSender.Stub {
                     break;
                 case ActivityManager.INTENT_SENDER_BROADCAST:
                     try {
+                        // Smartisan (factory): mark broadcasts sent by the system UI (a frozen
+                        // receiver is thawed for them).
+                        if (SysOptBridge.getFactory().getSmartService().isFromSystemUi(
+                                callingUid)) {
+                            finalIntent.getSmtEx().putSmtExtra("from_system_ui", true);
+                        }
                         // If a completion callback has been requested, require
                         // that the broadcast be delivered synchronously
                         int sent = controller.mAmInternal.broadcastIntentInPackage(key.packageName,

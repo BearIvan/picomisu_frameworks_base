@@ -44,6 +44,7 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.os.UserHandle;
+import android.text.TextUtils;
 import android.provider.Settings;
 import android.server.ServerProtoEnums;
 import android.util.ArrayMap;
@@ -71,6 +72,7 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -604,6 +606,8 @@ public class ProcessRecord implements WindowProcessListener {
         procStatFile = null;
         shortStringName = null;
         stringName = null;
+        // Smartisan (factory).
+        getSmtEx().setPid(_pid);
     }
 
     public void makeActive(IApplicationThread _thread, ProcessStatsService tracker) {
@@ -796,10 +800,15 @@ public class ProcessRecord implements WindowProcessListener {
                         "Killing " + toShortString() + " (adj " + setAdj + "): " + reason,
                         info.uid);
             }
-            if (pid > 0) {
-                EventLog.writeEvent(EventLogTags.AM_KILL, userId, pid, processName, setAdj, reason);
-                Process.killProcessQuiet(pid);
-                ProcessList.killProcessGroup(uid, pid);
+            // Smartisan (factory): the pid survives a freezer detach.
+            final int killPid = pid > 0 ? pid : getSmtEx().pid;
+            if (killPid > 0) {
+                EventLog.writeEvent(EventLogTags.AM_KILL, userId, killPid, processName, setAdj,
+                        reason);
+                Process.killProcessQuiet(killPid);
+                ProcessList.killProcessGroup(uid, killPid);
+                // Smartisan (factory).
+                getSmtEx().reportKillingEvent(reason);
             } else {
                 pendingStart = false;
             }
@@ -874,6 +883,9 @@ public class ProcessRecord implements WindowProcessListener {
                 sb.append(UserHandle.getAppId(uid) - Process.FIRST_ISOLATED_UID);
             }
         }
+        // Smartisan (factory).
+        sb.append(' ');
+        sb.append(getSmtEx());
     }
 
     public String toString() {
@@ -1455,6 +1467,17 @@ public class ProcessRecord implements WindowProcessListener {
             mService.updateCpuStatsNow();
         }
 
+        // Smartisan (factory): binder peers of the ANR process and of the XR native services.
+        ArrayList<Integer> tmpNativePids = new ArrayList<>(2);
+        Slog.i(TAG, "dumping some native pids we interested.");
+        ArrayList<String> xrInterested = new ArrayList<>();
+        xrInterested.add("/system/bin/pvrtrackingservice");
+        xrInterested.add("/system/bin/surfaceflinger");
+        SysMonitorSvcBridge.getFactory().getSysMonitorExtraLogUtil()
+                .addBinderPeerSpecifically(xrInterested, firstPids, tmpNativePids);
+        final String binderInfo = SysMonitorSvcBridge.getFactory().getSysMonitorExtraLogUtil()
+                .addBinderPeer(pid, firstPids, tmpNativePids);
+
         synchronized (mService) {
             // PowerManager.reboot() can block for a long time, so ignore ANRs while shutting down.
             if (mService.mAtmInternal.isShuttingDown()) {
@@ -1473,6 +1496,11 @@ public class ProcessRecord implements WindowProcessListener {
                 Slog.i(TAG, "Skipping died app ANR: " + this + " " + annotation);
                 return;
             }
+
+            // Smartisan (factory).
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().anrOccured(annotation, pid,
+                    processName);
+            mService.getSmtEx().handleUpload(mService.mContext, processName, "ANR");
 
             // In case we come through here for the same app before completing
             // this one, mark as anring now so we will bail out.
@@ -1525,6 +1553,10 @@ public class ProcessRecord implements WindowProcessListener {
         }
         info.append("\n");
         info.append("PID: ").append(pid).append("\n");
+        // Smartisan (factory).
+        if (!TextUtils.isEmpty(binderInfo)) {
+            info.append(binderInfo).append("\n");
+        }
         if (annotation != null) {
             info.append("Reason: ").append(annotation).append("\n");
         }
@@ -1555,6 +1587,16 @@ public class ProcessRecord implements WindowProcessListener {
         } else {
             nativePids = Watchdog.getInstance().getInterestingNativePids();
         }
+        // Smartisan (factory): add the native binder peers, without duplicates.
+        if (nativePids == null) {
+            nativePids = new ArrayList<>();
+        }
+        if (tmpNativePids.size() >= 1) {
+            nativePids.addAll(tmpNativePids);
+        }
+        HashSet<Integer> tmpSet = new HashSet<>(nativePids);
+        nativePids.clear();
+        nativePids.addAll(tmpSet);
 
         // For background ANRs, don't pass the ProcessCpuTracker to
         // avoid spending 1/2 second collecting stats to rank lastPids.

@@ -589,6 +589,11 @@ class AppErrors {
                     }
                 } else {
                     // Huh.
+                    // Smartisan (factory): report the kill. (The factory also sets
+                    // r.getSmtEx().killedReason = "app-crash" here although r is null.)
+                    mService.getSmtEx().reportKillingEvent(
+                            KillingStatsUtils.buildOtherKillingEventItem(
+                                    KillingStatsUtils.getNameForUid(uid), uid, "app-crash"));
                     Process.killProcess(pid);
                     ProcessList.killProcessGroup(uid, pid);
                 }
@@ -899,7 +904,18 @@ class AppErrors {
                 MetricsLogger.action(mContext, MetricsProto.MetricsEvent.ACTION_APP_ANR,
                         AppNotRespondingDialog.CANT_SHOW);
                 // Just kill the app if there is no dialog to be shown.
-                mService.killAppAtUsersRequest(proc, null);
+                // Smartisan (factory): perOpt flag 0x200 apps are killed 2 s later.
+                if (proc.info != null && proc.info.getSmtEx() != null
+                        && (proc.info.getSmtEx().peroptFlag & 0x200) != 0) {
+                    mService.mUiHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            mService.killAppAtUsersRequest(proc, null);
+                        }
+                    }, 2000);
+                } else {
+                    mService.killAppAtUsersRequest(proc, null);
+                }
             }
         }
         // If we've created a crash dialog, show it without the lock held

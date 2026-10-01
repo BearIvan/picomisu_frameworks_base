@@ -224,6 +224,13 @@ final class NativeCrashListener extends Thread {
                     pr = mAm.mPidsSelfLocked.get(pid);
                 }
                 if (pr != null) {
+                    // Smartisan (factory): signal 35 marks an XR crash of the process; the
+                    // crash itself is not reported.
+                    if (signal == 35) {
+                        Slog.w(TAG, "Read pid=" + pid + " signal 35, return");
+                        pr.getSmtEx().setXRCrashed();
+                        return;
+                    }
                     // Don't attempt crash reporting for persistent apps
                     if (pr.isPersistent()) {
                         if (DEBUG) {
