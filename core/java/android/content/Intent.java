@@ -6391,8 +6391,10 @@ public class Intent implements Parcelable, Cloneable {
     private Intent mSelector;
     private ClipData mClipData;
     private int mContentUserHint = UserHandle.USER_CURRENT;
-    // PICO extension (factory PICO OS 5.13.7). The factory initialises the Smartisan
-    // IntentSmtBase mSmtEx just before it and parcels it between mExtras and mExt.
+    // Smartisan extension (factory PICO OS 5.13.7), created in every constructor before mExt
+    // and parcelled between mExtras and mExt.
+    private final IntentSmtBase mSmtEx = new IntentSmtBase(this);
+    // PICO extension (factory PICO OS 5.13.7).
     private IExtIntent mExt = new ExtIntentImpl(this);
     /** Token to track instant app launches. Local only; do not copy cross-process. */
     private String mLaunchToken;
@@ -6464,6 +6466,9 @@ public class Intent implements Parcelable, Cloneable {
                 // history.
             }
         }
+        this.mSmtEx.markLaunchStartTime(o.mSmtEx.getLaunchStartTime());
+        this.mSmtEx.markAMSStartTime(o.mSmtEx.getAMSStartTime());
+        this.mSmtEx.copy(o.getSmtEx(), copyMode);
         this.mExt.copyFrom(o);
     }
 
@@ -10522,6 +10527,7 @@ public class Intent implements Parcelable, Cloneable {
         }
         out.writeInt(mContentUserHint);
         out.writeBundle(mExtras);
+        mSmtEx.writeToParcel(out, flags);
         mExt.writeToParcel(out, flags);
     }
 
@@ -10573,6 +10579,7 @@ public class Intent implements Parcelable, Cloneable {
         }
         mContentUserHint = in.readInt();
         mExtras = in.readBundle();
+        mSmtEx.readFromParcel(in);
         mExt.readFromParcel(in);
     }
 
@@ -11082,5 +11089,10 @@ public class Intent implements Parcelable, Cloneable {
     /** @hide */
     public IExtIntent getExt() {
         return mExt;
+    }
+
+    /** @hide */
+    public IntentSmtBase getSmtEx() {
+        return mSmtEx;
     }
 }

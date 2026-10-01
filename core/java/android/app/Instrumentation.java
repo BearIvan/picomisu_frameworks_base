@@ -1708,6 +1708,7 @@ public class Instrumentation {
             }
         }
         try {
+            intent.getSmtEx().markLaunchStartTime(SystemClock.uptimeMillis());
             intent.migrateExtraStreamToClipData();
             intent.prepareToLeaveProcess(who);
             int result = ActivityTaskManager.getService()
@@ -1779,7 +1780,9 @@ public class Instrumentation {
         }
         try {
             String[] resolvedTypes = new String[intents.length];
+            long current = SystemClock.uptimeMillis();
             for (int i=0; i<intents.length; i++) {
+                intents[i].getSmtEx().markLaunchStartTime(current);
                 intents[i].migrateExtraStreamToClipData();
                 intents[i].prepareToLeaveProcess(who);
                 resolvedTypes[i] = intents[i].resolveTypeIfNeeded(who.getContentResolver());
@@ -1851,6 +1854,7 @@ public class Instrumentation {
             }
         }
         try {
+            intent.getSmtEx().markLaunchStartTime(SystemClock.uptimeMillis());
             intent.migrateExtraStreamToClipData();
             intent.prepareToLeaveProcess(who);
             int result = ActivityTaskManager.getService()
@@ -1920,6 +1924,7 @@ public class Instrumentation {
             }
         }
         try {
+            intent.getSmtEx().markLaunchStartTime(SystemClock.uptimeMillis());
             intent.migrateExtraStreamToClipData();
             intent.prepareToLeaveProcess(who);
             int result = ActivityTaskManager.getService()
@@ -1967,6 +1972,7 @@ public class Instrumentation {
             }
         }
         try {
+            intent.getSmtEx().markLaunchStartTime(SystemClock.uptimeMillis());
             intent.migrateExtraStreamToClipData();
             intent.prepareToLeaveProcess(who);
             int result = ActivityTaskManager.getService()
@@ -2015,6 +2021,7 @@ public class Instrumentation {
             }
         }
         try {
+            intent.getSmtEx().markLaunchStartTime(SystemClock.uptimeMillis());
             intent.migrateExtraStreamToClipData();
             intent.prepareToLeaveProcess(who);
             int result = appTask.startActivity(whoThread.asBinder(), who.getBasePackageName(),
