@@ -165,10 +165,16 @@ class TaskSnapshotController {
      */
     @VisibleForTesting
     void addSkipClosingAppSnapshotTasks(ArraySet<Task> tasks) {
+        if (shouldDisableSnapshots()) {
+            return;
+        }
         mSkipClosingAppSnapshotTasks.addAll(tasks);
     }
 
     void snapshotTasks(ArraySet<Task> tasks) {
+        if (shouldDisableSnapshots()) {
+            return;
+        }
         for (int i = tasks.size() - 1; i >= 0; i--) {
             final Task task = tasks.valueAt(i);
             final int mode = getSnapshotMode(task);
