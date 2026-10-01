@@ -265,11 +265,27 @@ public final class ProcessList {
     // LMK_PROCREMOVE <pid>
     // LMK_PROCPURGE
     // LMK_GETKILLCNT
+    // LMK_SUBSCRIBE
+    // LMK_PROCKILL
     static final byte LMK_TARGET = 0;
     static final byte LMK_PROCPRIO = 1;
     static final byte LMK_PROCREMOVE = 2;
     static final byte LMK_PROCPURGE = 3;
     static final byte LMK_GETKILLCNT = 4;
+    static final byte LMK_SUBSCRIBE = 5;
+    static final byte LMK_PROCKILL = 6; // Note: this is an unsolicated command
+
+    // Low Memory Killer Daemon command codes.
+    // These must be kept in sync with async_event_type definitions in lmkd.h
+    //
+    static final int LMK_ASYNC_EVENT_KILL = 0;
+
+    // lmkd reconnect delay in msecs
+    private static final long LMKD_RECONNECT_DELAY_MS = 1000;
+
+    private boolean mOomLevelsSet = false;
+
+    private static LmkdConnection sLmkdConnection = null;
 
     ActivityManagerService mService = null;
 
@@ -545,6 +561,7 @@ public final class ProcessList {
 
     final class KillHandler extends Handler {
         static final int KILL_PROCESS_GROUP_MSG = 4000;
+        static final int LMKD_RECONNECT_MSG = 4001;
 
         public KillHandler(Looper looper) {
             super(looper, null, true);
@@ -557,6 +574,15 @@ public final class ProcessList {
                     Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "killProcessGroup");
                     Process.killProcessGroup(msg.arg1 /* uid */, msg.arg2 /* pid */);
                     Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                case LMKD_RECONNECT_MSG:
+                    if (!sLmkdConnection.connect()) {
+                        Slog.i(TAG, "Failed to connect to lmkd, retry after " +
+                                LMKD_RECONNECT_DELAY_MS + " ms");
+                        // retry after LMKD_RECONNECT_DELAY_MS
+                        sKillHandler.sendMessageDelayed(sKillHandler.obtainMessage(
+                                KillHandler.LMKD_RECONNECT_MSG), LMKD_RECONNECT_DELAY_MS);
+                    }
                     break;
 
                 default:
@@ -588,6 +614,42 @@ public final class ProcessList {
                     THREAD_PRIORITY_BACKGROUND, true /* allowIo */);
             sKillThread.start();
             sKillHandler = new KillHandler(sKillThread.getLooper());
+            sLmkdConnection = new LmkdConnection(sKillThread.getLooper().getQueue(),
+                    new LmkdConnection.LmkdConnectionListener() {
+                        @Override
+                        public boolean onConnect(OutputStream ostream) {
+                            return onLmkdConnect(ostream);
+                        }
+
+                        @Override
+                        public void onDisconnect() {
+                            // start reconnection after delay to let lmkd restart
+                            sKillHandler.sendMessageDelayed(sKillHandler.obtainMessage(
+                                    KillHandler.LMKD_RECONNECT_MSG), LMKD_RECONNECT_DELAY_MS);
+                        }
+
+                        @Override
+                        public boolean isReplyExpected(ByteBuffer replyBuf,
+                                ByteBuffer dataReceived, int receivedLen) {
+                            // compare the preambule (currently one integer) to check if
+                            // this is the reply packet we are waiting for
+                            return (receivedLen == replyBuf.array().length &&
+                                    dataReceived.getInt(0) == replyBuf.getInt(0));
+                        }
+
+                        @Override
+                        public boolean handleUnsolicitedMessage(ByteBuffer dataReceived,
+                                int receivedLen) {
+                            if (receivedLen < 4) {
+                                return false;
+                            }
+                            // Smartisan (factory): the LMK_PROCKILL report is handled by the
+                            // Smartisan process list extension.
+                            return SysOptBridge.getFactory().getProcessListOptEx()
+                                    .handleUnsolicitedMessage(dataReceived, receivedLen);
+                        }
+                    }
+            );
         }
     }
 
@@ -693,6 +755,7 @@ public final class ProcessList {
 
             writeLmkd(buf, null);
             SystemProperties.set("sys.sysctl.extra_free_kbytes", Integer.toString(reserve));
+            mOomLevelsSet = true;
         }
         // GB: 2048,3072,4096,6144,7168,8192
         // HC: 8192,10240,12288,14336,16384,20480
@@ -1243,6 +1306,33 @@ public final class ProcessList {
         return null;
     }
 
+    public boolean onLmkdConnect(OutputStream ostream) {
+        try {
+            // Purge any previously registered pids
+            ByteBuffer buf = ByteBuffer.allocate(4);
+            buf.putInt(LMK_PROCPURGE);
+            ostream.write(buf.array(), 0, buf.position());
+            if (mOomLevelsSet) {
+                // Reset oom_adj levels
+                buf = ByteBuffer.allocate(4 * (2 * mOomAdj.length + 1));
+                buf.putInt(LMK_TARGET);
+                for (int i = 0; i < mOomAdj.length; i++) {
+                    buf.putInt((mOomMinFree[i] * 1024)/PAGE_SIZE);
+                    buf.putInt(mOomAdj[i]);
+                }
+                ostream.write(buf.array(), 0, buf.position());
+            }
+            // Subscribe for kill event notifications
+            buf = ByteBuffer.allocate(4 * 2);
+            buf.putInt(LMK_SUBSCRIBE);
+            buf.putInt(LMK_ASYNC_EVENT_KILL);
+            ostream.write(buf.array(), 0, buf.position());
+        } catch (IOException ex) {
+            return false;
+        }
+        return true;
+    }
+
     @GuardedBy("sLmkdSocketLock")
     private static boolean openLmkdSocketLS() {
         try {
@@ -1294,31 +1384,18 @@ public final class ProcessList {
     }
 
     protected static boolean writeLmkd(ByteBuffer buf, ByteBuffer repl) {
-        synchronized (sLmkdSocketLock) {
-            for (int i = 0; i < 3; i++) {
-                if (sLmkdSocket == null) {
-                    if (openLmkdSocketLS() == false) {
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException ie) {
-                        }
-                        continue;
-                    }
+        if (!sLmkdConnection.isConnected()) {
+            // try to connect immediately and then keep retrying
+            sKillHandler.sendMessage(
+                    sKillHandler.obtainMessage(KillHandler.LMKD_RECONNECT_MSG));
 
-                    // Purge any previously registered pids
-                    ByteBuffer purge_buf = ByteBuffer.allocate(4);
-                    purge_buf.putInt(LMK_PROCPURGE);
-                    if (writeLmkdCommandLS(purge_buf) == false) {
-                        // Write failed, skip the rest and retry
-                        continue;
-                    }
-                }
-                if (writeLmkdCommandLS(buf) && (repl == null || readLmkdReplyLS(repl))) {
-                    return true;
-                }
+            // wait for connection retrying 3 times (up to 3 seconds)
+            if (!sLmkdConnection.waitForConnection(3 * LMKD_RECONNECT_DELAY_MS)) {
+                return false;
             }
         }
-        return false;
+
+        return sLmkdConnection.exchange(buf, repl);
     }
 
     static void killProcessGroup(int uid, int pid) {
