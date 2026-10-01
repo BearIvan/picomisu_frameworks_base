@@ -143,6 +143,9 @@ public class ChooseTypeAndAccountActivity extends Activity
             Log.v(TAG, "ChooseTypeAndAccountActivity.onCreate(savedInstanceState="
                     + savedInstanceState + ")");
         }
+        getWindow().addSystemFlags(
+                android.view.WindowManager.LayoutParams
+                        .SYSTEM_FLAG_HIDE_NON_SYSTEM_OVERLAY_WINDOWS);
 
         String message = null;
 
