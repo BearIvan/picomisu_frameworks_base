@@ -368,7 +368,9 @@ static void __setProcessFreezeGroup(JNIEnv* env, int pid, SchedPolicy sp)
 
 // Freezes (SP_FREEZE) or unfreezes (SP_DEFAULT) pid and the other processes of its
 // /acct/uid_<uid>/pid_<pid> process group; returns an ArrayList of the other pids (Integer).
-jobject android_os_Process_setProcessFreezeGroup(JNIEnv* env, jobject clazz, int uid, int pid,
+// The pid comes first, as in the factory (SmartisanOSApi.processSetPidFreezeGroup calls
+// Process.setProcessFreezeGroup(pid, uid, freeze)).
+jobject android_os_Process_setProcessFreezeGroup(JNIEnv* env, jobject clazz, int pid, int uid,
         jboolean freeze)
 {
     SchedPolicy sp = freeze ? SP_FREEZE : SP_DEFAULT;

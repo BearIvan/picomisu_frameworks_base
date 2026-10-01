@@ -1175,9 +1175,10 @@ public class Process {
     /**
      * PICO OS 5.13.7 (Smartisan cgroup freezer): moves the processes of the uid/pid process
      * group into (freeze == true) or out of the freezer cgroup; returns the pids moved.
+     * The pid comes first, as in the factory.
      * @hide
      */
-    public static final native ArrayList setProcessFreezeGroup(int uid, int pid, boolean freeze)
+    public static final native ArrayList setProcessFreezeGroup(int pid, int uid, boolean freeze)
             throws IllegalArgumentException, SecurityException;
 
     /**
