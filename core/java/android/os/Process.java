@@ -473,6 +473,13 @@ public class Process {
     private static long sStartUptimeMillis;
 
     /**
+     * PICO OS 5.13.7: persist.bytedance.logcontrol.uifirst, logging of the UI first scheduling.
+     * @hide
+     */
+    public static boolean UI_FIRST_LOG_CONTROL =
+            SystemProperties.getBoolean("persist.bytedance.logcontrol.uifirst", false);
+
+    /**
      * State associated with the zygote process.
      * @hide
      */
@@ -1162,6 +1169,42 @@ public class Process {
      * @hide
      */
     public static final native void removeAllProcessGroups();
+
+    /**
+     * PICO OS 5.13.7 (Smartisan UI first): sets the UI-first level {@code val} (1..4, 255 to
+     * clear) of thread {@code tid}.
+     * @hide
+     */
+    public static native void setUIThreadScheduler(int tid, int val);
+
+    /**
+     * PICO OS 5.13.7: UI-first level 1 for the calling process; hidden-API whitelisted like the
+     * factory.
+     * @hide
+     */
+    public static void setUIFirstSched() {
+        setUIThreadScheduler(Os.getpid(), 1);
+    }
+
+    /**
+     * PICO OS 5.13.7: UI-first level {@code val} (1..4) for {@code pid}, -1 to clear.
+     * @hide
+     */
+    public static void setUIFirstSched(int pid, int val) {
+        if (val > 0 && val < 5) {
+            setUIThreadScheduler(pid, val);
+        } else if (val == -1) {
+            setUIThreadScheduler(pid, 255);
+        }
+    }
+
+    /**
+     * PICO OS 5.13.7: clears the UI-first level of the calling process.
+     * @hide
+     */
+    public static void clearUIFirstSched() {
+        setUIThreadScheduler(Os.getpid(), 255);
+    }
 
     /**
      * Check to see if a thread belongs to a given process. This may require

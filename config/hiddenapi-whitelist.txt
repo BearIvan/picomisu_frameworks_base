@@ -124,6 +124,9 @@ Landroid/media/Spatializer;->setOnSpatializerOutputChangedListener(Ljava/util/co
 Landroid/os/Binder;->setBinderCtlMask(I)V
 Landroid/os/Debug;->getTimeByQtimer()J
 Landroid/os/Looper;->mSlowDispatchThresholdMs:J
+Landroid/os/Process;->clearUIFirstSched()V
+Landroid/os/Process;->setUIFirstSched()V
+Landroid/os/Process;->setUIFirstSched(II)V
 Lcom/pvr/IPvrCallback$Default;-><init>()V
 Lcom/pvr/IPvrCallback$Default;->onEventChanged(Landroid/os/Bundle;)V
 Lcom/pvr/IPvrCallback$Stub$Proxy;->onEventChanged(Landroid/os/Bundle;)V

@@ -237,6 +237,8 @@ extern int register_com_android_internal_os_Zygote(JNIEnv *env);
 extern int register_com_android_internal_os_ZygoteInit(JNIEnv *env);
 extern int register_com_android_internal_util_VirtualRefBasePtr(JNIEnv *env);
 extern int register_com_android_internal_app_ActivityTrigger(JNIEnv *env);
+// PICO OS 5.13.7: android.util.Affinity
+extern int register_android_util_Affinity(JNIEnv *env);
 
 // Namespace for Android Runtime flags applied during boot time.
 static const char* RUNTIME_NATIVE_BOOT_NAMESPACE = "runtime_native_boot";
@@ -1604,7 +1606,6 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_app_backup_FullBackup),
     REG_JNI(register_android_app_Activity),
     REG_JNI(register_android_app_ActivityThread),
-    REG_JNI(register_android_app_ActivityThreadSmtBase),
     REG_JNI(register_android_app_NativeActivity),
     REG_JNI(register_android_util_jar_StrictJarFile),
     REG_JNI(register_android_view_InputChannel),
@@ -1625,6 +1626,9 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_com_android_internal_os_AtomicDirectory),
     REG_JNI(register_com_android_internal_os_FuseAppLoop),
     REG_JNI(register_com_android_internal_app_ActivityTrigger),
+    // PICO OS 5.13.7: factory order
+    REG_JNI(register_android_util_Affinity),
+    REG_JNI(register_android_app_ActivityThreadSmtBase),
 };
 
 /*

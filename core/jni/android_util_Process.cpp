@@ -1311,6 +1311,17 @@ void android_os_Process_removeAllProcessGroups(JNIEnv* env, jobject clazz)
     return removeAllProcessGroups();
 }
 
+// PICO OS 5.13.7 (Smartisan UI first): the UI-first level goes to the upper 16 bits of the
+// sched_param priority of the PICO kernel (255 clears it).
+void android_os_Process_setUIThreadScheduler(JNIEnv* env, jclass clazz, jint tid, jint val)
+{
+    struct sched_param param;
+    param.sched_priority = val << 16;
+    if (sched_setparam(tid, &param)) {
+        signalExceptionForPriorityError(env, errno, tid);
+    }
+}
+
 static const JNINativeMethod methods[] = {
     {"getUidForName",       "(Ljava/lang/String;)I", (void*)android_os_Process_getUidForName},
     {"getGidForName",       "(Ljava/lang/String;)I", (void*)android_os_Process_getGidForName},
@@ -1345,6 +1356,7 @@ static const JNINativeMethod methods[] = {
     //{"setApplicationObject", "(Landroid/os/IBinder;)V", (void*)android_os_Process_setApplicationObject},
     {"killProcessGroup", "(II)I", (void*)android_os_Process_killProcessGroup},
     {"removeAllProcessGroups", "()V", (void*)android_os_Process_removeAllProcessGroups},
+    {"setUIThreadScheduler", "(II)V", (void*)android_os_Process_setUIThreadScheduler},
 };
 
 int register_android_os_Process(JNIEnv* env)
