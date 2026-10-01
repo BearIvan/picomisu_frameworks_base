@@ -1443,13 +1443,7 @@ final class AccessibilityController {
                 return false;
             }
 
-            final WindowState rootDisplayParentWindow = findRootDisplayParentWindow(focusedWindow);
-            if (!focusedWindow.isDefaultDisplay()
-                    && (rootDisplayParentWindow == null
-                    || !rootDisplayParentWindow.isDefaultDisplay())) {
-                return false;
-            }
-
+            // Factory PICO OS 5.13.7: a focused window on any display counts.
             return true;
         }
 
