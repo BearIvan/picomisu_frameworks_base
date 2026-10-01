@@ -2952,6 +2952,13 @@ public final class Settings {
         try {
             if (str == null) {
                 if (!mSettingsFilename.exists()) {
+                    // PICO: report a packages.xml restored from /data/backup2 after a crash
+                    int crashCount = SystemProperties.getInt("debug.system.package.crash", 0);
+                    if (crashCount > 0) {
+                        Slog.i(TAG, "add packages.xml crash stat here" + crashCount);
+                        SystemProperties.set("debug.system.package.crash", "0");
+                        notifyStabdFileRestoreStat("packages.xml", crashCount);
+                    }
                     mReadMessages.append("No settings file found\n");
                     PackageManagerService.reportSettingsProblem(Log.INFO,
                             "No settings file; creating initial state");
@@ -3075,10 +3082,44 @@ public final class Settings {
 
             str.close();
 
+            int crashCount = SystemProperties.getInt("debug.system.package.crash", 0);
+            if (crashCount > 0) {
+                Slog.i(TAG, "add packages.xml crash stat here" + crashCount);
+                SystemProperties.set("debug.system.package.crash", "0");
+                notifyStabdFileRestoreStat("packages.xml", crashCount);
+            }
+
         } catch (XmlPullParserException e) {
             mReadMessages.append("Error reading: " + e.toString());
             PackageManagerService.reportSettingsProblem(Log.ERROR, "Error reading settings: " + e);
             Slog.wtf(PackageManagerService.TAG, "Error reading package manager settings", e);
+
+            // PICO: restore packages.xml from /data/backup2 once, then give up
+            if (mBackupSettingsFilename.exists()) {
+                mBackupSettingsFilename.delete();
+            }
+            File backupFile = new File("/data/backup2/packages.xml");
+            int crashCount = SystemProperties.getInt("debug.system.package.crash", 0);
+            if (crashCount == 0) {
+                if (backupFile.exists()) {
+                    SystemProperties.set("debug.system.package.crash", "1");
+                    try {
+                        FileUtils.copyFileOrThrow(backupFile, mSettingsFilename);
+                        Slog.i(TAG, "copy backup packages.xml files succeed");
+                    } catch (IOException ioe) {
+                    }
+                } else {
+                    SystemProperties.set("debug.system.package.crash", "2");
+                }
+            } else if (crashCount == 1) {
+                if (backupFile.exists()) {
+                    backupFile.delete();
+                }
+                mSettingsFilename.delete();
+                Slog.i(TAG, "delete backup packages.xml");
+            } else {
+                mSettingsFilename.delete();
+            }
 
         } catch (java.io.IOException e) {
             mReadMessages.append("Error reading: " + e.toString());
