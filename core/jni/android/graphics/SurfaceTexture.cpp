@@ -383,6 +383,28 @@ static jboolean SurfaceTexture_isReleased(JNIEnv* env, jobject thiz)
     return surfaceTexture->isAbandoned();
 }
 
+// PICO OS 5.13.7: consumer name, used by the factory Surface(SurfaceTexture) log.
+static jstring SurfaceTexture_getName(JNIEnv* env, jobject thiz)
+{
+    sp<SurfaceTexture> surfaceTexture(SurfaceTexture_getSurfaceTexture(env, thiz));
+    String8 name = surfaceTexture->getName();
+    return env->NewStringUTF(name.string());
+}
+
+// PICO OS 5.13.7: updateTexImage() that returns its status; 2 is reported as -1.
+static jint SurfaceTexture_updateTexImageExt(JNIEnv* env, jobject thiz)
+{
+    sp<SurfaceTexture> surfaceTexture(SurfaceTexture_getSurfaceTexture(env, thiz));
+    status_t err = surfaceTexture->updateTexImage();
+    if (err == INVALID_OPERATION) {
+        jniThrowException(env, IllegalStateException, "Unable to update texture contents (see "
+                "logcat for details)");
+    } else if (err < 0) {
+        jniThrowRuntimeException(env, "Error during updateTexImage (see logcat for details)");
+    }
+    return err == 2 ? -1 : err;
+}
+
 // ----------------------------------------------------------------------------
 
 static const JNINativeMethod gSurfaceTextureMethods[] = {
@@ -397,6 +419,8 @@ static const JNINativeMethod gSurfaceTextureMethods[] = {
     {"nativeGetTimestamp",         "()J",   (void*)SurfaceTexture_getTimestamp },
     {"nativeRelease",              "()V",   (void*)SurfaceTexture_release },
     {"nativeIsReleased",           "()Z",   (void*)SurfaceTexture_isReleased },
+    {"nativeGetName",              "()Ljava/lang/String;", (void*)SurfaceTexture_getName },
+    {"nativeUpdateTexImageExt",    "()I",   (void*)SurfaceTexture_updateTexImageExt },
 };
 
 int register_android_graphics_SurfaceTexture(JNIEnv* env)

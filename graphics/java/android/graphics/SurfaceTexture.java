@@ -402,6 +402,22 @@ public class SurfaceTexture {
         return mIsSingleBuffered;
     }
 
+    /**
+     * PICO OS 5.13.7: name of the BufferQueue consumer.
+     * @hide
+     */
+    public String getName() {
+        return nativeGetName();
+    }
+
+    /**
+     * PICO OS 5.13.7: {@link #updateTexImage} returning the native status (2 reported as -1).
+     * @hide
+     */
+    public int updateTexImageExt() {
+        return nativeUpdateTexImageExt();
+    }
+
     private native void nativeInit(boolean isDetached, int texName,
             boolean singleBufferMode, WeakReference<SurfaceTexture> weakSelf)
             throws Surface.OutOfResourcesException;
@@ -416,4 +432,6 @@ public class SurfaceTexture {
     private native int nativeAttachToGLContext(int texName);
     private native void nativeRelease();
     private native boolean nativeIsReleased();
+    private native String nativeGetName();
+    private native int nativeUpdateTexImageExt();
 }
