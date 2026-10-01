@@ -6684,6 +6684,10 @@ public final class ActivityThread extends ClientTransactionHandler {
         if (data.appInfo != null && data.appInfo.getSmtEx().isPrefetch) {
             mSmtEx.handleBindApplication(data.appInfo.getSmtEx().isPrefetch);
         }
+        // Factory PICO OS 5.13.7: no out-of-memory cropped heap dump for non-system apps.
+        if (data.appInfo != null && (data.appInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
+            VMDebug.setDumpFlag(false);
+        }
     }
 
     /*package*/ final void finishInstrumentation(int resultCode, Bundle results) {
