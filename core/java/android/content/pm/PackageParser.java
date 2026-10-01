@@ -1019,7 +1019,8 @@ public class PackageParser {
             throws PackageParserException {
         Package parsed = useCaches ? getCachedResult(packageFile, flags) : null;
         if (parsed != null) {
-            return mExt.parseVrFlags(parsed);
+            parsed = mExt.parseVrFlags(parsed);
+            return parsed;
         }
 
         long parseTime = LOG_PARSE_TIMINGS ? SystemClock.uptimeMillis() : 0;
