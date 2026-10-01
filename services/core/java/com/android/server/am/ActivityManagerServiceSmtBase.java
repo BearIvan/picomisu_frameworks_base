@@ -62,7 +62,6 @@ import com.android.server.TransferInternal;
 import com.android.server.am.ActivityManagerService.PidMap;
 import com.android.server.job.controllers.JobStatus;
 import com.android.server.notification.NotificationShellCmd;
-import com.android.server.pm.Settings;
 import com.android.server.wm.ActivityRecord;
 import com.android.server.wm.ActivityTaskManagerInternal;
 import com.android.server.wm.ActivityTaskManagerService;
@@ -277,96 +276,82 @@ public class ActivityManagerServiceSmtBase {
     }
 
     protected void readChainBootBlackList() {
-        int type;
-        String actionName;
-        File file = this.mChainBootBlackListFile.getBaseFile();
+        File file = mChainBootBlackListFile.getBaseFile();
         if (!file.exists()) {
             try {
                 file.createNewFile();
-                return;
             } catch (IOException e) {
-                return;
             }
+            return;
         }
         try {
+            FileInputStream fis = mChainBootBlackListFile.openRead();
             try {
-                FileInputStream fis = this.mChainBootBlackListFile.openRead();
-                try {
-                    try {
-                        if (ActivityManagerDebugConfigSmtEx.DEBUG_WIFI_UPLOAD) {
-                            Slog.i("ActivityManagerService", "readWarnedWifiPackages: start parse");
-                        }
-                        XmlPullParser parser = Xml.newPullParser();
-                        parser.setInput(fis, null);
-                        do {
-                            type = parser.next();
-                            if (type == 2) {
-                                break;
-                            }
-                        } while (type != 1);
-                        if (type != 2) {
-                            Slog.w("ActivityManagerService", "no start tag found for warning");
-                            try {
-                                fis.close();
-                                return;
-                            } catch (IOException e2) {
-                                return;
-                            }
-                        }
-                        int outerDepth = parser.getDepth();
-                        while (true) {
-                            int type2 = parser.next();
-                            if (type2 == 1 || (type2 == 3 && parser.getDepth() <= outerDepth)) {
-                                break;
-                            }
-                            if (type2 != 3 && type2 != 4) {
-                                String name = parser.getName();
-                                if (ActivityManagerDebugConfigSmtEx.DEBUG_CHAINBOOT_BLACKLIST) {
-                                    Slog.i("ActivityManagerService", "readChainBootBlackList: parse name=" + name);
-                                }
-                                synchronized (this.mActivityManagerService) {
-                                    try {
-                                        ActivityManagerService.boostPriorityForLockedSection();
-                                        if ("class".equals(name)) {
-                                            String componentName = parser.getAttributeValue(null, Settings.ATTR_NAME);
-                                            if (componentName != null) {
-                                                if (ActivityManagerDebugConfigSmtEx.DEBUG_CHAINBOOT_BLACKLIST) {
-                                                    Slog.i("ActivityManagerService", "readChainBootBlackList: parse package=" + componentName);
-                                                }
-                                                this.mProcessIntercept.getPushServiceNames().add(componentName);
-                                            }
-                                        } else if ("action".equals(name) && (actionName = parser.getAttributeValue(null, Settings.ATTR_NAME)) != null) {
-                                            if (ActivityManagerDebugConfigSmtEx.DEBUG_CHAINBOOT_BLACKLIST) {
-                                                Slog.i("ActivityManagerService", "readChainBootBlackList: parse action=" + actionName);
-                                            }
-                                            this.mProcessIntercept.getPushServiceActions().add(actionName);
-                                        }
-                                    } catch (Throwable th) {
-                                        ActivityManagerService.resetPriorityAfterLockedSection();
-                                        throw th;
-                                    }
-                                }
-                                ActivityManagerService.resetPriorityAfterLockedSection();
-                            }
-                        }
-                        fis.close();
-                    } catch (Throwable th2) {
-                        try {
-                            fis.close();
-                        } catch (IOException e3) {
-                        }
-                        throw th2;
-                    }
-                } catch (Exception e4) {
-                    Slog.w("ActivityManagerService", "Failed parsing " + e4);
-                    fis.close();
+                if (ActivityManagerDebugConfigSmtEx.DEBUG_WIFI_UPLOAD) {
+                    Slog.i(TAG, "readWarnedWifiPackages: start parse");
                 }
-            } catch (IOException e5) {
+                XmlPullParser parser = Xml.newPullParser();
+                parser.setInput(fis, null);
+                int type;
+                do {
+                    type = parser.next();
+                } while (type != XmlPullParser.START_TAG && type != XmlPullParser.END_DOCUMENT);
+                if (type != XmlPullParser.START_TAG) {
+                    Slog.w(TAG, "no start tag found for warning");
+                    fis.close();
+                    return;
+                }
+                int outerDepth = parser.getDepth();
+                while (true) {
+                    type = parser.next();
+                    if (type == XmlPullParser.END_DOCUMENT
+                            || (type == XmlPullParser.END_TAG && parser.getDepth() <= outerDepth)) {
+                        break;
+                    }
+                    if (type == XmlPullParser.END_TAG || type == XmlPullParser.TEXT) {
+                        continue;
+                    }
+                    String name = parser.getName();
+                    if (ActivityManagerDebugConfigSmtEx.DEBUG_CHAINBOOT_BLACKLIST) {
+                        Slog.i(TAG, "readChainBootBlackList: parse name=" + name);
+                    }
+                    synchronized (mActivityManagerService) {
+                        try {
+                            ActivityManagerService.boostPriorityForLockedSection();
+                            if ("class".equals(name)) {
+                                String componentName = parser.getAttributeValue(null, "name");
+                                if (componentName != null) {
+                                    if (ActivityManagerDebugConfigSmtEx.DEBUG_CHAINBOOT_BLACKLIST) {
+                                        Slog.i(TAG, "readChainBootBlackList: parse package="
+                                                + componentName);
+                                    }
+                                    mProcessIntercept.getPushServiceNames().add(componentName);
+                                }
+                            } else if ("action".equals(name)) {
+                                String actionName = parser.getAttributeValue(null, "name");
+                                if (actionName != null) {
+                                    if (ActivityManagerDebugConfigSmtEx.DEBUG_CHAINBOOT_BLACKLIST) {
+                                        Slog.i(TAG, "readChainBootBlackList: parse action="
+                                                + actionName);
+                                    }
+                                    mProcessIntercept.getPushServiceActions().add(actionName);
+                                }
+                            }
+                        } finally {
+                            ActivityManagerService.resetPriorityAfterLockedSection();
+                        }
+                    }
+                }
+                fis.close();
+            } catch (Exception e) {
+                Slog.w(TAG, "Failed parsing " + e);
+                fis.close();
             }
-        } catch (FileNotFoundException e6) {
+        } catch (FileNotFoundException e) {
             if (ActivityManagerDebugConfigSmtEx.DEBUG_WIFI_UPLOAD) {
-                Slog.i("ActivityManagerService", "readWarnedWifiPackages file not found");
+                Slog.i(TAG, "readWarnedWifiPackages file not found");
             }
+        } catch (IOException e) {
         }
     }
 
@@ -2173,9 +2158,9 @@ public class ActivityManagerServiceSmtBase {
             fastXmlSerializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true);
             fastXmlSerializer.startTag(null, "packages");
             for (String proc : mOverrideClazzCrashProcs) {
-                fastXmlSerializer.startTag(null, Settings.ATTR_PACKAGE);
+                fastXmlSerializer.startTag(null, "package");
                 fastXmlSerializer.attribute(null, "closeOverrideProc", proc);
-                fastXmlSerializer.endTag(null, Settings.ATTR_PACKAGE);
+                fastXmlSerializer.endTag(null, "package");
             }
             fastXmlSerializer.endTag(null, "packages");
             fastXmlSerializer.endDocument();
