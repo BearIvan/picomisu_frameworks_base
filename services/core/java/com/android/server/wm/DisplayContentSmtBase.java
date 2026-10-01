@@ -120,7 +120,11 @@ public class DisplayContentSmtBase extends WindowContainerSmtBase {
                     mScreenshotAppFirstFrameState.screenshotReady = true;
                 }
 
-                return w.isObscuringDisplay();
+                // Factory form (explicit true/false returns).
+                if (w.isObscuringDisplay()) {
+                    return true;
+                }
+                return false;
             }, true /* traverseTopToBottom */);
 
             final WindowState appWin = mScreenshotAppFirstFrameState.appWin;
