@@ -98,6 +98,8 @@ class AppErrors {
      */
     private final ProcessMap<BadProcessInfo> mBadProcesses = new ProcessMap<>();
 
+    // PICO (factory): crash and ANR dialogs disabled by Features.FEAT_DISABLE_ANR_CRASH_DIALOG.
+    private final IExtAppErrors mExt = new ExtAppErrorsImpl(this);
 
     AppErrors(Context context, ActivityManagerService service, PackageWatchdog watchdog) {
         context.assertRuntimeOverlayThemable();
@@ -835,8 +837,9 @@ class AppErrors {
                     Settings.Secure.SHOW_FIRST_CRASH_DIALOG_DEV_OPTION,
                     0,
                     mService.mUserController.getCurrentUserId()) != 0;
-            final boolean crashSilenced = mAppsNotReportingCrashes != null &&
+            boolean crashSilenced = mAppsNotReportingCrashes != null &&
                     mAppsNotReportingCrashes.contains(proc.info.packageName);
+            crashSilenced = mExt.getCrashSilenced(crashSilenced);
             if ((mService.mAtmInternal.canShowErrorDialogs() || showBackground)
                     && !crashSilenced
                     && (showFirstCrash || showFirstCrashDevOption || data.repeating)) {
@@ -883,9 +886,13 @@ class AppErrors {
                 return;
             }
 
+            boolean showErrorDialog = true;
             boolean showBackground = Settings.Secure.getInt(mContext.getContentResolver(),
                     Settings.Secure.ANR_SHOW_BACKGROUND, 0) != 0;
-            if (mService.mAtmInternal.canShowErrorDialogs() || showBackground) {
+            if (!mService.mAtmInternal.canShowErrorDialogs() && !showBackground) {
+                showErrorDialog = false;
+            }
+            if (mExt.canShowAnrDialog() && showErrorDialog) {
                 dialogToShow = new AppNotRespondingDialog(mService, mContext, data);
                 proc.anrDialog = dialogToShow;
             } else {
