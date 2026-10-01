@@ -13,15 +13,25 @@ import android.content.pm.ActivityInfo;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Parcelable;
 import android.os.RemoteCallback;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Slog;
 import android.view.KeyEvent;
 
+import com.android.internal.app.RunningAppInfo;
+import com.android.internal.app.ScenesStateListener;
 import com.android.server.wm.ActivityTaskManagerService;
+import com.android.server.wm.SystemExt;
 import com.pico.api.app.IApiLayer;
 import com.pico.api.app.IAppSession;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * PICO API layer of system_server (factory PICO OS 5.13.7 services.jar
@@ -29,10 +39,12 @@ import com.pico.api.app.IAppSession;
  * SystemExt and other PICO apps) obtain {@link IApiLayer} through IWindowManager transaction
  * {@link #CODE_GET_API_LAYER} and register an {@link IAppSession} to receive seethrough, 3D/2D
  * app, IME, screen, power, key and activity-starting events (see {@link MsgDispatcher}).
+ * In-process {@link ScenesStateListener}s (the factory ExtWindowManagerServiceImpl visible app
+ * callback) get the seethrough, 3D app and running 2D app changes on the dispatcher thread.
  *
- * Not ported yet (they live in the factory SystemExt / Ext* window manager layer): the scenes
- * state listeners with RunningAppInfo parsing (IWindowManager code 10004 visible app callback),
- * updatePersistentServiceConnection and PICO key events.
+ * Not ported yet: updatePersistentServiceConnection, which needs the factory
+ * IExtActivityTaskManagerService.updatePersistentConnection (AppPersistentConnection) of the
+ * window manager layer.
  *
  * @hide
  */
@@ -46,8 +58,7 @@ public class ApiLayerService {
     private static final int SETTINGS_TYPE_GLOBAL = 1;
     private static final int SETTINGS_TYPE_SYSTEM = 2;
     private static final int SETTINGS_TYPE_SECURE = 3;
-    /** Factory com.android.server.wm.SystemExt.sCurrentPkg. */
-    private static final String SYSTEM_EXT_PACKAGE = "com.picovr.systemext";
+    private static final boolean DEBUG = true;
     private static final String SHOW_GLOBAL_UI_PERMISSION =
             "com.picovr.globalui.permission.SHOW_GLOBAL_UI";
 
@@ -60,6 +71,7 @@ public class ApiLayerService {
     private final ApiLayerSettingsObserverProxy mApiLayerSettingsObserverProxy =
             new ApiLayerSettingsObserverProxy();
     private final ApiLayerBroadcastProxy mApiLayerBroadcastProxy = new ApiLayerBroadcastProxy();
+    private final List<ScenesStateListener> mScenesStateListeners = new ArrayList<>();
     private boolean mImeShowing = false;
     private boolean mIsScreenOn = false;
     private int mSeethroughState = -1;
@@ -405,11 +417,11 @@ public class ApiLayerService {
             try {
                 final Intent intent = new Intent();
                 intent.setAction("picovr.globalui");
-                intent.setComponent(new ComponentName(SYSTEM_EXT_PACKAGE,
+                intent.setComponent(new ComponentName(SystemExt.sCurrentPkg,
                         "com.pvr.vrdisplay.GlobalUIService"));
                 intent.putExtra("action_type", 107);
                 intent.putExtra("pkg", pkg);
-                intent.putExtra("callback", callback);
+                intent.putExtra("callback", (Parcelable) callback);
                 mContext.startService(intent);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -473,9 +485,7 @@ public class ApiLayerService {
                 componentName = taskInfo.topActivity;
             }
         }
-        synchronized (sSelf) {
-            mTopAppOnDefaultDisplay = componentName;
-        }
+        mTopAppOnDefaultDisplay = componentName;
     }
 
     public void onKeyEvent(KeyEvent keyEvent) {
@@ -486,20 +496,82 @@ public class ApiLayerService {
         mDispatcher.dispatchActivityStarting(aInfo);
     }
 
-    private void updateSeethroughStateLocked(int state) {
-        synchronized (sSelf) {
-            if (mSeethroughState != state) {
-                mSeethroughState = state;
-                mDispatcher.dispatchSeethroughState(state);
+    /** In-process listener of the scene state (factory ExtWindowManagerServiceImpl). */
+    public void registerScenesStateListener(ScenesStateListener listener) {
+        if (listener == null) {
+            return;
+        }
+        synchronized (mScenesStateListeners) {
+            mScenesStateListeners.remove(listener);
+            mScenesStateListeners.add(listener);
+        }
+    }
+
+    private void dispatch2dRunningAppChanged(String running2dAppData) {
+        List<RunningAppInfo> visible2dAppList = parseToRunningAppList(running2dAppData);
+        synchronized (mScenesStateListeners) {
+            for (ScenesStateListener listener : mScenesStateListeners) {
+                listener.onRunning2dAppChanged(visible2dAppList);
             }
         }
     }
 
-    private void updateRunning2dAppListLocked(String running2dAppData) {
+    private List<RunningAppInfo> parseToRunningAppList(String running2dAppData) {
+        List<RunningAppInfo> runningApps = new ArrayList<>();
+        if (TextUtils.isEmpty(running2dAppData)) {
+            return runningApps;
+        }
+        try {
+            JSONArray array = new JSONArray(running2dAppData);
+            int length = array.length();
+            for (int i = 0; i < length; i++) {
+                JSONObject object = array.optJSONObject(i);
+                if (object != null) {
+                    RunningAppInfo runningApp = new RunningAppInfo(object);
+                    runningApps.add(runningApp);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return runningApps;
+    }
+
+    private void dispatch3dAppDisplayStateChanged(String showing3dApp,
+            int xrRuntimeDisplayState) {
+        synchronized (mScenesStateListeners) {
+            for (ScenesStateListener listener : mScenesStateListeners) {
+                listener.on3dAppDisplayStateChanged(showing3dApp, xrRuntimeDisplayState);
+            }
+        }
+    }
+
+    private void dispatchSeethroughState(int seethroughState) {
+        synchronized (mScenesStateListeners) {
+            for (ScenesStateListener listener : mScenesStateListeners) {
+                listener.onSeethroughStateChanged(seethroughState);
+            }
+        }
+    }
+
+    private void updateSeethroughStateLocked(final int state) {
         synchronized (sSelf) {
-            if (mRunning2dAppData == null || !mRunning2dAppData.equals(running2dAppData)) {
+            if (mSeethroughState != state) {
+                mSeethroughState = state;
+                mDispatcher.dispatchSeethroughState(state);
+                mDispatcher.getHandler().post(() -> dispatchSeethroughState(state));
+            }
+        }
+    }
+
+    private void updateRunning2dAppListLocked(final String running2dAppData) {
+        synchronized (sSelf) {
+            if (mRunning2dAppData == null || (mRunning2dAppData != null
+                    && !mRunning2dAppData.equals(running2dAppData))) {
                 mRunning2dAppData = running2dAppData;
                 mDispatcher.dispatchRunning2dApp(running2dAppData);
+                mDispatcher.getHandler().post(
+                        () -> dispatch2dRunningAppChanged(running2dAppData));
             }
         }
     }
@@ -520,6 +592,8 @@ public class ApiLayerService {
             mShowing3dApp = showing3dApp;
             mXrRuntimeDisplayState = xrRuntimeState;
             mDispatcher.dispatchXrRuntimeState(state);
+            mDispatcher.getHandler().post(
+                    () -> dispatch3dAppDisplayStateChanged(showing3dApp, xrRuntimeState));
         }
     }
 }

@@ -54,9 +54,10 @@ public class ApiLayerSettingsObserverProxy {
                 }
             };
 
-    private static final class SettingsObserverRecord {
+    private class SettingsObserverRecord {
         private final ContentObserver mContentObserver;
         private final Context mContext;
+        private final Handler mHandler;
         private final String mName;
         private final List<IBinder> mSessionList = new ArrayList<>();
         private final int mSettingType;
@@ -69,6 +70,7 @@ public class ApiLayerSettingsObserverProxy {
             mName = name;
             mSettingType = settingType;
             mValueType = valueType;
+            mHandler = handler;
             if (settingType == SETTINGS_TYPE_GLOBAL) {
                 mUri = Settings.Global.getUriFor(name);
             } else if (settingType == SETTINGS_TYPE_SYSTEM) {
@@ -76,7 +78,7 @@ public class ApiLayerSettingsObserverProxy {
             } else if (settingType == SETTINGS_TYPE_SECURE) {
                 mUri = Settings.Secure.getUriFor(name);
             }
-            mContentObserver = new ContentObserver(handler) {
+            mContentObserver = new ContentObserver(mHandler) {
                 @Override
                 public void onChange(boolean selfChange, Uri uri) {
                     onSettingsChanged();
@@ -102,7 +104,12 @@ public class ApiLayerSettingsObserverProxy {
         }
 
         boolean removeSession(IAppSession session) {
-            return mSessionList.remove(session.asBinder());
+            final IBinder binder = session.asBinder();
+            if (!mSessionList.contains(binder)) {
+                return false;
+            }
+            mSessionList.remove(binder);
+            return true;
         }
 
         int getSessionCount() {
@@ -191,7 +198,9 @@ public class ApiLayerSettingsObserverProxy {
                         handler);
                 record.registerSettingsObserver();
                 sSettingsObserverRecordList.add(record);
-                if (querySettingsObserverRecordByBinder(session.asBinder()).isEmpty()) {
+                final List<SettingsObserverRecord> list =
+                        querySettingsObserverRecordByBinder(session.asBinder());
+                if (list.size() == 0) {
                     sClientBinderList.register(session);
                 }
             }
@@ -206,15 +215,19 @@ public class ApiLayerSettingsObserverProxy {
         }
         synchronized (sClientBinderList) {
             final SettingsObserverRecord record = getSettingsObserverRecord(settingType, name);
-            if (record == null || !record.removeSession(session)) {
+            if (record == null) {
                 return;
             }
-            if (record.getSessionCount() == 0) {
-                record.unregisterSettingsObserver();
-                sSettingsObserverRecordList.remove(record);
-            }
-            if (querySettingsObserverRecordByBinder(session.asBinder()).isEmpty()) {
-                sClientBinderList.unregister(session);
+            if (record.removeSession(session)) {
+                if (record.getSessionCount() == 0) {
+                    record.unregisterSettingsObserver();
+                    sSettingsObserverRecordList.remove(record);
+                }
+                final List<SettingsObserverRecord> list =
+                        querySettingsObserverRecordByBinder(session.asBinder());
+                if (list.size() == 0) {
+                    sClientBinderList.unregister(session);
+                }
             }
         }
     }

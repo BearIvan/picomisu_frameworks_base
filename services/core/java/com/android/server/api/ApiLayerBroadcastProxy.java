@@ -51,7 +51,7 @@ public class ApiLayerBroadcastProxy {
                 }
             };
 
-    private static final class BroadcastReceiverRecord {
+    private class BroadcastReceiverRecord {
         private final String mAction;
         private final List<IBinder> mClientList = new ArrayList<>();
         private final Context mContext;
@@ -93,7 +93,12 @@ public class ApiLayerBroadcastProxy {
         }
 
         boolean removeSession(IAppSession session) {
-            return mClientList.remove(session.asBinder());
+            final IBinder binder = session.asBinder();
+            if (!mClientList.contains(binder)) {
+                return false;
+            }
+            mClientList.remove(binder);
+            return true;
         }
 
         int getSessionCount() {
@@ -185,7 +190,9 @@ public class ApiLayerBroadcastProxy {
                 record = new BroadcastReceiverRecord(context, action, dataScheme, handler);
                 record.registerBroadcastReceiver();
                 sBroadcastReceiverRecordList.add(record);
-                if (queryBroadcastReceiverRecordByBinder(session.asBinder()).isEmpty()) {
+                final List<BroadcastReceiverRecord> list =
+                        queryBroadcastReceiverRecordByBinder(session.asBinder());
+                if (list.size() == 0) {
                     sClientBinderList.register(session);
                 }
             }
@@ -201,15 +208,19 @@ public class ApiLayerBroadcastProxy {
         Slog.w(ApiLayerService.TAG, "unregisterBroadcastReceiver action [" + action + "]");
         synchronized (sClientBinderList) {
             final BroadcastReceiverRecord record = getBroadcastReceiverRecord(action);
-            if (record == null || !record.removeSession(session)) {
+            if (record == null) {
                 return;
             }
-            if (record.getSessionCount() == 0) {
-                record.unregisterBroadcastReceiver();
-                sBroadcastReceiverRecordList.remove(record);
-            }
-            if (queryBroadcastReceiverRecordByBinder(session.asBinder()).isEmpty()) {
-                sClientBinderList.unregister(session);
+            if (record.removeSession(session)) {
+                if (record.getSessionCount() == 0) {
+                    record.unregisterBroadcastReceiver();
+                    sBroadcastReceiverRecordList.remove(record);
+                }
+                final List<BroadcastReceiverRecord> list =
+                        queryBroadcastReceiverRecordByBinder(session.asBinder());
+                if (list.size() == 0) {
+                    sClientBinderList.unregister(session);
+                }
             }
         }
     }
