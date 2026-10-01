@@ -9644,6 +9644,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         // Smartisan (factory).
         SmartisanAm.SmartisanAmUtils.getInstance().initService(this);
         SysOptBridge.getFactory().getActivityManager(this).registerPeroptWhiteListReceiver();
+        // PICO (factory): system_server joins the PICO cpuset policy 8 (SP_CLUSTER_BIG:
+        // PicoSystemCapacity, cpuset pico-system).
+        Process.setProcessGroup(Process.myPid(), android.os.ProcessSmtEx.THREAD_GROUP_CLUSTER_BIG);
         // PICO (factory): bind the PICO persistent services.
         mExt.onSystemReadyFinished();
     }
