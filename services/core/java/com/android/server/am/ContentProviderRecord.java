@@ -58,6 +58,8 @@ final class ContentProviderRecord implements ComponentName.WithComponentName {
     ProcessRecord launchingApp; // if non-null, waiting for this app to be launched.
     String stringName;
     String shortStringName;
+    // PICO (factory): providers whose clients need no release.
+    private final IExtContentProviderRecord mExt = new ExtContentProviderRecordImpl(this);
 
     public ContentProviderRecord(ActivityManagerService _service, ProviderInfo _info,
             ApplicationInfo ai, ComponentName _name, boolean _singleton) {
@@ -69,6 +71,7 @@ final class ContentProviderRecord implements ComponentName.WithComponentName {
         singleton = _singleton;
         noReleaseNeeded = (uid == 0 || uid == Process.SYSTEM_UID)
                 && (_name == null || !"com.android.settings".equals(_name.getPackageName()));
+        noReleaseNeeded = mExt.isNoReleaseNeededClient(uid, _name, noReleaseNeeded);
     }
 
     public ContentProviderRecord(ContentProviderRecord cpr) {
