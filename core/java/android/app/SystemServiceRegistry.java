@@ -175,6 +175,7 @@ import android.telephony.euicc.EuiccManager;
 import android.telephony.ims.RcsManager;
 import android.util.ArrayMap;
 import android.util.Log;
+import android.util.Slog;
 import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
 import android.view.WindowManager;
@@ -1362,14 +1363,18 @@ final class SystemServiceRegistry {
         public final T getService(ContextImpl ctx) {
             final Object[] cache = ctx.mServiceCache;
             final int[] gates = ctx.mServiceInitializationStateArray;
+            boolean interrupted = false;
+
+            T ret = null;
 
             for (;;) {
                 boolean doInitialize = false;
                 synchronized (cache) {
                     // Return it if we already have a cached instance.
                     T service = (T) cache[mCacheIndex];
-                    if (service != null || gates[mCacheIndex] == ContextImpl.STATE_NOT_FOUND) {
-                        return service;
+                    if (service != null) {
+                        ret = service;
+                        break; // exit the for (;;)
                     }
 
                     // If we get here, there's no cached instance.
@@ -1377,7 +1382,9 @@ final class SystemServiceRegistry {
                     // Grr... if gate is STATE_READY, then this means we initialized the service
                     // once but someone cleared it.
                     // We start over from STATE_UNINITIALIZED.
-                    if (gates[mCacheIndex] == ContextImpl.STATE_READY) {
+                    // Similarly, if the previous attempt returned null, we'll retry again.
+                    if (gates[mCacheIndex] == ContextImpl.STATE_READY
+                            || gates[mCacheIndex] == ContextImpl.STATE_NOT_FOUND) {
                         gates[mCacheIndex] = ContextImpl.STATE_UNINITIALIZED;
                     }
 
@@ -1412,22 +1419,33 @@ final class SystemServiceRegistry {
                             cache.notifyAll();
                         }
                     }
-                    return service;
+                    ret = service;
+                    break; // exit the for (;;)
                 }
                 // The other threads will wait for the first thread to call notifyAll(),
                 // and go back to the top and retry.
                 synchronized (cache) {
+                    // Repeat until the state becomes STATE_READY or STATE_NOT_FOUND.
+                    // We can't respond to interrupts here; just like we can't in the "doInitialize"
+                    // path, so we remember the interrupt state here and re-interrupt later.
                     while (gates[mCacheIndex] < ContextImpl.STATE_READY) {
                         try {
+                            // Clear the interrupt state.
+                            interrupted |= Thread.interrupted();
                             cache.wait();
                         } catch (InterruptedException e) {
-                            Log.w(TAG, "getService() interrupted");
-                            Thread.currentThread().interrupt();
-                            return null;
+                            // This shouldn't normally happen, but if someone interrupts the
+                            // thread, it will.
+                            Slog.w(TAG, "getService() interrupted");
+                            interrupted = true;
                         }
                     }
                 }
             }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return ret;
         }
 
         public abstract T createService(ContextImpl ctx) throws ServiceNotFoundException;
