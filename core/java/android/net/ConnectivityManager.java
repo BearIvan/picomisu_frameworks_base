@@ -962,7 +962,8 @@ public class ConnectivityManager {
     @Nullable
     public NetworkInfo getActiveNetworkInfo() {
         try {
-            return mService.getActiveNetworkInfo();
+            // Smartisan (factory PICO OS 5.13.7): client-side active network info cache.
+            return getSmtEx().getCacheOrBinderCall(mService);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -1215,11 +1216,8 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @NonNull
     public NetworkInfo[] getAllNetworkInfo() {
-        try {
-            return mService.getAllNetworkInfo();
-        } catch (RemoteException e) {
-            throw e.rethrowFromSystemServer();
-        }
+        // Smartisan (factory PICO OS 5.13.7): cached while ConnectivityManagerSmtEx.useCache.
+        return getSmtEx().getAllNetworkInfoSmtEx(mService);
     }
 
     /**
@@ -2621,6 +2619,9 @@ public class ConnectivityManager {
     @GuardedBy("mTetheringEventCallbacks")
     private final ArrayMap<OnTetheringEventCallback, ITetheringEventCallback>
             mTetheringEventCallbacks = new ArrayMap<>();
+
+    // Smartisan extension (factory PICO OS 5.13.7): network info caches.
+    private ConnectivityManagerSmtEx mSmtEx = new ConnectivityManagerSmtEx(this);
 
     /**
      * Start listening to tethering change events. Any new added callback will receive the last
@@ -4522,5 +4523,10 @@ public class ConnectivityManager {
             }
             Log.d(TAG, "StackLog:" + sb.toString());
         }
+    }
+
+    /** @hide */
+    public ConnectivityManagerSmtEx getSmtEx() {
+        return mSmtEx;
     }
 }

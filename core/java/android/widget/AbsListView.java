@@ -29,6 +29,7 @@ import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.TransitionDrawable;
+import android.net.ConnectivityManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
@@ -791,6 +792,10 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
     private int mMoveAcceleration;
     private int mNumTouchMoveEvent = 0;
 
+    // Smartisan (factory PICO OS 5.13.7): the network info caches of ConnectivityManagerSmtEx
+    // are used while the list is touched or flung.
+    ConnectivityManager mCm = null;
+
     /**
      * Interface definition for a callback to be invoked when the list or grid
      * has been scrolled.
@@ -954,6 +959,7 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
         mOverflingDistance = configuration.getScaledOverflingDistance();
 
         mDensityScale = getContext().getResources().getDisplayMetrics().density;
+        mCm = ConnectivityManager.from(mContext);
     }
 
     /**
@@ -3998,6 +4004,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
     }
 
     private void onTouchDown(MotionEvent ev) {
+        if (mCm != null) {
+            mCm.getSmtEx().useCache = true;
+        }
         mHasPerformedLongPress = false;
         mActivePointerId = ev.getPointerId(0);
         hideSelector();
@@ -4121,6 +4130,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
     }
 
     private void onTouchUp(MotionEvent ev) {
+        if (mCm != null) {
+            mCm.getSmtEx().useCache = false;
+        }
         switch (mTouchMode) {
         case TOUCH_MODE_DOWN:
         case TOUCH_MODE_TAP:
@@ -4304,6 +4316,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
     }
 
     private void onTouchCancel() {
+        if (mCm != null) {
+            mCm.getSmtEx().useCache = false;
+        }
         switch (mTouchMode) {
         case TOUCH_MODE_OVERSCROLL:
             if (mFlingRunnable == null) {
@@ -4771,6 +4786,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
         // Use AbsListView#fling(int) instead
         @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P)
         void start(int initialVelocity) {
+            if (mCm != null) {
+                mCm.getSmtEx().useCache = true;
+            }
             int initialY = initialVelocity < 0 ? Integer.MAX_VALUE : 0;
             mLastFlingY = initialY;
             mScroller.setInterpolator(null);
@@ -4850,6 +4868,9 @@ public abstract class AbsListView extends AdapterView<ListAdapter> implements Te
         // To interrupt a fling early you should use smoothScrollBy(0,0) instead
         @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P)
         void endFling() {
+            if (mCm != null) {
+                mCm.getSmtEx().useCache = false;
+            }
             mTouchMode = TOUCH_MODE_REST;
 
             removeCallbacks(this);
