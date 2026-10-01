@@ -1262,7 +1262,6 @@ public class Build {
         return TextUtils.isEmpty(propVal) ? null : propVal;
     }
 
-    @UnsupportedAppUsage
     // PICO (factory PICO OS 5.13.7): with ro.pxr.usebuildinfo 1 or 2, MODEL and PRODUCT come
     // from sys.pxr.product.* / sys.pxr.build.product.*, falling back to the device serial.
     private static String getSerialFromFile() {
@@ -1328,6 +1327,7 @@ public class Build {
         return getString("ro.product.name");
     }
 
+    @UnsupportedAppUsage
     private static String getString(String property) {
         return SystemProperties.get(property, UNKNOWN);
     }
