@@ -113,7 +113,24 @@ public final class ProcessStats implements Parcelable {
     public static final int SYS_MEM_USAGE_NATIVE_MINIMUM = 13;
     public static final int SYS_MEM_USAGE_NATIVE_AVERAGE = 14;
     public static final int SYS_MEM_USAGE_NATIVE_MAXIMUM = 15;
-    public static final int SYS_MEM_USAGE_COUNT = SYS_MEM_USAGE_NATIVE_MAXIMUM+1;
+    // ION heap other than EGL, used and free RAM, java total and cached pss (factory PICO OS
+    // 5.13.7).
+    public static final int SYS_MEM_USAGE_ION_HEAP_OTHER_MINIMUM = 16;
+    public static final int SYS_MEM_USAGE_ION_HEAP_OTHER_AVERAGE = 17;
+    public static final int SYS_MEM_USAGE_ION_HEAP_OTHER_MAXIMUM = 18;
+    public static final int SYS_MEM_USAGE_USED_RAM_MINIMUM = 19;
+    public static final int SYS_MEM_USAGE_USED_RAM_AVERAGE = 20;
+    public static final int SYS_MEM_USAGE_USED_RAM_MAXIMUM = 21;
+    public static final int SYS_MEM_USAGE_FREE_RAM_MINIMUM = 22;
+    public static final int SYS_MEM_USAGE_FREE_RAM_AVERAGE = 23;
+    public static final int SYS_MEM_USAGE_FREE_RAM_MAXIMUM = 24;
+    public static final int SYS_MEM_USAGE_JAVA_TOTAL_MINIMUM = 25;
+    public static final int SYS_MEM_USAGE_JAVA_TOTAL_AVERAGE = 26;
+    public static final int SYS_MEM_USAGE_JAVA_TOTAL_MAXIMUM = 27;
+    public static final int SYS_MEM_USAGE_JAVA_CACHED_MINIMUM = 28;
+    public static final int SYS_MEM_USAGE_JAVA_CACHED_AVERAGE = 29;
+    public static final int SYS_MEM_USAGE_JAVA_CACHED_MAXIMUM = 30;
+    public static final int SYS_MEM_USAGE_COUNT = SYS_MEM_USAGE_JAVA_CACHED_MAXIMUM+1;
 
     public static final int ADJ_NOTHING = -1;
     public static final int ADJ_MEM_FACTOR_NORMAL = 0;
@@ -379,7 +396,8 @@ public final class ProcessStats implements Parcelable {
     }
 
     public void addSysMemUsage(long cachedMem, long freeMem, long zramMem, long kernelMem,
-            long nativeMem) {
+            long nativeMem, long ionHeapOtherMem, long usedRAMMem, long freeRAMMem,
+            long javaTotalMem, long javaCachedMem) {
         if (mMemFactor != STATE_NOTHING) {
             int state = mMemFactor * STATE_COUNT;
             mSysMemUsageArgs[SYS_MEM_USAGE_SAMPLE_COUNT] = 1;
@@ -389,6 +407,11 @@ public final class ProcessStats implements Parcelable {
                 mSysMemUsageArgs[SYS_MEM_USAGE_ZRAM_MINIMUM + i] = zramMem;
                 mSysMemUsageArgs[SYS_MEM_USAGE_KERNEL_MINIMUM + i] = kernelMem;
                 mSysMemUsageArgs[SYS_MEM_USAGE_NATIVE_MINIMUM + i] = nativeMem;
+                mSysMemUsageArgs[SYS_MEM_USAGE_ION_HEAP_OTHER_MINIMUM + i] = ionHeapOtherMem;
+                mSysMemUsageArgs[SYS_MEM_USAGE_USED_RAM_MINIMUM + i] = usedRAMMem;
+                mSysMemUsageArgs[SYS_MEM_USAGE_FREE_RAM_MINIMUM + i] = freeRAMMem;
+                mSysMemUsageArgs[SYS_MEM_USAGE_JAVA_TOTAL_MINIMUM + i] = javaTotalMem;
+                mSysMemUsageArgs[SYS_MEM_USAGE_JAVA_CACHED_MINIMUM + i] = javaCachedMem;
             }
             mSysMemUsage.mergeStats(state, mSysMemUsageArgs, 0);
         }

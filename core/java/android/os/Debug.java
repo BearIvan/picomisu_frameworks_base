@@ -2533,4 +2533,31 @@ public final class Debug
      * @hide
      */
     public static native long getZramFreeKb();
+
+    /**
+     * Return memory size in kilobytes allocated for ION heaps (0 if unknown).
+     * (Factory PICO OS 5.13.7.)
+     *
+     * @hide
+     */
+    public static native long getIonHeapsSizeKb();
+
+    /**
+     * Return memory size in kilobytes allocated for ION pools (0 if unknown).
+     * (Factory PICO OS 5.13.7.)
+     *
+     * @hide
+     */
+    public static native long getIonPoolsSizeKb();
+
+    /**
+     * Return ION memory mapped by processes in kB.
+     * Notes:
+     *  * Warning: Might impact performance as it reads /proc/&lt;pid&gt;/maps files for each
+     *    process.
+     * (Factory PICO OS 5.13.7.)
+     *
+     * @hide
+     */
+    public static native long getIonMappedSizeKb();
 }

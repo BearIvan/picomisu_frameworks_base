@@ -196,8 +196,18 @@ public final class ProcessStatsService extends IProcessStats.Stub {
 
     @GuardedBy("mAm")
     public void addSysMemUsageLocked(long cachedMem, long freeMem, long zramMem, long kernelMem,
+            long nativeMem, long ionHeapOtherMem, long usedRAMMem, long freeRAMMem,
+            long javaTotalMem, long javaCachedMem) {
+        mProcessStats.addSysMemUsage(cachedMem, freeMem, zramMem, kernelMem, nativeMem,
+                ionHeapOtherMem, usedRAMMem, freeRAMMem, javaTotalMem, javaCachedMem);
+    }
+
+    /** The ION heap other, RAM and java figures unknown (-1), as on the factory. */
+    @GuardedBy("mAm")
+    public void addSysMemUsageLocked(long cachedMem, long freeMem, long zramMem, long kernelMem,
             long nativeMem) {
-        mProcessStats.addSysMemUsage(cachedMem, freeMem, zramMem, kernelMem, nativeMem);
+        addSysMemUsageLocked(cachedMem, freeMem, zramMem, kernelMem, nativeMem, -1, -1, -1, -1,
+                -1);
     }
 
     @GuardedBy("mAm")

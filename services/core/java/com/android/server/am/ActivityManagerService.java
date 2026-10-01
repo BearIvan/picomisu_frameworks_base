@@ -2113,18 +2113,26 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 + (SystemClock.uptimeMillis()-start) + "ms");
                         final long cachedKb = memInfo.getCachedSizeKb();
                         final long freeKb = memInfo.getFreeSizeKb();
-                        final long zramKb = memInfo.getZramTotalSizeKb();
                         final long kernelKb = memInfo.getKernelUsedSizeKb();
+                        // PICO (factory): ION heap other than EGL, used and free RAM, and the
+                        // Smartisan java pss totals go to the process stats too.
+                        final long availableKb = memInfo.getAvailableSizeKb();
+                        final long ionHeapKb = Debug.getIonHeapsSizeKb();
+                        final long zramKb = memInfo.getZramTotalSizeKb();
+                        final long ionHeapOtherKb = ionHeapKb > 0
+                                ? ionHeapKb - mSmtEx.mTotalEGL : 0;
+                        final long usedRAMKb = ionHeapOtherKb + kernelKb + mSmtEx.mTotalPss
+                                - mSmtEx.mCachedPss;
+                        final long freeRAMKb = availableKb + mSmtEx.mCachedPss;
                         EventLogTags.writeAmMeminfo(cachedKb*1024, freeKb*1024, zramKb*1024,
                                 kernelKb*1024, nativeTotalPss*1024);
                         mProcessStats.addSysMemUsageLocked(cachedKb, freeKb, zramKb, kernelKb,
-                                nativeTotalPss);
-                        // Smartisan (factory): memory strategy on the collected totals. The
-                        // factory also passes the ION heap other than EGL; Source has no ION
-                        // accounting (Debug.getIonHeapsSizeKb), which the factory counts as 0
-                        // when there is no ION heap.
+                                nativeTotalPss, ionHeapOtherKb, usedRAMKb, freeRAMKb,
+                                mSmtEx.mTotalPss, mSmtEx.mCachedPss);
+                        // Smartisan (factory): memory strategy on the collected totals.
                         mSmtEx.executeMeminfoMemoryStrategy(memInfo, mSmtEx.mProcessMems,
-                                mSmtEx.mTotalPss - mSmtEx.mCachedPss, mSmtEx.mCachedPss, 0);
+                                mSmtEx.mTotalPss - mSmtEx.mCachedPss, mSmtEx.mCachedPss,
+                                ionHeapOtherKb);
                         mSmtEx.resetProcStatsCollectData();
                     }
                 }
@@ -12967,6 +12975,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         boolean isCheckinRequest;
         boolean dumpSwapPss;
         boolean dumpProto;
+        // PICO (factory): -u, print the untracked memory.
+        boolean dumpUntrackedMem;
     }
 
     final void dumpApplicationMemoryUsage(FileDescriptor fd, PrintWriter pw, String prefix,
@@ -12984,6 +12994,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         opts.isCheckinRequest = false;
         opts.dumpSwapPss = false;
         opts.dumpProto = asProto;
+        opts.dumpUntrackedMem = false;
 
         int opti = 0;
         while (opti < args.length) {
@@ -13035,6 +13046,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                 pw.println("If [process] is specified it can be the name or ");
                 pw.println("pid of a specific process to dump.");
                 return;
+            } else if ("-u".equals(opt)) {
+                // PICO (factory).
+                opts.dumpUntrackedMem = true;
             } else {
                 pw.println("Unknown argument: " + opt + "; use -h for help");
             }
@@ -13359,8 +13373,13 @@ public class ActivityManagerService extends IActivityManager.Stub
             final int dalvikId = -2;
             catMems.add(new MemItem("Dalvik", "Dalvik", dalvikPss, dalvikSwapPss, dalvikId));
             catMems.add(new MemItem("Unknown", "Unknown", otherPss, otherSwapPss, -3));
+            // PICO (factory): the EGL mtrack total is the EGL part of the ION heap.
+            long eglMemSize = 0;
             for (int j=0; j<Debug.MemoryInfo.NUM_OTHER_STATS; j++) {
                 String label = Debug.MemoryInfo.getOtherLabel(j);
+                if (j == Debug.MemoryInfo.OTHER_GRAPHICS) {
+                    eglMemSize = miscPss[j];
+                }
                 catMems.add(new MemItem(label, label, miscPss[j], miscSwapPss[j], j));
             }
             if (dalvikSubitemPss.length > 0) {
@@ -13440,6 +13459,12 @@ public class ActivityManagerService extends IActivityManager.Stub
                             nativeProcTotalPss);
                 }
             }
+            // Smartisan (factory): the kgsl global allocations count as kernel memory.
+            final long kgslGlobals = SysOptBridge.getFactory().getSmartService().getKgslGlobals();
+            // PICO (factory): ION heaps and pools; the pools count as cached kernel memory.
+            final long ionHeap = Debug.getIonHeapsSizeKb();
+            final long ionPool = ionHeap > 0 ? Debug.getIonPoolsSizeKb() : 0;
+            final long kernelCached = memInfo.getCachedSizeKb() + ionPool;
             if (!brief) {
                 if (!opts.isCompact) {
                     pw.print("Total RAM: "); pw.print(stringifyKBSize(memInfo.getTotalSizeKb()));
@@ -13462,16 +13487,14 @@ public class ActivityManagerService extends IActivityManager.Stub
                             pw.println(")");
                             break;
                     }
+                    // PICO (factory): free RAM is the cached pss plus the available memory.
                     pw.print(" Free RAM: ");
-                    pw.print(stringifyKBSize(cachedPss + memInfo.getCachedSizeKb()
-                            + memInfo.getFreeSizeKb()));
+                    pw.print(stringifyKBSize(cachedPss + memInfo.getAvailableSizeKb()));
                     pw.print(" (");
                     pw.print(stringifyKBSize(cachedPss));
                     pw.print(" cached pss + ");
-                    pw.print(stringifyKBSize(memInfo.getCachedSizeKb()));
-                    pw.print(" cached kernel + ");
-                    pw.print(stringifyKBSize(memInfo.getFreeSizeKb()));
-                    pw.println(" free)");
+                    pw.print(stringifyKBSize(memInfo.getAvailableSizeKb()));
+                    pw.println(" available)");
                 } else {
                     pw.print("ram,"); pw.print(memInfo.getTotalSizeKb()); pw.print(",");
                     pw.print(cachedPss + memInfo.getCachedSizeKb()
@@ -13479,18 +13502,27 @@ public class ActivityManagerService extends IActivityManager.Stub
                     pw.println(totalPss - cachedPss);
                 }
             }
-            // Smartisan (factory): the kgsl global allocations count as kernel memory.
-            final long kgslGlobals = SysOptBridge.getFactory().getSmartService().getKgslGlobals();
             final long kernelUsed = memInfo.getKernelUsedSizeKb() + kgslGlobals;
+            // PICO (factory): the ION heap other than EGL is used memory.
+            final long ionHeapOther = ionHeap > 0 ? ionHeap - eglMemSize : 0;
             long lostRAM = memInfo.getTotalSizeKb() - (totalPss - totalSwapPss)
-                    - memInfo.getFreeSizeKb() - memInfo.getCachedSizeKb()
+                    - memInfo.getAvailableSizeKb() - ionHeapOther
                     - kernelUsed - memInfo.getZramTotalSizeKb();
             if (!opts.isCompact) {
                 pw.print(" Used RAM: "); pw.print(stringifyKBSize(totalPss - cachedPss
-                        + kernelUsed)); pw.print(" (");
+                        + kernelUsed + ionHeapOther)); pw.print(" (");
                 pw.print(stringifyKBSize(totalPss - cachedPss)); pw.print(" used pss + ");
+                pw.print(stringifyKBSize(ionHeapOther)); pw.print(" ion heap other used + ");
                 pw.print(stringifyKBSize(kernelUsed)); pw.print(" kernel)\n");
                 pw.print(" Lost RAM: "); pw.println(stringifyKBSize(lostRAM));
+                if (opts.dumpUntrackedMem) {
+                    // PICO (factory).
+                    final long unTrackedMem = memInfo.getTotalSizeKb()
+                            - (totalPss - totalSwapPss) - memInfo.getFreeSizeKb()
+                            - kernelCached - ionHeapOther - kernelUsed
+                            - memInfo.getZramTotalSizeKb();
+                    pw.print("Untracked: "); pw.println(stringifyKBSize(unTrackedMem));
+                }
             } else {
                 pw.print("lostram,"); pw.println(lostRAM);
             }
@@ -13519,6 +13551,24 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 pw.println(memInfo.getSwapFreeSizeKb());
                     }
                 }
+                // PICO (factory): ION, cached kernel and free memory lines.
+                if (ionHeap > 0) {
+                    final long ionMapped = Debug.getIonMappedSizeKb();
+                    final long ionUnmapped = ionHeap - ionMapped;
+                    pw.print("      ION: ");
+                    pw.print(stringifyKBSize(ionHeap + ionPool));
+                    pw.print(" (");
+                    pw.print(stringifyKBSize(ionMapped));
+                    pw.print(" mapped + ");
+                    pw.print(stringifyKBSize(ionUnmapped));
+                    pw.print(" unmapped + ");
+                    pw.print(stringifyKBSize(ionPool));
+                    pw.println(" pools)");
+                }
+                pw.print("Cackernel: ");
+                pw.println(stringifyKBSize(kernelCached));
+                pw.print("     Free: ");
+                pw.println(stringifyKBSize(memInfo.getFreeSizeKb()));
                 final long[] ksm = getKsmInfo();
                 if (!opts.isCompact) {
                     if (ksm[KSM_SHARING] != 0 || ksm[KSM_SHARED] != 0 || ksm[KSM_UNSHARED] != 0
@@ -14217,14 +14267,26 @@ public class ActivityManagerService extends IActivityManager.Stub
         memInfoBuilder.append(stringifyKBSize(cachedPss + memInfo.getCachedSizeKb()
                 + memInfo.getFreeSizeKb()));
         memInfoBuilder.append("\n");
+        // PICO (factory): the ION heap counts as used kernel memory.
+        long kernelUsed = memInfo.getKernelUsedSizeKb();
+        final long ionHeap = Debug.getIonHeapsSizeKb();
+        if (ionHeap > 0) {
+            final long ionMapped = Debug.getIonMappedSizeKb();
+            final long ionUnmapped = ionHeap - ionMapped;
+            final long ionPool = Debug.getIonPoolsSizeKb();
+            memInfoBuilder.append("       ION: ");
+            memInfoBuilder.append(stringifyKBSize(ionHeap + ionPool));
+            memInfoBuilder.append("\n");
+            kernelUsed += ionHeap;
+        }
         memInfoBuilder.append("  Used RAM: ");
         memInfoBuilder.append(stringifyKBSize(
-                                  totalPss - cachedPss + memInfo.getKernelUsedSizeKb()));
+                                  totalPss - cachedPss + kernelUsed));
         memInfoBuilder.append("\n");
         memInfoBuilder.append("  Lost RAM: ");
         memInfoBuilder.append(stringifyKBSize(memInfo.getTotalSizeKb()
                 - (totalPss - totalSwapPss) - memInfo.getFreeSizeKb() - memInfo.getCachedSizeKb()
-                - memInfo.getKernelUsedSizeKb() - memInfo.getZramTotalSizeKb()));
+                - kernelUsed - memInfo.getZramTotalSizeKb()));
         memInfoBuilder.append("\n");
         Slog.i(TAG, "Low on memory:");
         Slog.i(TAG, shortNativeBuilder.toString());
