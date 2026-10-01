@@ -844,7 +844,9 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         mUiHandler = new UiHandler();
         mIntentFirewall = intentFirewall;
         final File systemDir = SystemServiceManager.ensureSystemDir();
-        mAppWarnings = new AppWarnings(this, mUiContext, mH, mUiHandler, systemDir);
+        // Factory: AppWarnings does its config file I/O on the background thread.
+        mAppWarnings = new AppWarnings(this, mUiContext, BackgroundThread.getHandler(), mUiHandler,
+                systemDir);
         mCompatModePackages = new CompatModePackages(this, systemDir, mH);
         mPendingIntentController = intentController;
 
