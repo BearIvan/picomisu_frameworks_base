@@ -1810,3 +1810,7 @@ Lcom/google/android/mms/util/SqliteWrapper;->query(Landroid/content/Context;Land
 Lcom/google/android/mms/util/SqliteWrapper;->requery(Landroid/content/Context;Landroid/database/Cursor;)Z
 Lcom/google/android/mms/util/SqliteWrapper;->update(Landroid/content/Context;Landroid/content/ContentResolver;Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
 Lcom/google/android/util/AbstractMessageParser$Token$Type;->values()[Lcom/google/android/util/AbstractMessageParser$Token$Type;
+# PICO OS 5.13.7: non-SDK PICO members that the factory framework.jar marks greylist.
+Landroid/view/ExtSurfaceImpl;->mLockedObject:J
+Landroid/view/Surface;->mExt:Landroid/view/IExtSurface;
+Landroid/view/Surface;->nativeSetPvrStatus(JI)V

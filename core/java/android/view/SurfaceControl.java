@@ -1774,7 +1774,6 @@ public final class SurfaceControl implements Parcelable {
     /**
      * @hide
      */
-    @UnsupportedAppUsage
     public static void setDisplayFlags(IBinder displayToken, int flags) {
         synchronized (SurfaceControl.class) {
             sGlobalTransaction.setDisplayFlags(displayToken, flags);
@@ -2583,7 +2582,6 @@ public final class SurfaceControl implements Parcelable {
         /**
          * @hide
          */
-        @UnsupportedAppUsage
         public Transaction setDisplayFlags(IBinder displayToken, int flags) {
             if (displayToken == null) {
                 throw new IllegalArgumentException("displayToken must not be null");
