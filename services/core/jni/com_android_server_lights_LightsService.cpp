@@ -139,7 +139,8 @@ static void setLight_native(
     }
 
     if (!validate(light, flashMode, brightnessMode)) {
-        return;
+        // PICO (factory PICO OS 5.13.7): an invalid request is still sent to the light HAL.
+        ALOGW("light native  setLight_native return for validate false, but not return");
     }
 
     Type type = static_cast<Type>(light);
