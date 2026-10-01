@@ -159,6 +159,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.IVoiceInteractor;
 import com.android.internal.util.function.pooled.PooledLambda;
+import com.android.server.SysOptBridge;
 import com.android.server.Watchdog;
 import com.android.server.am.ActivityManagerService;
 import com.android.server.am.ActivityManagerService.ItemMatcher;
@@ -412,6 +413,9 @@ public class ActivityStack extends ConfigurationContainer {
     // PICO activity stack extension (factory PICO OS 5.13.7).
     private final IExtActivityStack mExt = new ExtActivityStackImpl(this);
 
+    // Smartisan (factory): per-stack Smartisan state (prefetch flag, PowerAdvisor).
+    private final ActivityStackSmtBase mActivityStackSmtBase = new ActivityStackSmtBase(this);
+
     /** Run all ActivityStacks through this */
     protected final ActivityStackSupervisor mStackSupervisor;
     protected final RootActivityContainer mRootActivityContainer;
@@ -579,6 +583,10 @@ public class ActivityStack extends ConfigurationContainer {
             if (record == mRootActivityContainer.getTopResumedActivity()) {
                 // TODO(b/111361570): Support multiple focused apps in WM
                 mService.setResumedActivityUncheckLocked(record, reason);
+            }
+            // Smartisan (factory): a prefetched activity is not added to the recent tasks.
+            if (record.appInfo.getSmtEx().isPrefetch) {
+                return;
             }
             mStackSupervisor.mRecentTasks.add(record.getTaskRecord());
         }
@@ -1652,6 +1660,9 @@ public class ActivityStack extends ConfigurationContainer {
         final Message msg = mHandler.obtainMessage(PAUSE_TIMEOUT_MSG);
         msg.obj = r;
         r.pauseTime = SystemClock.uptimeMillis();
+        // Smartisan (factory): pause-timeout event bookkeeping.
+        r.getActivityRecordSmtEx().pauseTimeoutBegin = SystemClock.elapsedRealtime();
+        r.getActivityRecordSmtEx().pauseTimeout = false;
         mHandler.sendMessageDelayed(msg, PAUSE_TIMEOUT);
         if (DEBUG_PAUSE) Slog.v(TAG_PAUSE, "Waiting for pause to complete...");
     }
@@ -1730,6 +1741,9 @@ public class ActivityStack extends ConfigurationContainer {
                 mService.getLifecycleManager().scheduleTransaction(prev.app.getThread(),
                         prev.appToken, PauseActivityItem.obtain(prev.finishing, userLeaving,
                                 prev.configChangeFlags, pauseImmediately));
+                // Smartisan (factory): launch-time statistics.
+                prev.getActivityRecordMonitorEx().launchTimeStatistics
+                        .clearLaunchStepIfPausing("activity pause");
             } catch (Exception e) {
                 // Ignore exception, if process died other code will cleanup.
                 Slog.w(TAG, "Exception thrown during pause", e);
@@ -1759,6 +1773,10 @@ public class ActivityStack extends ConfigurationContainer {
             } else if (DEBUG_PAUSE) {
                  Slog.v(TAG_PAUSE, "Key dispatch not paused for screen off");
             }
+
+            // Smartisan (factory): 3 = paused.
+            SysOptBridge.getFactory().getActivityManager(mService.getSmtEx().mAMS)
+                    .notifyActivityLifeCycleStateChanged(mPausingActivity, 3);
 
             if (pauseImmediately) {
                 // If the caller said they don't want to wait for the pause, then complete
@@ -1790,6 +1808,12 @@ public class ActivityStack extends ConfigurationContainer {
 
         if (r != null) {
             mHandler.removeMessages(PAUSE_TIMEOUT_MSG, r);
+            // Smartisan (factory): pause-timeout event report.
+            if (timeout) {
+                r.getActivityRecordSmtEx().pauseTimeout = true;
+            } else if (mService != null) {
+                r.getActivityRecordSmtEx().reportPauseTimeoutEventIfNeeded(mService);
+            }
             if (mPausingActivity == r) {
                 if (DEBUG_STATES) Slog.v(TAG_STATES, "Moving to PAUSED: " + r
                         + (timeout ? " (due to timeout)" : " (pause complete)"));
@@ -2205,7 +2229,22 @@ public class ActivityStack extends ConfigurationContainer {
                         behindFullscreenActivity = updateBehindFullscreen(!stackShouldBeVisible,
                                 behindFullscreenActivity, r);
                     }
+                    // Smartisan (factory): the process is being unfrozen; the visibility
+                    // update is redone once it is.
+                    if (r.app != null && (((WindowProcessControllerSmtBase) r.app.getSmtEx())
+                            .unfreezeReason & 3) != 0) {
+                        return;
+                    }
                     if (reallyVisible) {
+                        // Smartisan (factory): a stopped activity of a frozen process becomes
+                        // visible: unfreeze the process first.
+                        if (r.isState(STOPPING, STOPPED) && r.hasProcess()
+                                && ((WindowProcessControllerSmtBase) r.app.getSmtEx())
+                                        .freezingStat != 0) {
+                            r.app.getWPCSmtEx().unFreezeProcIfNeedLocked(
+                                    new UpdateVisibilityEvent(r.app));
+                            return;
+                        }
                         if (DEBUG_VISIBILITY) Slog.v(TAG_VISIBILITY, "Make visible? " + r
                                 + " finishing=" + r.finishing + " state=" + r.getState());
                         // First: if this is not the current activity being started, make
@@ -2215,7 +2254,9 @@ public class ActivityStack extends ConfigurationContainer {
                                     true /* ignoreVisibility */);
                         }
 
-                        if (!r.attachedToProcess()) {
+                        // Smartisan (factory): a frozen process keeps its activity attached.
+                        if (!r.attachedToProcess() || (!r.app.hasThread()
+                                && r.app.getWPCSmtEx().freezingStat == 0)) {
                             if (makeVisibleAndRestartIfNeeded(starting, configChanges, isTop,
                                     resumeNextActivity, r)) {
                                 if (activityNdx >= activities.size()) {
@@ -2619,7 +2660,8 @@ public class ActivityStack extends ConfigurationContainer {
             // shown regardless of the lock screen, the call to
             // {@link ActivityStackSupervisor#checkReadyForSleepLocked} is skipped.
             final ActivityRecord next = topRunningActivityLocked(true /* focusableOnly */);
-            if (next == null || !next.canTurnScreenOn()) {
+            // Smartisan (factory): not for a prefetched activity.
+            if (next == null || (!next.canTurnScreenOn() && !next.appInfo.getSmtEx().isPrefetch)) {
                 checkReadyForSleep();
             }
         } finally {
@@ -2668,6 +2710,11 @@ public class ActivityStack extends ConfigurationContainer {
 
         mRootActivityContainer.cancelInitializingActivities();
 
+        // Smartisan (factory): PowerAdvisor app switch.
+        if (next != null) {
+            mActivityStackSmtBase.mPowerAdvisorInternal.notifyPowerAppSwitch(next.info);
+        }
+
         // Remember how we'll process this pause/resume situation, and ensure
         // that the state is reset however we wind up proceeding.
         boolean userLeaving = mStackSupervisor.mUserLeaving;
@@ -2706,6 +2753,13 @@ public class ActivityStack extends ConfigurationContainer {
         if (shouldSleepOrShutDownActivities()
                 && (mLastPausedActivity == next || getExt().getDeferResumeActivity() == next)
                 && mRootActivityContainer.allPausedActivitiesComplete()) {
+            // Smartisan (factory): the process of the top activity is frozen: unfreeze it, the
+            // activity is resumed once it is.
+            if (next.hasProcess() && !next.app.hasThread()) {
+                next.getActivityRecordMonitorEx().launchTimeStatistics.setLaunchType(50);
+                next.app.getWPCSmtEx().unFreezeProcIfNeedLocked(new ResumeActivityEvent(next.app));
+                return false;
+            }
             // If the current top activity may be able to occlude keyguard but the occluded state
             // has not been set, update visibility and check again if we should continue to resume.
             boolean nothingToResume = true;
@@ -2808,6 +2862,10 @@ public class ActivityStack extends ConfigurationContainer {
             // at the top of the LRU list, since we know we will be needing it
             // very soon and it would be a waste to let it get killed if it
             // happens to be sitting towards the end.
+            // Smartisan (factory): unfreeze the process of the activity to resume.
+            if (((ActivityRecordSmtBase) next.getSmtEx()).optEx.unFreezeProcForResumeIfNeed()) {
+                return true;
+            }
             if (next.attachedToProcess()) {
                 next.app.updateProcessInfo(false /* updateServiceConnectionActivities */,
                         true /* activityChange */, false /* updateOomAdj */);
@@ -2941,9 +2999,23 @@ public class ActivityStack extends ConfigurationContainer {
 
         mStackSupervisor.mNoAnimActivities.clear();
 
+        // Smartisan (factory): the process of the activity is frozen: unfreeze it, the activity
+        // is resumed once it is.
+        if (next.hasProcess() && !next.app.hasThread()) {
+            next.getActivityRecordMonitorEx().launchTimeStatistics.setLaunchType(50);
+            next.app.getWPCSmtEx().unFreezeProcIfNeedLocked(new ResumeActivityEvent(next.app));
+            return true;
+        }
+
         if (next.attachedToProcess()) {
             if (DEBUG_SWITCH) Slog.v(TAG_SWITCH, "Resume running: " + next
                     + " stopped=" + next.stopped + " visible=" + next.visible);
+
+            // Smartisan (factory): launch-time statistics, hot launch.
+            final ActivityRecordMonitorEx recordMonitorEx = next.getActivityRecordMonitorEx();
+            if (recordMonitorEx.launchTimeStatistics.getLaunchType() == 0) {
+                recordMonitorEx.launchTimeStatistics.setLaunchType(40);
+            }
 
             // If the previous activity is translucent, force a visibility update of
             // the next activity, so that it's added to WM's opening app list, and
@@ -3054,6 +3126,8 @@ public class ActivityStack extends ConfigurationContainer {
                 transaction.setLifecycleStateRequest(
                         ResumeActivityItem.obtain(next.app.getReportedProcState(),
                                 getDisplay().mDisplayContent.isNextTransitionForward()));
+                // Smartisan (factory): back to the default process group before resuming.
+                next.app.getWPCSmtEx().bringProcessToDefaultLocked();
                 mService.getLifecycleManager().scheduleTransaction(transaction);
 
                 if (DEBUG_STATES) Slog.d(TAG_STATES, "resumeTopActivityLocked: Resumed "
@@ -3106,6 +3180,15 @@ public class ActivityStack extends ConfigurationContainer {
             }
             if (DEBUG_STATES) Slog.d(TAG_STATES, "resumeTopActivityLocked: Restarting " + next);
             mStackSupervisor.startSpecificActivityLocked(next, true, true);
+            // Smartisan (factory): launch-time statistics, cold process / cold activity.
+            final ActivityRecordMonitorEx recordMonitorEx = next.getActivityRecordMonitorEx();
+            if (recordMonitorEx.launchTimeStatistics.getLaunchType() == 0) {
+                if (!next.isProcessRunning()) {
+                    recordMonitorEx.launchTimeStatistics.setLaunchType(10);
+                } else {
+                    recordMonitorEx.launchTimeStatistics.setLaunchType(20);
+                }
+            }
         }
 
         return true;
@@ -3875,6 +3958,9 @@ public class ActivityStack extends ConfigurationContainer {
                 }
                 Message msg = mHandler.obtainMessage(STOP_TIMEOUT_MSG, r);
                 mHandler.sendMessageDelayed(msg, STOP_TIMEOUT);
+                // Smartisan (factory): 4 = stopping.
+                SysOptBridge.getFactory().getActivityManager(mService.getSmtEx().mAMS)
+                        .notifyActivityLifeCycleStateChanged(r, 4);
             } catch (Exception e) {
                 // Maybe just ignore exceptions here...  if the process
                 // has crashed, our death notification will clean things
@@ -4522,6 +4608,9 @@ public class ActivityStack extends ConfigurationContainer {
         // Clean-up activities are no longer relaunching (e.g. app process died). Notify window
         // manager so it can update its bookkeeping.
         mWindowManager.notifyAppRelaunchesCleared(r.appToken);
+        // Smartisan (factory): 5 = destroyed.
+        SysOptBridge.getFactory().getActivityManager(mService.getSmtEx().mAMS)
+                .notifyActivityLifeCycleStateChanged(r, 5);
     }
 
     private void removeTimeoutsForActivityLocked(ActivityRecord r) {
@@ -4583,6 +4672,9 @@ public class ActivityStack extends ConfigurationContainer {
         }
         cleanUpActivityServicesLocked(r);
         r.removeUriPermissionsLocked();
+        // Smartisan (factory): 5 = destroyed.
+        SysOptBridge.getFactory().getActivityManager(mService.getSmtEx().mAMS)
+                .notifyActivityLifeCycleStateChanged(r, 5);
     }
 
     /**
@@ -4745,8 +4837,17 @@ public class ActivityStack extends ConfigurationContainer {
 
             try {
                 if (DEBUG_SWITCH) Slog.i(TAG_SWITCH, "Destroying: " + r);
-                mService.getLifecycleManager().scheduleTransaction(r.app.getThread(), r.appToken,
-                        DestroyActivityItem.obtain(r.finishing, r.configChangeFlags));
+                // Smartisan (factory): a frozen process gets the destroy once it is unfrozen.
+                final WindowProcessControllerSmtBase wpcBase = r.app.getWPCSmtEx();
+                if (wpcBase.isFreezing()) {
+                    wpcBase.unFreezeProcIfNeedLocked(new DestroyActivityEvent(r.app,
+                            wpcBase.thread, r.appToken,
+                            DestroyActivityItem.obtain(r.finishing, r.configChangeFlags)));
+                } else {
+                    mService.getLifecycleManager().scheduleTransaction(r.app.getThread(),
+                            r.appToken,
+                            DestroyActivityItem.obtain(r.finishing, r.configChangeFlags));
+                }
             } catch (Exception e) {
                 // We can just ignore exceptions here...  if the process
                 // has crashed, our death notification will clean things
@@ -5949,5 +6050,10 @@ public class ActivityStack extends ConfigurationContainer {
     /** PICO activity stack extension (factory PICO OS 5.13.7). */
     public IExtActivityStack getExt() {
         return mExt;
+    }
+
+    /** Smartisan (factory): per-stack Smartisan state. */
+    public ActivityStackSmtBase getActivityStackSmtBase() {
+        return mActivityStackSmtBase;
     }
 }
