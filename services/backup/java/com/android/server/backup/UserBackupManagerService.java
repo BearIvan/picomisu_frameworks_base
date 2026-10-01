@@ -156,6 +156,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -1084,18 +1085,26 @@ public class UserBackupManagerService {
 
     private void parseLeftoverJournals() {
         ArrayList<DataChangedJournal> journals = DataChangedJournal.listJournals(mJournalDir);
+        Set<String> packageNames = new LinkedHashSet<>();
         for (DataChangedJournal journal : journals) {
             if (!journal.equals(mJournal)) {
                 try {
                     journal.forEach(packageName -> {
-                        Slog.i(TAG, "Found stale backup journal, scheduling");
-                        if (MORE_DEBUG) Slog.i(TAG, "  " + packageName);
+                        packageNames.add(packageName);
                         dataChangedImpl(packageName);
                     });
                 } catch (IOException e) {
                     Slog.e(TAG, "Can't read " + journal, e);
                 }
             }
+        }
+        if (!packageNames.isEmpty()) {
+            String msg = "Stale backup journals: Scheduled " + packageNames.size()
+                    + " package(s) total";
+            if (MORE_DEBUG) {
+                msg += ": " + packageNames;
+            }
+            Slog.i(TAG, msg);
         }
     }
 
