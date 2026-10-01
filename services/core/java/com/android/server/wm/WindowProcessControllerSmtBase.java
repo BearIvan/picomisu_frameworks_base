@@ -161,44 +161,19 @@ public class WindowProcessControllerSmtBase extends ConfigurationContainerSmtBas
             temp.valueAt(i).handle();
         }
     }
-    static class AnonymousClass1 {
-        static final int[] $SwitchMap$com$android$server$am$IApplicationFreezer$UnfreezeReason = new int[IApplicationFreezer.UnfreezeReason.values().length];
-
-        static {
-            try {
-                $SwitchMap$com$android$server$am$IApplicationFreezer$UnfreezeReason[IApplicationFreezer.UnfreezeReason.NEED_START_ACTIVITY.ordinal()] = 1;
-            } catch (NoSuchFieldError e) {
-            }
-            try {
-                $SwitchMap$com$android$server$am$IApplicationFreezer$UnfreezeReason[IApplicationFreezer.UnfreezeReason.NEED_RESUME_ACTIVITY.ordinal()] = 2;
-            } catch (NoSuchFieldError e2) {
-            }
-            try {
-                $SwitchMap$com$android$server$am$IApplicationFreezer$UnfreezeReason[IApplicationFreezer.UnfreezeReason.NEED_UPDATE_VISIBILITY.ordinal()] = 3;
-            } catch (NoSuchFieldError e3) {
-            }
-            try {
-                $SwitchMap$com$android$server$am$IApplicationFreezer$UnfreezeReason[IApplicationFreezer.UnfreezeReason.NEED_DESTROY_ACTIVITY.ordinal()] = 4;
-            } catch (NoSuchFieldError e4) {
-            }
-        }
-    }
-
     private static int amToWmUnfreezeReason(IApplicationFreezer.UnfreezeReason reason) {
-        int i = AnonymousClass1.$SwitchMap$com$android$server$am$IApplicationFreezer$UnfreezeReason[reason.ordinal()];
-        if (i == 1) {
-            return 1;
+        switch (reason) {
+            case NEED_START_ACTIVITY:
+                return UFR_START_ACTIVITY;
+            case NEED_RESUME_ACTIVITY:
+                return UFR_RESUME_ACTIVITY;
+            case NEED_UPDATE_VISIBILITY:
+                return UFR_UPDATE_VISIBILITY;
+            case NEED_DESTROY_ACTIVITY:
+                return UFR_DESTROY_ACTIVITY;
+            default:
+                return UFR_NONE;
         }
-        if (i == 2) {
-            return 2;
-        }
-        if (i == 3) {
-            return 4;
-        }
-        if (i == 4) {
-            return 8;
-        }
-        return 0;
     }
 
     void unFreezeProcIfNeedLocked(FrozenPendingEvent event) {
