@@ -78,6 +78,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
+import smartisanos.api.LoadedApkSmtEx;
+
 final class IntentReceiverLeaked extends AndroidRuntimeException {
     @UnsupportedAppUsage
     public IntentReceiverLeaked(String msg) {
@@ -1546,6 +1548,7 @@ public final class LoadedApk {
 
                     Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "broadcastReceiveReg");
                     try {
+                        LoadedApkSmtEx.getInstance().handleSpecialIntentSmt(intent, mContext);
                         ClassLoader cl = mReceiver.getClass().getClassLoader();
                         intent.setExtrasClassLoader(cl);
                         intent.prepareToEnterProcess();

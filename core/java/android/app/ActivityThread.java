@@ -3886,6 +3886,7 @@ public final class ActivityThread extends ClientTransactionHandler {
                 + ", comp=" + data.intent.getComponent().toShortString()
                 + ", dir=" + packageInfo.getAppDir());
 
+            getSmtEx().handleSpecialIntentSmt(data.intent, app);
             sCurrentBroadcastIntent.set(data.intent);
             receiver.setPendingResult(data);
             receiver.onReceive(context.getReceiverRestrictedContext(),
