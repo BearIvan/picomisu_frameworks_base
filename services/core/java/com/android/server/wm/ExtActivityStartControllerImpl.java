@@ -28,7 +28,6 @@ import android.text.TextUtils;
 import android.util.MergedConfiguration;
 import android.util.Slog;
 import android.view.Display;
-import android.view.DisplayInfo;
 
 import com.android.server.SysOptBridge;
 import com.android.server.am.ActivityManagerService;
@@ -499,16 +498,6 @@ public class ExtActivityStartControllerImpl implements IExtActivityStartControll
                         != sourceRecord.info.getExt().isVrActivity();
     }
 
-    /** Portrait (orientation 1) or landscape size of the 2D app, with its density, into config. */
-    private static void adjustTo2dAppConfiguration(Configuration config, ApplicationInfo info,
-            int orientation) {
-        final int width = orientation == 1 ? info.getExt().get2dAppPortraitWidth()
-                : info.getExt().get2dAppLandscapeWidth();
-        final int height = orientation == 1 ? info.getExt().get2dAppPortraitHeight()
-                : info.getExt().get2dAppLandscapeHeight();
-        PicoUtils.adjustConfiguration(config, info.getExt().get2dAppDensity(), width, height);
-    }
-
     /**
      * Global configuration reported to a 2D app activity (ActivityRecord
      * ensureActivityConfiguration / relaunchActivityLocked): its process configuration, or the
@@ -526,8 +515,14 @@ public class ExtActivityStartControllerImpl implements IExtActivityStartControll
         if (activityRecord.app != null) {
             return activityRecord.app.getConfiguration();
         }
+        final int orientation = info.getExt().get2dAppOrientation();
+        final int width = orientation == 1 ? info.getExt().get2dAppPortraitWidth()
+                : info.getExt().get2dAppLandscapeWidth();
+        final int height = orientation == 1 ? info.getExt().get2dAppPortraitHeight()
+                : info.getExt().get2dAppLandscapeHeight();
+        final int density = info.getExt().get2dAppDensity();
         mTmpConfiguration.setTo(mService.getGlobalConfiguration());
-        adjustTo2dAppConfiguration(mTmpConfiguration, info, info.getExt().get2dAppOrientation());
+        PicoUtils.adjustConfiguration(mTmpConfiguration, density, width, height);
         Slog.i(TAG, "getGlobalConfiguration: " + activityRecord + "," + mTmpConfiguration);
         return mTmpConfiguration;
     }
@@ -544,8 +539,14 @@ public class ExtActivityStartControllerImpl implements IExtActivityStartControll
         if (!PicoUtils.usingNewConfigurationSolution(info) || info.getExt().isVrApp()) {
             return false;
         }
+        final int orientation = info.getExt().get2dAppOrientation();
+        final int width = orientation == 1 ? info.getExt().get2dAppPortraitWidth()
+                : info.getExt().get2dAppLandscapeWidth();
+        final int height = orientation == 1 ? info.getExt().get2dAppPortraitHeight()
+                : info.getExt().get2dAppLandscapeHeight();
+        final int density = info.getExt().get2dAppDensity();
         mTmpConfiguration.setTo(mService.getGlobalConfiguration());
-        adjustTo2dAppConfiguration(mTmpConfiguration, info, info.getExt().get2dAppOrientation());
+        PicoUtils.adjustConfiguration(mTmpConfiguration, density, width, height);
         app.onConfigurationChanged(mTmpConfiguration);
         Slog.i(TAG, "onWindowProcessControllerInit: " + info + "," + mTmpConfiguration);
         return true;
@@ -578,12 +579,22 @@ public class ExtActivityStartControllerImpl implements IExtActivityStartControll
         if (apps.isEmpty()) {
             return;
         }
-        final DisplayInfo displayInfo = displayContent.getDisplayInfo();
-        final int orientation = displayInfo.logicalWidth > displayInfo.logicalHeight ? 0 : 1;
         for (WindowProcessController app : apps) {
             final ApplicationInfo info = app.mInfo;
+            final int orientation;
+            if (displayContent.getDisplayInfo().logicalWidth
+                    > displayContent.getDisplayInfo().logicalHeight) {
+                orientation = 0;
+            } else {
+                orientation = 1;
+            }
+            final int width = orientation == 1 ? info.getExt().get2dAppPortraitWidth()
+                    : info.getExt().get2dAppLandscapeWidth();
+            final int height = orientation == 1 ? info.getExt().get2dAppPortraitHeight()
+                    : info.getExt().get2dAppLandscapeHeight();
+            final int density = info.getExt().get2dAppDensity();
             mTmpConfiguration.setTo(app.getConfiguration());
-            adjustTo2dAppConfiguration(mTmpConfiguration, info, orientation);
+            PicoUtils.adjustConfiguration(mTmpConfiguration, density, width, height);
             app.onConfigurationChanged(mTmpConfiguration);
             Slog.i(TAG, "onDisplayConfigurationChanged: " + info + "," + mTmpConfiguration);
         }
@@ -652,7 +663,7 @@ public class ExtActivityStartControllerImpl implements IExtActivityStartControll
     }
 
     private static class PendingActivityLaunch {
-        private static long sSeqCount = 0;
+        private static long seqCount = 0;
         final boolean isTask;
         final ActivityRecord r;
         final long requestTime = SystemClock.uptimeMillis();
@@ -662,7 +673,7 @@ public class ExtActivityStartControllerImpl implements IExtActivityStartControll
 
         PendingActivityLaunch(ActivityRecord r, ActivityRecord sourceRecord, int startFlags,
                 boolean isTask) {
-            this.seq = sSeqCount++;
+            this.seq = seqCount++;
             this.r = r;
             this.sourceRecord = sourceRecord;
             this.startFlags = startFlags;
