@@ -510,7 +510,7 @@ public final class PowerManagerService extends SystemService
     private boolean mBatteryLevelLow;
 
     // True if we are currently in device idle mode.
-    private boolean mDeviceIdleMode;
+    protected boolean mDeviceIdleMode;
 
     // True if we are currently in light device idle mode.
     private boolean mLightDeviceIdleMode;
@@ -521,7 +521,7 @@ public final class PowerManagerService extends SystemService
     // Set of app ids that are temporarily allowed to acquire wakelocks due to high-pri message
     int[] mDeviceIdleTempWhitelist = new int[0];
 
-    private final SparseArray<UidState> mUidState = new SparseArray<>();
+    protected final SparseArray<UidState> mUidState = new SparseArray<>();
 
     // We are currently in the middle of a batch change of uids.
     private boolean mUidsChanging;
@@ -1267,7 +1267,7 @@ public final class PowerManagerService extends SystemService
         return -1;
     }
 
-    private void notifyWakeLockAcquiredLocked(WakeLock wakeLock) {
+    protected void notifyWakeLockAcquiredLocked(WakeLock wakeLock) {
         if (mSystemReady && !wakeLock.mDisabled) {
             wakeLock.mNotifiedAcquired = true;
             mNotifier.onWakeLockAcquired(wakeLock.mFlags, wakeLock.mTag, wakeLock.mPackageName,
@@ -1323,7 +1323,7 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    private void notifyWakeLockReleasedLocked(WakeLock wakeLock) {
+    protected void notifyWakeLockReleasedLocked(WakeLock wakeLock) {
         if (mSystemReady && wakeLock.mNotifiedAcquired) {
             wakeLock.mNotifiedAcquired = false;
             wakeLock.mAcquireTime = 0;
@@ -3026,7 +3026,7 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    private void handleUidStateChangeLocked() {
+    protected void handleUidStateChangeLocked() {
         if (mUidsChanging) {
             mUidsChanged = true;
         } else {
@@ -3123,7 +3123,7 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    private boolean setWakeLockDisabledStateLocked(WakeLock wakeLock) {
+    protected boolean setWakeLockDisabledStateLocked(WakeLock wakeLock) {
         if ((wakeLock.mFlags & PowerManager.WAKE_LOCK_LEVEL_MASK)
                 == PowerManager.PARTIAL_WAKE_LOCK) {
             boolean disabled = false;
@@ -4048,7 +4048,7 @@ public final class PowerManagerService extends SystemService
     /**
      * Represents a wake lock that has been acquired by an application.
      */
-    private final class WakeLock implements IBinder.DeathRecipient {
+    protected final class WakeLock implements IBinder.DeathRecipient {
         public final IBinder mLock;
         public int mFlags;
         public String mTag;

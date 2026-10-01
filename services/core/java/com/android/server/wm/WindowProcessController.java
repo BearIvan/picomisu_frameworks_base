@@ -85,7 +85,7 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
     private static final String TAG_CONFIGURATION = TAG + POSTFIX_CONFIGURATION;
 
     // all about the first app in the process
-    final ApplicationInfo mInfo;
+    public final ApplicationInfo mInfo;
     final String mName;
     final int mUid;
     // The process of this application; 0 if none
@@ -98,7 +98,7 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
     // List of packages running in the process
     final ArraySet<String> mPkgList = new ArraySet<>();
     private final WindowProcessListener mListener;
-    private final ActivityTaskManagerService mAtm;
+    protected final ActivityTaskManagerService mAtm;
     // The actual proc...  may be null only if 'persistent' is true (in which case we are in the
     // process of launching the app)
     private IApplicationThread mThread;
@@ -160,7 +160,7 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
     int mVrThreadTid;
 
     // all activities running in the process
-    private final ArrayList<ActivityRecord> mActivities = new ArrayList<>();
+    protected final ArrayList<ActivityRecord> mActivities = new ArrayList<>();
     // any tasks this process had run root activities in
     private final ArrayList<TaskRecord> mRecentTasks = new ArrayList<>();
     // The most recent top-most activity that was resumed in the process for pre-Q app.
@@ -191,6 +191,8 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
         mOwner = owner;
         mListener = listener;
         mAtm = atm;
+        // Smartisan (factory): the WindowProcessControllerSmtBase keeps the freezer state.
+        ((WindowProcessControllerSmtBase) getSmtEx()).init(atm, listener);
         mLastReportedConfiguration = new Configuration();
         mDisplayId = INVALID_DISPLAY;
         if (atm != null) {
@@ -206,6 +208,7 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
 
     public void setPid(int pid) {
         mPid = pid;
+        getWPCSmtEx().setOriginPid(pid);
     }
 
     public int getPid() {
@@ -956,7 +959,9 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
 
     private void updateConfiguration() {
         final Configuration config = getConfiguration();
-        if (mLastReportedConfiguration.diff(config) == 0) {
+        // Smartisan (factory): a frozen process gets the configuration when it is unfrozen.
+        if (getWPCSmtEx().cacheFrozenConfiguration(config)
+                || mLastReportedConfiguration.diff(config) == 0) {
             // Nothing changed.
             return;
         }
@@ -1142,5 +1147,10 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
         if (mListener != null) {
             mListener.writeToProto(proto, fieldId);
         }
+    }
+
+    /** Smartisan extension state of this process (factory PICO OS 5.13.7). */
+    public WindowProcessControllerSmtBase getWPCSmtEx() {
+        return (WindowProcessControllerSmtBase) getSmtEx();
     }
 }

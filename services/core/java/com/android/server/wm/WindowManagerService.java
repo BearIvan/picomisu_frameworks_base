@@ -258,6 +258,7 @@ import com.android.server.EventLogTags;
 import com.android.server.FgThread;
 import com.android.server.LocalServices;
 import com.android.server.UiThread;
+import com.android.server.SysOptBridge;
 import com.android.server.Watchdog;
 import com.android.server.input.InputManagerService;
 import com.android.server.policy.WindowManagerPolicy;
@@ -1191,6 +1192,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 });
 
         LocalServices.addService(WindowManagerInternal.class, new LocalService());
+        mSmtEx.initLocalServices();
     }
 
     /**
@@ -3366,6 +3368,8 @@ public class WindowManagerService extends IWindowManager.Stub
             }
 
             EventLog.writeEvent(EventLogTags.WM_BOOT_ANIMATION_DONE, SystemClock.uptimeMillis());
+            SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_animation_done",
+                    SystemClock.elapsedRealtime());
             Trace.asyncTraceEnd(TRACE_TAG_WINDOW_MANAGER, "Stop bootanim", 0);
             mDisplayEnabled = true;
             if (DEBUG_SCREEN_ON || DEBUG_BOOT) Slog.i(TAG_WM, "******************** ENABLING SCREEN!");
@@ -4409,6 +4413,8 @@ public class WindowManagerService extends IWindowManager.Stub
 
     final InputManagerCallback mInputManagerCallback = new InputManagerCallback(this);
     private boolean mEventDispatchingEnabled;
+    /** Smartisan window manager extension (factory PICO OS 5.13.7). */
+    private WindowManagerServiceSmtBase mSmtEx = new WindowManagerServiceSmtBase(this);
     /** PICO window manager extension (factory IExtWindowManagerService). */
     private IExtWindowManagerService mExt = new ExtWindowManagerServiceImpl(this);
 
@@ -7879,5 +7885,10 @@ public class WindowManagerService extends IWindowManager.Stub
             displayContent.mAcitvityDisplay.ensureActivitiesVisible(null /* starting */,
                     0 /* configChanges */, !PRESERVE_WINDOWS, true /* notifyClients */);
         }
+    }
+
+    /** Smartisan window manager extension (factory PICO OS 5.13.7). */
+    public WindowManagerServiceSmtBase getSmtEx() {
+        return mSmtEx;
     }
 }

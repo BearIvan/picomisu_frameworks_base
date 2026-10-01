@@ -158,7 +158,7 @@ public final class OomAdjuster {
      * The handler to execute {@link #setProcessGroup} (it may be heavy if the process has many
      * threads) for reducing the time spent in {@link #applyOomAdjLocked}.
      */
-    private final Handler mProcessGroupHandler;
+    final Handler mProcessGroupHandler;
 
     private final ArraySet<BroadcastQueue> mTmpBroadcastQueue = new ArraySet();
 
@@ -1770,7 +1770,7 @@ public final class OomAdjuster {
 
     /** Applies the computed oomadj, procstate and sched group values and freezes them in set* */
     @GuardedBy("mService")
-    private final boolean applyOomAdjLocked(ProcessRecord app, boolean doingAll, long now,
+    protected final boolean applyOomAdjLocked(ProcessRecord app, boolean doingAll, long now,
             long nowElapsed) {
         boolean success = true;
 

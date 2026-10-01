@@ -77,10 +77,10 @@ import java.util.List;
  * Full information about a particular process that
  * is currently running.
  */
-class ProcessRecord implements WindowProcessListener {
+public class ProcessRecord implements WindowProcessListener {
     private static final String TAG = TAG_WITH_CLASS_NAME ? "ProcessRecord" : TAG_AM;
 
-    private final ActivityManagerService mService; // where we came from
+    final ActivityManagerService mService; // where we came from
     final ApplicationInfo info; // all about the first app in the process
     final boolean isolated;     // true if this is a special isolated process
     final boolean appZygote;    // true if this is forked from the app zygote
@@ -246,7 +246,7 @@ class ProcessRecord implements WindowProcessListener {
     long lastMemInfoTime;
 
     // Controller for driving the process state on the window manager side.
-    final private WindowProcessController mWindowProcessController;
+    protected final WindowProcessController mWindowProcessController;
     // all ServiceRecord running in this process
     final ArraySet<ServiceRecord> services = new ArraySet<>();
     // services that are currently executing code (need to remain foreground).

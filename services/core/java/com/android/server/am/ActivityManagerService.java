@@ -755,8 +755,19 @@ public class ActivityManagerService extends IActivityManager.Stub
          * method.
          */
         void put(ProcessRecord app) {
+            put(app, false);
+        }
+
+        /**
+         * Smartisan (factory PICO OS 5.13.7): fromFrozen is true when the freezer puts back a
+         * process it took out; the freeze controller is not told about it then.
+         */
+        void put(ProcessRecord app, boolean fromFrozen) {
             synchronized (this) {
                 mPidMap.put(app.pid, app);
+            }
+            if (!fromFrozen) {
+                SysOptBridge.getFactory().getFreezeController().addProc(app.uid, app.pid, app);
             }
             ActivityTriggerService atService = LocalServices.getService(ActivityTriggerService.class);
             if(atService != null) {
@@ -771,6 +782,11 @@ public class ActivityManagerService extends IActivityManager.Stub
          * method.
          */
         void remove(ProcessRecord app) {
+            remove(app, false);
+        }
+
+        /** Smartisan (factory PICO OS 5.13.7): see {@link #put(ProcessRecord, boolean)}. */
+        void remove(ProcessRecord app, boolean fromFrozen) {
             boolean removed = false;
             synchronized (this) {
                 final ProcessRecord existingApp = mPidMap.get(app.pid);
@@ -780,6 +796,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
             }
             if (removed) {
+                if (!fromFrozen) {
+                    SysOptBridge.getFactory().getFreezeController().removeProc(app.uid, app.pid);
+                }
                 ActivityTriggerService atService = LocalServices.getService(ActivityTriggerService.class);
                 if(atService != null) {
                     atService.updateRecord(app.hostingRecord, app.info, app.pid, ActivityTriggerService.PROC_REMOVED_NOTIFICATION);
@@ -804,6 +823,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
             }
             if (removed) {
+                SysOptBridge.getFactory().getFreezeController().removeProc(app.uid, app.pid);
                 mAtmInternal.onProcessUnMapped(app.pid);
             }
             return removed;
@@ -2146,7 +2166,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     static class MemBinder extends Binder {
         ActivityManagerService mActivityManagerService;
-        private final PriorityDump.PriorityDumper mPriorityDumper =
+        public final PriorityDump.PriorityDumper mPriorityDumper =
                 new PriorityDump.PriorityDumper() {
             @Override
             public void dumpHigh(FileDescriptor fd, PrintWriter pw, String[] args,
@@ -4584,7 +4604,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     }
 
     @GuardedBy("this")
-    private void forceStopPackageLocked(final String packageName, int uid, String reason) {
+    void forceStopPackageLocked(final String packageName, int uid, String reason) {
         forceStopPackageLocked(packageName, UserHandle.getAppId(uid), false,
                 false, true, false, false, UserHandle.getUserId(uid), reason);
     }
@@ -6733,13 +6753,13 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
     }
 
-    private static final int[] PROCESS_STATE_STATS_FORMAT = new int[] {
+    protected static final int[] PROCESS_STATE_STATS_FORMAT = new int[] {
             PROC_SPACE_TERM,
             PROC_SPACE_TERM|PROC_PARENS,
             PROC_SPACE_TERM|PROC_CHAR|PROC_OUT_LONG,        // 3: process state
     };
 
-    private final long[] mProcessStateStatsLongs = new long[1];
+    protected final long[] mProcessStateStatsLongs = new long[1];
 
     // Smartisan memory process controller (factory PICO OS 5.13.7), see
     // keepProcessAliveBackground().

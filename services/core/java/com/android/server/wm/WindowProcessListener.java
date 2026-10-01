@@ -72,4 +72,7 @@ public interface WindowProcessListener {
      * @see RemoteAnimationAdapter
      */
     void setRunningRemoteAnimation(boolean runningRemoteAnimation);
+
+    /** Smartisan extension of the process (factory PICO OS 5.13.7). */
+    WindowProcessListenerSmtBase getSmtEx();
 }

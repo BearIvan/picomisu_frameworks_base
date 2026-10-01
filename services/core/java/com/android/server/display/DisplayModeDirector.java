@@ -78,7 +78,7 @@ public class DisplayModeDirector {
     // The tolerance within which we consider something approximately equals.
     private static final float EPSILON = 0.001f;
 
-    private final Object mLock = new Object();
+    protected final Object mLock = new Object();
     private final Context mContext;
 
     private final DisplayModeDirectorHandler mHandler;
@@ -345,7 +345,7 @@ public class DisplayModeDirector {
         }
     }
 
-    private void updateVoteLocked(int priority, Vote vote) {
+    protected void updateVoteLocked(int priority, Vote vote) {
         updateVoteLocked(GLOBAL_ID, priority, vote);
     }
 

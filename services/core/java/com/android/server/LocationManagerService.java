@@ -185,7 +185,7 @@ public class LocationManagerService extends ILocationManager.Stub {
 
     private static final LocationRequest DEFAULT_LOCATION_REQUEST = new LocationRequest();
 
-    private final Object mLock = new Object();
+    protected final Object mLock = new Object();
     private final Context mContext;
     private final Handler mHandler;
 
@@ -201,13 +201,13 @@ public class LocationManagerService extends ILocationManager.Stub {
     private GeofenceManager mGeofenceManager;
     private LocationFudger mLocationFudger;
     private GeocoderProxy mGeocodeProvider;
-    private GnssStatusListenerHelper mGnssStatusProvider;
+    protected GnssStatusListenerHelper mGnssStatusProvider;
     private INetInitiatedListener mNetInitiatedListener;
     private PassiveProvider mPassiveProvider;  // track passive provider for special cases
     private LocationBlacklist mBlacklist;
-    private GnssMeasurementsProvider mGnssMeasurementsProvider;
+    protected GnssMeasurementsProvider mGnssMeasurementsProvider;
     private GnssMeasurementCorrectionsProvider mGnssMeasurementCorrectionsProvider;
-    private GnssNavigationMessageProvider mGnssNavigationMessageProvider;
+    protected GnssNavigationMessageProvider mGnssNavigationMessageProvider;
     @GuardedBy("mLock")
     private String mExtraLocationControllerPackage;
     private boolean mExtraLocationControllerPackageEnabled;
@@ -224,7 +224,7 @@ public class LocationManagerService extends ILocationManager.Stub {
 
     @GuardedBy("mLock")
     private final HashMap<Object, Receiver> mReceivers = new HashMap<>();
-    private final HashMap<String, ArrayList<UpdateRecord>> mRecordsByProvider =
+    protected final HashMap<String, ArrayList<UpdateRecord>> mRecordsByProvider =
             new HashMap<>();
 
     private final LocationRequestStatistics mRequestStatistics = new LocationRequestStatistics();
@@ -244,13 +244,13 @@ public class LocationManagerService extends ILocationManager.Stub {
     private final ArraySet<String> mIgnoreSettingsPackageWhitelist = new ArraySet<>();
 
     @GuardedBy("mLock")
-    private final ArrayMap<IBinder, LinkedListener<IGnssMeasurementsListener>>
+    protected final ArrayMap<IBinder, LinkedListener<IGnssMeasurementsListener>>
             mGnssMeasurementsListeners = new ArrayMap<>();
     @GuardedBy("mLock")
-    private final ArrayMap<IBinder, LinkedListener<IGnssNavigationMessageListener>>
+    protected final ArrayMap<IBinder, LinkedListener<IGnssNavigationMessageListener>>
             mGnssNavigationMessageListeners = new ArrayMap<>();
     @GuardedBy("mLock")
-    private final ArrayMap<IBinder, LinkedListener<IGnssStatusListener>>
+    protected final ArrayMap<IBinder, LinkedListener<IGnssStatusListener>>
             mGnssStatusListeners = new ArrayMap<>();
 
     // current active user on the device - other users are denied location data
@@ -632,7 +632,7 @@ public class LocationManagerService extends ILocationManager.Stub {
         }
     }
 
-    private static String foregroundAsString(boolean foreground) {
+    protected static String foregroundAsString(boolean foreground) {
         return foreground ? "foreground" : "background";
     }
 
@@ -2124,7 +2124,7 @@ public class LocationManagerService extends ILocationManager.Stub {
     }
 
     @GuardedBy("mLock")
-    private void applyRequirementsLocked(String providerName) {
+    protected void applyRequirementsLocked(String providerName) {
         LocationProvider provider = getLocationProviderLocked(providerName);
         if (provider != null) {
             applyRequirementsLocked(provider);
@@ -2280,7 +2280,7 @@ public class LocationManagerService extends ILocationManager.Stub {
     }
 
     @GuardedBy("mLock")
-    private boolean isThrottlingExemptLocked(CallerIdentity callerIdentity) {
+    protected boolean isThrottlingExemptLocked(CallerIdentity callerIdentity) {
         if (callerIdentity.mUid == Process.SYSTEM_UID) {
             return true;
         }
@@ -2312,8 +2312,8 @@ public class LocationManagerService extends ILocationManager.Stub {
         final String mProvider;
         private final LocationRequest mRealRequest;  // original request from client
         LocationRequest mRequest;  // possibly throttled version of the request
-        private final Receiver mReceiver;
-        private boolean mIsForegroundUid;
+        protected final Receiver mReceiver;
+        protected boolean mIsForegroundUid;
         private Location mLastFixBroadcast;
         private long mLastStatusBroadcast;
         private Throwable mStackTrace;  // for debugging only

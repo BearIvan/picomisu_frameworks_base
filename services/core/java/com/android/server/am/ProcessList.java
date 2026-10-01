@@ -1290,7 +1290,7 @@ public final class ProcessList {
         return false;
     }
 
-    private static boolean writeLmkd(ByteBuffer buf, ByteBuffer repl) {
+    protected static boolean writeLmkd(ByteBuffer buf, ByteBuffer repl) {
         synchronized (sLmkdSocketLock) {
             for (int i = 0; i < 3; i++) {
                 if (sLmkdSocket == null) {

@@ -627,4 +627,9 @@ public abstract class ConfigurationContainer<E extends ConfigurationContainer> {
         }
         return mSmtEx;
     }
+
+    /** Smartisan PC mode (factory PICO OS 5.13.7): never on this device. */
+    public final boolean isPcMode() {
+        return false;
+    }
 }

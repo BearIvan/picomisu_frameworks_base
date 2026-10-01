@@ -216,6 +216,7 @@ import com.android.server.AttributeCache;
 import com.android.server.AttributeCache.Entry;
 import com.android.server.am.AppTimeTracker;
 import com.android.server.am.PendingIntentRecord;
+import com.android.server.am.ProcessRecord;
 import com.android.server.uri.UriPermissionOwner;
 import com.android.server.wm.ActivityMetricsLogger.WindowingModeTransitionInfoSnapshot;
 import com.android.server.wm.ActivityStack.ActivityState;
@@ -267,11 +268,11 @@ public final class ActivityRecord extends ConfigurationContainer {
 
     final ActivityInfo info; // all about me
     // TODO: This is duplicated state already contained in info.applicationInfo - remove
-    ApplicationInfo appInfo; // information about activity's app
+    public ApplicationInfo appInfo; // information about activity's app
     final int launchedFromPid; // always the pid who started the activity.
     final int launchedFromUid; // always the uid who started the activity.
     final String launchedFromPackage; // always the package who started the activity.
-    final int mUserId;          // Which user is this running for?
+    public final int mUserId;          // Which user is this running for?
     final Intent intent;    // the original intent that generated us
     final ComponentName mActivityComponent;  // the intent component, or target of an alias.
     final String shortComponentName; // the short component name of the intent
@@ -323,7 +324,7 @@ public final class ActivityRecord extends ConfigurationContainer {
     ActivityServiceConnectionsHolder mServiceConnectionsHolder; // Service connections.
     UriPermissionOwner uriPermissions; // current special URI access perms.
     WindowProcessController app;      // if non-null, hosting application
-    private ActivityState mState;    // current state we are in
+    ActivityState mState;    // current state we are in
     Bundle  icicle;         // last saved activity state
     PersistableBundle persistentState; // last persistently saved activity state
     // TODO: See if this is still needed.
@@ -717,7 +718,7 @@ public final class ActivityRecord extends ConfigurationContainer {
 
     boolean scheduleTopResumedActivityChanged(boolean onTop) {
         if (!attachedToProcess()) {
-            if (DEBUG_STATES) {
+            if (DEBUG_STATES || (hasProcess() && app.getWPCSmtEx().isFreezing())) {
                 Slog.w(TAG, "Can't report activity position update - client not running"
                                 + ", activityRecord=" + this);
             }
@@ -947,6 +948,9 @@ public final class ActivityRecord extends ConfigurationContainer {
 
     /** PICO activity extension (factory IExtActivityRecord). */
     private IExtActivityRecord mExt = new ExtActivityRecordImpl(this);
+    // Smartisan monitor and extension state (factory PICO OS 5.13.7).
+    private final ActivityRecordMonitorEx mActivityRecordMonitorEx;
+    private final ActivityRecordSmtBase mActivityRecordSmtEx;
 
     ActivityRecord(ActivityTaskManagerService _service, WindowProcessController _caller,
             int _launchedFromPid, int _launchedFromUid, String _launchedFromPackage, Intent _intent,
@@ -1095,6 +1099,8 @@ public final class ActivityRecord extends ConfigurationContainer {
 
         if (mPerf == null)
             mPerf = new BoostFramework();
+        mActivityRecordMonitorEx = new ActivityRecordMonitorEx(this);
+        mActivityRecordSmtEx = new ActivityRecordSmtBase(this);
     }
 
     void setProcess(WindowProcessController proc) {
@@ -1874,7 +1880,9 @@ public final class ActivityRecord extends ConfigurationContainer {
         if (DEBUG_STATES) Slog.v(TAG_STATES, "State movement: " + this + " from:" + getState()
                         + " to:" + state + " reason:" + reason);
 
-        if (state == mState) {
+        // Smartisan (factory): a prefetched process goes through its states again.
+        if (state == mState && (app == null
+                || !((ProcessRecord) app.mOwner).getSmtEx().isPrefetch)) {
             // No need to do anything if state doesn't change.
             if (DEBUG_STATES) Slog.v(TAG_STATES, "State unchanged from:" + state);
             return;
@@ -1898,6 +1906,11 @@ public final class ActivityRecord extends ConfigurationContainer {
                 return;
             }
             mAppWindowToken.detachChildren();
+        }
+
+        // Smartisan (factory): no battery or usage stats for a prefetched application.
+        if (appInfo != null && appInfo.getSmtEx().isPrefetch) {
+            return;
         }
 
         if (state == RESUMED) {
@@ -2276,6 +2289,7 @@ public final class ActivityRecord extends ConfigurationContainer {
         if (!isStopping && mState != RESTARTING_PROCESS) {
             Slog.i(TAG, "Activity reported stop, but no longer stopping: " + this);
             stack.mHandler.removeMessages(STOP_TIMEOUT_MSG, this);
+            getActivityRecordSmtEx().stopPkgIfMarked();
             return;
         }
         if (newPersistentState != null) {
@@ -2314,6 +2328,7 @@ public final class ActivityRecord extends ConfigurationContainer {
                     mRootActivityContainer.updatePreviousProcess(this);
                 }
             }
+            getActivityRecordSmtEx().stopPkgIfMarked();
         }
     }
 
@@ -3966,5 +3981,15 @@ public final class ActivityRecord extends ConfigurationContainer {
             outBounds.set(0, 0, isLandscape ? longSide : shortSide,
                     isLandscape ? shortSide : longSide);
         }
+    }
+
+    /** Smartisan extension state of this activity (factory PICO OS 5.13.7). */
+    public ActivityRecordSmtBase getActivityRecordSmtEx() {
+        return mActivityRecordSmtEx;
+    }
+
+    /** Smartisan monitor state of this activity (factory PICO OS 5.13.7). */
+    public ActivityRecordMonitorEx getActivityRecordMonitorEx() {
+        return mActivityRecordMonitorEx;
     }
 }

@@ -241,7 +241,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         }
     }
 
-    private void syncStats(String reason, int flags) {
+    protected void syncStats(String reason, int flags) {
         awaitUninterruptibly(mWorker.scheduleSync(reason, flags));
     }
 
@@ -1640,7 +1640,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         }
     }
 
-    private boolean shouldCollectExternalStats() {
+    protected boolean shouldCollectExternalStats() {
         return (SystemClock.elapsedRealtime() - mWorker.getLastCollectionTimeStamp())
                 > mStats.getExternalStatsCollectionRateLimitMs();
     }

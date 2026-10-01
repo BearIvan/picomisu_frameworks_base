@@ -162,6 +162,7 @@ import android.graphics.Region;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Debug;
+import android.os.FrozenObjectException;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeReason;
@@ -205,6 +206,7 @@ import android.view.animation.Interpolator;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.ToBooleanFunction;
+import com.android.server.ApplicationFreezerHelperSmt;
 import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.wm.LocalAnimationAdapter.AnimationSpec;
 import com.android.server.wm.utils.InsetUtils;
@@ -1967,6 +1969,13 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             // we are doing this as part of processing a death note.)
         }
 
+        // Smartisan (factory): drop the frozen callback of this window's process.
+        if (getWindowStateSmtBase().isFrozenCallbackRegisterd) {
+            getWindowStateSmtBase().isFrozenCallbackRegisterd = false;
+            ApplicationFreezerHelperSmt.unregisterFrozenCallbackByPidOnce(mSession.mPid,
+                    mSession.mUid, getWindowStateSmtBase());
+        }
+
         mWmService.postWindowRemoveCleanupLocked(this);
     }
 
@@ -3283,6 +3292,10 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             mWindowFrames.resetInsetsChanged();
             mWinAnimator.mSurfaceResized = false;
             mReportOrientationChanged = false;
+        } catch (FrozenObjectException e) {
+            // Smartisan (factory): the client process is frozen, keep the window.
+            Slog.e(TAG, "Failed to report 'resized' to the client of " + this
+                    + ", for Frozen " + e);
         } catch (RemoteException e) {
             setOrientationChanging(false);
             mLastFreezeDuration = (int)(SystemClock.elapsedRealtime()
@@ -5334,5 +5347,10 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             proto.write(DURATION_MS, mDuration);
             proto.end(token);
         }
+    }
+
+    /** Smartisan extension state of this window (factory PICO OS 5.13.7). */
+    public WindowStateSmtBase getWindowStateSmtBase() {
+        return (WindowStateSmtBase) getSmtEx();
     }
 }

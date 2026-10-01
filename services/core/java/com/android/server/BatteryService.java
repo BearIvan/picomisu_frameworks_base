@@ -149,7 +149,7 @@ public final class BatteryService extends SystemService {
     private int mLastBatteryStatus;
     private int mLastBatteryHealth;
     private boolean mLastBatteryPresent;
-    private int mLastBatteryLevel;
+    protected int mLastBatteryLevel;
     private int mLastBatteryVoltage;
     private int mLastBatteryTemperature;
     private boolean mLastBatteryLevelCritical;
@@ -1001,7 +1001,7 @@ public final class BatteryService extends SystemService {
         }
     }
 
-    private void dumpInternal(FileDescriptor fd, PrintWriter pw, String[] args) {
+    protected void dumpInternal(FileDescriptor fd, PrintWriter pw, String[] args) {
         synchronized (mLock) {
             if (args == null || args.length == 0 || "-a".equals(args[0])) {
                 pw.println("Current Battery Service state:");

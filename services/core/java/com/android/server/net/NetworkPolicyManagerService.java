@@ -3913,7 +3913,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
     }
 
     @GuardedBy("mUidRulesFirstLock")
-    private void updateRulesForRestrictBackgroundUL() {
+    protected void updateRulesForRestrictBackgroundUL() {
         Trace.traceBegin(Trace.TRACE_TAG_NETWORK, "updateRulesForRestrictBackgroundUL");
         try {
             updateRulesForAllAppsUL(TYPE_RESTRICT_BACKGROUND);

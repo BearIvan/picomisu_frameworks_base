@@ -92,7 +92,7 @@ final class ServiceRecord extends Binder implements ComponentName.WithComponentN
     final ArrayMap<Intent.FilterComparison, IntentBindRecord> bindings
             = new ArrayMap<Intent.FilterComparison, IntentBindRecord>();
                             // All active bindings to the service.
-    private final ArrayMap<IBinder, ArrayList<ConnectionRecord>> connections
+    public final ArrayMap<IBinder, ArrayList<ConnectionRecord>> connections
             = new ArrayMap<IBinder, ArrayList<ConnectionRecord>>();
                             // IBinder -> ConnectionRecord of all bound clients
 

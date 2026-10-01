@@ -176,7 +176,7 @@ public class NetworkManagementService extends INetworkManagementService.Stub {
      * If both locks need to be held, then they should be obtained in the order:
      * first {@link #mQuotaLock} and then {@link #mRulesLock}.
      */
-    private final Object mQuotaLock = new Object();
+    protected final Object mQuotaLock = new Object();
     private final Object mRulesLock = new Object();
 
     /** Set of interfaces with active quotas. */

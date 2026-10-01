@@ -169,6 +169,9 @@ public final class BroadcastQueue {
     // log latency metrics for ordered broadcasts during BOOT_COMPLETED processing
     boolean mLogLatencyMetrics = true;
 
+    /** Smartisan broadcast queue extension (factory PICO OS 5.13.7). */
+    private BroadcastQueueSmtBase mSmtEx = new BroadcastQueueSmtBase(this);
+
     final BroadcastHandler mHandler;
 
     private final class BroadcastHandler extends Handler {
@@ -2099,5 +2102,10 @@ public final class BroadcastQueue {
         }
 
         return needSep;
+    }
+
+    /** Smartisan broadcast queue extension (factory PICO OS 5.13.7). */
+    public BroadcastQueueSmtBase getSmtEx() {
+        return mSmtEx;
     }
 }

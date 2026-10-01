@@ -7315,7 +7315,7 @@ public class NotificationManagerService extends SystemService {
         }
     }
 
-    private void updateNotificationPulse() {
+    protected void updateNotificationPulse() {
         synchronized (mNotificationLock) {
             updateLightsLocked();
         }
