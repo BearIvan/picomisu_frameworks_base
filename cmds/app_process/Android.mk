@@ -10,6 +10,7 @@ app_process_common_shared_libs := \
     liblog \
     libnativeloader \
     libutils \
+    libutilscallstack \
 
 # This is a list of libraries that need to be included in order to avoid
 # bad apps. This prevents a library from having a mismatch when resolving

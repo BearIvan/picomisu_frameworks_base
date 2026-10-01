@@ -23,6 +23,7 @@
 #include <android_runtime/AndroidRuntime.h>
 #include <android-base/properties.h>
 #include <private/android_filesystem_config.h>  // for AID_SYSTEM
+#include <utils/CallStack.h>  // PICO: signal 58 backtrace
 
 using android::base::GetProperty;
 
@@ -163,6 +164,17 @@ static void maybeCreateDalvikCache() {
     result = chmod(dalvikCacheDir, 0711);
     LOG_ALWAYS_FATAL_IF((result < 0),
             "Error changing dalvik-cache permissions : %s", strerror(errno));
+}
+
+// PICO (factory PICO OS 5.13.7): signal 58 makes an app_process (zygote and its children) log
+// its own backtrace through android::CallStack.
+static constexpr int kBacktraceSignal = 58;
+
+static void signalHandler(int signo, siginfo_t* /*info*/, void* /*ucontext*/) {
+    ALOGI("output_backtrace with tid %d, with tgid %d for %d", gettid(), getpid(), signo);
+    if (signo == kBacktraceSignal) {
+        android::CallStack stack("getbacktrace", 1);
+    }
 }
 
 #if defined(__LP64__)
@@ -336,6 +348,14 @@ int main(int argc, char* const argv[])
         for (; i < argc; ++i) {
             args.add(String8(argv[i]));
         }
+    }
+
+    // PICO: install the signal 58 backtrace handler (factory PICO OS 5.13.7).
+    struct sigaction sa = {};
+    sa.sa_sigaction = signalHandler;
+    sa.sa_flags = SA_RESTART | SA_SIGINFO;
+    if (sigaction(kBacktraceSignal, &sa, nullptr) < 0) {
+        ALOGW("Error setting sig %d handler: %s", kBacktraceSignal, strerror(errno));
     }
 
     if (!niceName.isEmpty()) {
