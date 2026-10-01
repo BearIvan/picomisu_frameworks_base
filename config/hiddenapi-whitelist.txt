@@ -131,6 +131,8 @@ Landroid/media/Spatializer;->setOnSpatializerOutputChangedListener(Ljava/util/co
 Landroid/os/Binder;->setBinderCtlMask(I)V
 Landroid/os/Debug;->getTimeByQtimer()J
 Landroid/os/Looper;->mSlowDispatchThresholdMs:J
+Landroid/os/PowerAdvisor;->getInstance()Landroid/os/PowerAdvisor;
+Landroid/os/PowerAdvisor;->notePowerSceneState(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V
 Landroid/os/Process;->clearUIFirstSched()V
 Landroid/os/Process;->setUIFirstSched()V
 Landroid/os/Process;->setUIFirstSched(II)V
