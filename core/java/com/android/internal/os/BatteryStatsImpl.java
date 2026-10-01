@@ -6249,6 +6249,10 @@ public class BatteryStatsImpl extends BatteryStats {
     }
 
     @Override public long getGpsBatteryDrainMaMs() {
+        // Factory (PICO OS 5.13.7): no GPS drain without a power profile.
+        if (mPowerProfile == null) {
+            return 0;
+        }
         final double opVolt = mPowerProfile.getAveragePower(
             PowerProfile.POWER_GPS_OPERATING_VOLTAGE) / 1000.0;
         if (opVolt == 0) {
