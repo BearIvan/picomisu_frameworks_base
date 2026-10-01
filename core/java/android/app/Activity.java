@@ -939,6 +939,9 @@ public class Activity extends ContextThemeWrapper
     /** The last autofill id that was returned from {@link #getNextAutofillId()} */
     private int mLastAutofillId = View.LAST_APP_AUTOFILL_ID;
 
+    // PICO (factory): resume report, VR permission requests, finish hooks.
+    private IExtActivity mExt = new ExtActivityImpl(this);
+
     private AutofillPopupWindow mAutofillPopupWindow;
 
     /** @hide */
@@ -1813,6 +1816,7 @@ public class Activity extends ContextThemeWrapper
 
         notifyContentCaptureManagerIfNeeded(CONTENT_CAPTURE_RESUME);
 
+        mExt.onResumeCalled();
         mCalled = true;
     }
 
@@ -5093,6 +5097,18 @@ public class Activity extends ContextThemeWrapper
      * @see #shouldShowRequestPermissionRationale(String)
      */
     public final void requestPermissions(@NonNull String[] permissions, int requestCode) {
+        requestPermissions(permissions, requestCode, null);
+    }
+
+    /**
+     * PICO (factory): {@link #requestPermissions(String[], int)} with descriptions of the
+     * requested permissions, shown by the PICO permission dialog.
+     *
+     * @param permissionDescriptions Descriptions passed to the permission dialog, or null.
+     * @hide
+     */
+    public final void requestPermissions(@NonNull String[] permissions, int requestCode,
+            String[] permissionDescriptions) {
         if (requestCode < 0) {
             throw new IllegalArgumentException("requestCode should be >= 0");
         }
@@ -5103,6 +5119,7 @@ public class Activity extends ContextThemeWrapper
             return;
         }
         Intent intent = getPackageManager().buildRequestPermissionsIntent(permissions);
+        mExt.requestPermissionsCalled(intent, permissionDescriptions);
         startActivityForResult(REQUEST_PERMISSIONS_WHO_PREFIX, intent, requestCode, null);
         mHasCurrentPermissionsRequest = true;
     }
@@ -6257,6 +6274,7 @@ public class Activity extends ContextThemeWrapper
             getAutofillManager().onPendingSaveUi(AutofillManager.PENDING_UI_OPERATION_RESTORE,
                     mIntent.getIBinderExtra(AutofillManager.EXTRA_RESTORE_SESSION_TOKEN));
         }
+        mExt.onFinish();
     }
 
     /**
@@ -8665,8 +8683,15 @@ public class Activity extends ContextThemeWrapper
         @Override
         public void onRequestPermissionsFromFragment(Fragment fragment, String[] permissions,
                 int requestCode) {
+            onRequestPermissionsFromFragment(fragment, permissions, requestCode, null);
+        }
+
+        @Override
+        public void onRequestPermissionsFromFragment(Fragment fragment, String[] permissions,
+                int requestCode, String[] permissionDescriptions) {
             String who = REQUEST_PERMISSIONS_WHO_PREFIX + fragment.mWho;
             Intent intent = getPackageManager().buildRequestPermissionsIntent(permissions);
+            mExt.onRequestPermissionsFromFragmentCalled(intent, permissionDescriptions);
             startActivityForResult(who, intent, requestCode, null);
         }
 
@@ -8697,5 +8722,10 @@ public class Activity extends ContextThemeWrapper
             final Window w = getWindow();
             return (w != null && w.peekDecorView() != null);
         }
+    }
+
+    /** @hide */
+    public IExtActivity getExt() {
+        return mExt;
     }
 }

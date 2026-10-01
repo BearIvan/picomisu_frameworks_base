@@ -3,6 +3,10 @@
 Landroid/Manifest$permission;->POWER_SCENE_CHANGE:Ljava/lang/String;
 Landroid/Manifest$permission;->lifecycle:Ljava/lang/String;
 Landroid/Manifest$permission;->startevent:Ljava/lang/String;
+Landroid/app/Activity$HostCallbacks;->onRequestPermissionsFromFragment(Landroid/app/Fragment;[Ljava/lang/String;I[Ljava/lang/String;)V
+Landroid/app/Activity;->requestPermissions([Ljava/lang/String;I[Ljava/lang/String;)V
+Landroid/app/Fragment;->requestPermissions([Ljava/lang/String;I[Ljava/lang/String;)V
+Landroid/app/FragmentHostCallback;->onRequestPermissionsFromFragment(Landroid/app/Fragment;[Ljava/lang/String;I[Ljava/lang/String;)V
 Landroid/app/Notification$StandardTemplateParams;-><init>()V
 Landroid/app/Notification$StandardTemplateParams;->setMaxRemoteInputHistory(I)Landroid/app/Notification$StandardTemplateParams;
 Landroid/content/pm/ApplicationInfo;->appInfoJsonConfig:Ljava/lang/String;

@@ -1253,6 +1253,20 @@ public class Fragment implements ComponentCallbacks2, OnCreateContextMenuListene
     }
 
     /**
+     * PICO (factory): {@link #requestPermissions(String[], int)} with descriptions of the
+     * requested permissions, shown by the PICO permission dialog.
+     * @hide
+     */
+    public final void requestPermissions(@NonNull String[] permissions, int requestCode,
+            String[] permissionDescriptions) {
+        if (mHost == null) {
+            throw new IllegalStateException("Fragment " + this + " not attached to Activity");
+        }
+        mHost.onRequestPermissionsFromFragment(this, permissions, requestCode,
+                permissionDescriptions);
+    }
+
+    /**
      * Callback for the result from requesting permissions. This method
      * is invoked for every call on {@link #requestPermissions(String[], int)}.
      * <p>

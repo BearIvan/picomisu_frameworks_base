@@ -190,6 +190,15 @@ public abstract class FragmentHostCallback<E> extends FragmentContainer {
     }
 
     /**
+     * PICO (factory): requests permissions with descriptions from the given fragment.
+     * See {@link Activity#requestPermissions(String[], int, String[])}
+     * @hide
+     */
+    public void onRequestPermissionsFromFragment(@NonNull Fragment fragment,
+            @NonNull String[] permissions, int requestCode, String[] permissionDescriptions) {
+    }
+
+    /**
      * Return {@code true} if there are window animations.
      */
     public boolean onHasWindowAnimations() {
