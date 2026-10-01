@@ -202,6 +202,9 @@ public final class ActiveServices {
         }
     };
 
+    /** PICO (factory IExtActiveServices mExt): SyncAdapter binds while starting up. */
+    private final IExtActiveServices mExt = new ExtActiveServicesImpl(this);
+
     /**
      * Watch for apps being put into forced app standby, so we can step their fg
      * services down.
@@ -1656,6 +1659,8 @@ public final class ActiveServices {
                 + " type=" + resolvedType + " conn=" + connection.asBinder()
                 + " flags=0x" + Integer.toHexString(flags));
         final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller, true);
+        // PICO (factory): remember the action of this bind.
+        mExt.onBindServiceLocked(service);
         if (callerApp == null) {
             throw new SecurityException(
                     "Unable to find app for caller " + caller
@@ -2842,6 +2847,11 @@ public final class ActiveServices {
                 hostingRecord = HostingRecord.byAppZygote(r.instanceName, r.definingPackageName,
                         r.definingUid);
             }
+        }
+
+        // PICO (factory): no process start for a SyncAdapter bind while starting up.
+        if (mExt.disableStartSyncAdapter(r, app)) {
+            return null;
         }
 
         // Not running -- get it started, and enqueue this service record

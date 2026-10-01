@@ -174,6 +174,9 @@ public final class BroadcastQueue {
     /** Smartisan broadcast queue extension (factory PICO OS 5.13.7). */
     private BroadcastQueueSmtBase mSmtEx = new BroadcastQueueSmtBase(this);
 
+    /** PICO (factory IExtBroadcastQueue mExt): start-up broadcasts to stopped apps. */
+    private final IExtBroadcastQueue mExt = new ExtBroadcastQueueImpl(this);
+
     final BroadcastHandler mHandler;
 
     private final class BroadcastHandler extends Handler {
@@ -1585,7 +1588,8 @@ public final class BroadcastQueue {
                             + info.activityInfo.applicationInfo.uid + " : user is not running");
         }
 
-        if (skip) {
+        // PICO (factory): the extension may skip the delivery as well.
+        if (mExt.skipProcessNextBroadcast(skip, app, info, r, receiverUid)) {
             if (DEBUG_BROADCAST)  Slog.v(TAG_BROADCAST,
                     "Skipping delivery of ordered [" + mQueueName + "] "
                     + r + " for reason described above");
