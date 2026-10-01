@@ -72,13 +72,10 @@ public class ExtActivityStackImpl implements IExtActivityStack {
         if (mBase.mService.mStartActivitySources.containsValue(r.appToken)) {
             Slog.d(TAG, "delayDestroyActivityLocked" + r + ",  reason: " + reason);
             mBase.mHandler.postDelayed(() -> {
+                // The priority boost is added by the lockedregioncodeinjection pass, as on the
+                // factory.
                 synchronized (mBase.mService.mGlobalLock) {
-                    try {
-                        WindowManagerService.boostPriorityForLockedSection();
-                        mBase.destroyActivityLocked(r, removeFromApp, reason);
-                    } finally {
-                        WindowManagerService.resetPriorityAfterLockedSection();
-                    }
+                    mBase.destroyActivityLocked(r, removeFromApp, reason);
                 }
             }, 100L);
             return true;
