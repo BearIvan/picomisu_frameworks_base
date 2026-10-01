@@ -70,8 +70,10 @@ cc_defaults {
         "libandroidfw",
         "libcrypto",
         "libsync",
-        "libbinder",
+        // PICO: factory NEEDED order (libprocessgroup, libbinder, libsysperftracker).
         "libprocessgroup",
+        "libbinder",
+        "libsysperftracker",
     ],
     static_libs: [
         "libEGL_blobCache",
