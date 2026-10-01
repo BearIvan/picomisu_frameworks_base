@@ -330,27 +330,39 @@ static void SigChldHandler(int /*signal_number*/) {
   // See b/23572286 for extra information.
   int saved_errno = errno;
 
-  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+  // PICO OS 5.13.7: waitid() instead of waitpid(); the PICO kernel also reports the pid and
+  // the command name of the process that sent the killing signal in the SIGCHLD siginfo,
+  // right after the standard fields (killer pid at byte 0x30, 16-byte comm at 0x34).
+  siginfo_t info;
+  memset(&info, 0, sizeof(info));
+  pid = 0;
+  while (waitid(P_ALL, 0, &info, WEXITED | WNOHANG) == 0 && info.si_pid > 0) {
+    pid = info.si_pid;
+    status = info.si_status;
      // Log process-death status that we care about.
-    if (WIFEXITED(status)) {
+    if (info.si_code == CLD_KILLED || info.si_code == CLD_DUMPED) {
+      char* killer_comm = reinterpret_cast<char*>(&info) + 0x34;
+      killer_comm[15] = '\0';
+      const int killer_pid = *reinterpret_cast<int*>(reinterpret_cast<char*>(&info) + 0x30);
       async_safe_format_log(ANDROID_LOG_INFO, LOG_TAG,
-                            "Process %d exited cleanly (%d)", pid, WEXITSTATUS(status));
-
-      // Check to see if the PID is in the USAP pool and remove it if it is.
-      if (RemoveUsapTableEntry(pid)) {
-        ++usaps_removed;
-      }
-    } else if (WIFSIGNALED(status)) {
-      async_safe_format_log(ANDROID_LOG_INFO, LOG_TAG,
-                            "Process %d exited due to signal %d (%s)%s", pid,
-                            WTERMSIG(status), strsignal(WTERMSIG(status)),
-                            WCOREDUMP(status) ? "; core dumped" : "");
+                            "Process %d exited due to signal %d (%s)%s, killer = %d, comm = %s.",
+                            pid, status, strsignal(status),
+                            info.si_code == CLD_DUMPED ? "; core dumped" : "",
+                            killer_pid, killer_comm);
 
       // If the process exited due to a signal other than SIGTERM, check to see
       // if the PID is in the USAP pool and remove it if it is.  If the process
       // was closed by the Zygote using SIGTERM then the USAP pool entry will
       // have already been removed (see nativeEmptyUsapPool()).
-      if (WTERMSIG(status) != SIGTERM && RemoveUsapTableEntry(pid)) {
+      if (status != SIGTERM && RemoveUsapTableEntry(pid)) {
+        ++usaps_removed;
+      }
+    } else if (info.si_code == CLD_EXITED) {
+      async_safe_format_log(ANDROID_LOG_INFO, LOG_TAG,
+                            "Process %d exited cleanly (%d)", pid, status);
+
+      // Check to see if the PID is in the USAP pool and remove it if it is.
+      if (RemoveUsapTableEntry(pid)) {
         ++usaps_removed;
       }
     }
@@ -1419,6 +1431,16 @@ static jint com_android_internal_os_Zygote_nativeForkSystemServer(
                          fds_to_close,
                          fds_to_ignore);
   if (pid == 0) {
+      // PICO OS 5.13.7: tell the PICO stability driver that system_server was forked
+      // ({4, 0}, still in the zygote domain).
+      int stabd_fd = open("/dev/stabd", O_RDWR);
+      if (stabd_fd >= 0) {
+          const int32_t stabd_status[2] = {4, 0};
+          TEMP_FAILURE_RETRY(write(stabd_fd, stabd_status, sizeof(stabd_status)));
+          close(stabd_fd);
+      } else {
+          ALOGW("notifyStabdStatus:write stabd driver error");
+      }
       SpecializeCommon(env, uid, gid, gids, runtime_flags, rlimits,
                        permitted_capabilities, effective_capabilities,
                        MOUNT_EXTERNAL_DEFAULT, nullptr, nullptr, true,
