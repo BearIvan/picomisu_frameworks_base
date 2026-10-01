@@ -547,8 +547,8 @@ public class AudioService extends IAudioService.Stub
     private volatile IRingtonePlayer mRingtonePlayer;
 
     // Devices for which the volume is fixed (volume is either max or muted)
-    int mFixedVolumeDevices = AudioSystem.DEVICE_OUT_HDMI |
-            AudioSystem.DEVICE_OUT_DGTL_DOCK_HEADSET |
+    // PICO OS 5.13.7: HDMI is not a fixed volume device (factory value 0x2c1800).
+    int mFixedVolumeDevices = AudioSystem.DEVICE_OUT_DGTL_DOCK_HEADSET |
             AudioSystem.DEVICE_OUT_ANLG_DOCK_HEADSET |
             AudioSystem.DEVICE_OUT_HDMI_ARC |
             AudioSystem.DEVICE_OUT_SPDIF |
