@@ -129,6 +129,8 @@ Landroid/media/Spatializer;->setHeadTrackerEnabled(ZLandroid/media/AudioDeviceAt
 Landroid/media/Spatializer;->setOnHeadToSoundstagePoseUpdatedListener(Ljava/util/concurrent/Executor;Landroid/media/Spatializer$OnHeadToSoundstagePoseUpdatedListener;)V
 Landroid/media/Spatializer;->setOnSpatializerOutputChangedListener(Ljava/util/concurrent/Executor;Landroid/media/Spatializer$OnSpatializerOutputChangedListener;)V
 Landroid/os/Binder;->setBinderCtlMask(I)V
+Landroid/os/Debug;->dumpSysMonitorInfo(I)Ljava/lang/String;
+Landroid/os/Debug;->dumpSysMonitorInfo(I[Ljava/lang/String;)Ljava/lang/String;
 Landroid/os/Debug;->getTimeByQtimer()J
 Landroid/os/Looper;->mSlowDispatchThresholdMs:J
 Landroid/os/PowerAdvisor;->getInstance()Landroid/os/PowerAdvisor;

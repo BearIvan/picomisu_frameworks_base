@@ -2567,4 +2567,24 @@ public final class Debug
      * @hide
      */
     public static native long getIonMappedSizeKb();
+
+    /**
+     * Smartisan system-monitor dump (factory PICO OS 5.13.7). The factory runtime has no native
+     * implementation of {@link VMDebug#dumpSysMonitorInfo}.
+     *
+     * @hide
+     */
+    public static String dumpSysMonitorInfo(int type) {
+        String[] nullParams = new String[0];
+        return VMDebug.dumpSysMonitorInfo(type, nullParams);
+    }
+
+    /**
+     * Smartisan system-monitor dump with parameters (factory PICO OS 5.13.7).
+     *
+     * @hide
+     */
+    public static String dumpSysMonitorInfo(int type, String[] params) {
+        return VMDebug.dumpSysMonitorInfo(type, params);
+    }
 }
