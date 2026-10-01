@@ -893,8 +893,9 @@ final class WifiDisplayController implements DumpUtils.Dump {
             if(!ExtendedRemoteDisplayHelper.isAvailable()){
                Slog.i(TAG, "Listening for RTSP connection on " + iface
                    + " from Wifi display: " + mConnectedDevice.deviceName);
+               // Factory PICO OS 5.13.7: the RemoteDisplay op package is "media".
                mRemoteDisplay = RemoteDisplay.listen(iface, listener,
-                       mHandler, mContext.getOpPackageName());
+                       mHandler, "media");
             }
 
             // Use extended timeout value for certification, as some tests require user inputs
