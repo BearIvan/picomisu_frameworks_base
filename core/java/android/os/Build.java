@@ -34,6 +34,8 @@ import com.android.internal.telephony.TelephonyProperties;
 
 import dalvik.system.VMRuntime;
 
+import java.io.File;
+import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -54,7 +56,7 @@ public class Build {
     public static final String DISPLAY = getString("ro.build.display.id");
 
     /** The name of the overall product. */
-    public static final String PRODUCT = getString("ro.product.name");
+    public static final String PRODUCT = getProduct();
 
     /** The name of the industrial design. */
     public static final String DEVICE = getString("ro.product.device");
@@ -85,7 +87,7 @@ public class Build {
     public static final String BRAND = getString("ro.product.brand");
 
     /** The end-user-visible name for the end product. */
-    public static final String MODEL = getString("ro.product.model");
+    public static final String MODEL = getModel();
 
     /** The system bootloader version number. */
     public static final String BOOTLOADER = getString("ro.bootloader");
@@ -1261,6 +1263,71 @@ public class Build {
     }
 
     @UnsupportedAppUsage
+    // PICO (factory PICO OS 5.13.7): with ro.pxr.usebuildinfo 1 or 2, MODEL and PRODUCT come
+    // from sys.pxr.product.* / sys.pxr.build.product.*, falling back to the device serial.
+    private static String getSerialFromFile() {
+        String content = "";
+        String filePath = "/mnt/vendor/persist/falcon/sn";
+        try {
+            File file = new File(filePath);
+            if (file.exists() && file.canRead()) {
+                FileReader reader = new FileReader(filePath);
+                int data;
+                while ((data = reader.read()) != -1) {
+                    content = content + ((char) data);
+                }
+                Slog.w(TAG, "content read from file[" + filePath + "] is:" + content);
+            } else {
+                Slog.w(TAG, "File " + filePath
+                        + " does not exist or we have no permission to read it,ignore!");
+            }
+        } catch (Exception e) {
+            Slog.e(TAG, "Exception occurs when read file:" + filePath, e);
+        }
+        return content.trim();
+    }
+
+    private static String getInfoFromSN(int type) {
+        try {
+            String sn = getSerialFromFile();
+            Slog.e(TAG, "getInfoFromSN check " + sn);
+            if (sn != null && sn.length() > 10) {
+                String sn_model = sn.substring(1, 6);
+                if (type == 0) {
+                    return sn_model;
+                }
+                if (type == 1) {
+                    return "Pico Neo3 Ultra";
+                }
+            }
+        } catch (Exception e) {
+            Slog.e(TAG, "Failed to getInfoFromSN", e);
+        }
+        return "unknown";
+    }
+
+    private static String getModel() {
+        Slog.e(TAG, "getModel check " + SystemProperties.get("sys.pxr.product.model"));
+        if (getString("ro.pxr.usebuildinfo").equals("1")) {
+            return SystemProperties.get("sys.pxr.product.model", getInfoFromSN(0));
+        }
+        if (getString("ro.pxr.usebuildinfo").equals("2")) {
+            return SystemProperties.get("sys.pxr.build.product.model", getInfoFromSN(0));
+        }
+        return getString("ro.product.model");
+    }
+
+    private static String getProduct() {
+        Slog.e(TAG, "getProduct check " + SystemProperties.get("sys.pxr.product.name"));
+        if (getString("ro.pxr.usebuildinfo").equals("1")) {
+            return SystemProperties.get("sys.pxr.product.name", getInfoFromSN(1));
+        }
+        if (getString("ro.pxr.usebuildinfo").equals("2")) {
+            return SystemProperties.get("sys.pxr.build.product.name", getInfoFromSN(1));
+        }
+        return getString("ro.product.name");
+    }
+
     private static String getString(String property) {
         return SystemProperties.get(property, UNKNOWN);
     }
