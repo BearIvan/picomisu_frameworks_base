@@ -4817,6 +4817,8 @@ public final class Settings {
                 }
             }
         }
+        // PICO (factory): VR flags and 2D virtual display configuration.
+        IExtSettings.dumpPackageLPrExt(pw, prefix, ps);
     }
 
     void dumpPackagesLPr(PrintWriter pw, String packageName, ArraySet<String> permissionNames,
