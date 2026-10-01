@@ -209,13 +209,18 @@ public final class DefaultPermissionGrantPolicy {
     private SyncAdapterPackagesProvider mSyncAdapterPackagesProvider;
 
     private ArrayMap<String, List<DefaultPermissionGrant>> mGrantExceptions;
-    private final Context mContext;
+    // PICO: protected as in the factory PICO OS 5.13.7 (used by ExtDefaultPermissionGrantPolicyImpl).
+    protected final Context mContext;
     private final Object mLock = new Object();
     private final PackageManagerInternal mServiceInternal;
-    private final PermissionManagerService mPermissionManager;
+    protected final PermissionManagerService mPermissionManager;
 
     @GuardedBy("mLock")
     private SparseIntArray mDefaultPermissionsGrantedUsers = new SparseIntArray();
+
+    // PICO: factory PICO OS 5.13.7 default grants for system packages.
+    private final IExtDefaultPermissionGrantPolicy mExt =
+            new ExtDefaultPermissionGrantPolicyImpl(this);
 
     DefaultPermissionGrantPolicy(Context context, Looper looper,
             @NonNull PermissionManagerService permissionManager) {
@@ -331,6 +336,7 @@ public final class DefaultPermissionGrantPolicy {
             if (!isSysComponentOrPersistentPlatformSignedPrivApp(pkg)
                     || !doesPackageSupportRuntimePermissions(pkg)
                     || ArrayUtils.isEmpty(pkg.requestedPermissions)) {
+                mExt.onGrantPermissionsToSysComponentsAndPrivApps(userId, pkg);
                 continue;
             }
             grantRuntimePermissionsForSystemPackage(userId, pkg);
@@ -604,7 +610,9 @@ public final class DefaultPermissionGrantPolicy {
                 browserPackage = null;
             }
         }
-        grantPermissionsToPackage(browserPackage, userId, false /* ignoreSystemPackage */,
+        // PICO: the factory PICO OS 5.13.7 extension maps the browser to null (no grant).
+        grantPermissionsToPackage(mExt.updateBrowserPkgName(browserPackage), userId,
+                false /* ignoreSystemPackage */,
                 true /*whitelistRestrictedPermissions*/, ALWAYS_LOCATION_PERMISSIONS);
 
         // Voice interaction
@@ -963,7 +971,7 @@ public final class DefaultPermissionGrantPolicy {
         return isSystemPackage(getPackageInfo(packageName));
     }
 
-    private boolean isSystemPackage(PackageInfo pkg) {
+    protected boolean isSystemPackage(PackageInfo pkg) {
         if (pkg == null) {
             return false;
         }
@@ -971,7 +979,7 @@ public final class DefaultPermissionGrantPolicy {
                 && !isSysComponentOrPersistentPlatformSignedPrivApp(pkg);
     }
 
-    private void grantRuntimePermissions(PackageInfo pkg, Set<String> permissions,
+    protected void grantRuntimePermissions(PackageInfo pkg, Set<String> permissions,
             boolean systemFixed, int userId) {
         grantRuntimePermissions(pkg, permissions, systemFixed, false,
                 true /*whitelistRestrictedPermissions*/, userId);
@@ -1547,7 +1555,7 @@ public final class DefaultPermissionGrantPolicy {
         }
     }
 
-    private static boolean doesPackageSupportRuntimePermissions(PackageInfo pkg) {
+    protected static boolean doesPackageSupportRuntimePermissions(PackageInfo pkg) {
         return pkg.applicationInfo != null
                 && pkg.applicationInfo.targetSdkVersion > Build.VERSION_CODES.LOLLIPOP_MR1;
     }
