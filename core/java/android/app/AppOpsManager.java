@@ -38,6 +38,7 @@ import android.os.Parcelable;
 import android.os.Process;
 import android.os.RemoteCallback;
 import android.os.RemoteException;
+import android.os.SystemProperties;
 import android.os.UserManager;
 import android.util.ArrayMap;
 import android.util.LongSparseArray;
@@ -68,6 +69,9 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+
+import smartisanos.os.BinderCallCacheAgent;
+import smartisanos.util.FeatLog;
 
 /**
  * API for interacting with "application operation" tracking.
@@ -2025,7 +2029,12 @@ public class AppOpsManager {
                 sPermToOp.put(sOpPerms[op], op);
             }
         }
+        bindCallCacheCheckPackage = SystemProperties.getBoolean(
+                "debug.bytedance.logcontrol.bindCallCacheCheckPackage", false);
     }
+
+    // Smartisan binder call cache logging (PICO OS 5.13.7).
+    private static boolean bindCallCacheCheckPackage;
 
     /** @hide */
     public static final String KEY_HISTORICAL_OPS = "historical_ops";
@@ -5188,10 +5197,23 @@ public class AppOpsManager {
      *             UID, or if ownership cannot be verified.
      */
     public void checkPackage(int uid, @NonNull String packageName) {
+        // Smartisan (PICO OS 5.13.7): system_server caches successful checks.
+        if (BinderCallCacheAgent.isCalledFromSystemServer
+                && BinderCallCacheAgent.inCheckPackageBinderCache(uid, packageName)) {
+            if (bindCallCacheCheckPackage) {
+                FeatLog.d(DEBUG_LOGGING_TAG, "FEAT_BINDER_CALL_CACHE", 0,
+                        "inCheckPackageBinderCache binder cache works packageName: "
+                        + packageName);
+            }
+            return;
+        }
         try {
             if (mService.checkPackage(uid, packageName) != MODE_ALLOWED) {
                 throw new SecurityException(
                         "Package " + packageName + " does not belong to " + uid);
+            }
+            if (BinderCallCacheAgent.isCalledFromSystemServer) {
+                BinderCallCacheAgent.addCheckPackageBinderCache(uid, packageName);
             }
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
