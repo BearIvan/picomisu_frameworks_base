@@ -154,7 +154,8 @@ class TaskLaunchParamsModifier implements LaunchParamsModifier {
                     + display.getWindowingMode());
         }
 
-        if (phase == PHASE_DISPLAY) {
+        // Smartisan (factory): a prefetched activity goes on past the display phase.
+        if (!activity.info.applicationInfo.getSmtEx().isPrefetch && phase == PHASE_DISPLAY) {
             return RESULT_CONTINUE;
         }
 

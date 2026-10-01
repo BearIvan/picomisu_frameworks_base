@@ -82,7 +82,9 @@ class LaunchParamsController {
             // PICO (factory): SystemExt places tasks (ExtActivityStartControllerImpl); keep a
             // task on the display of its stack and skip the launch params modifiers.
             result.reset();
-            if (task != null && task.getStack() != null) {
+            // Smartisan (factory): not for a prefetched stack.
+            if (task != null && task.getStack() != null
+                    && !task.getStack().getActivityStackSmtBase().isPrefetch) {
                 result.mPreferredDisplayId = task.getStack().mDisplayId;
             }
             return;

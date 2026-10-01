@@ -366,6 +366,8 @@ class TaskRecord extends ConfigurationContainer {
         setMinDimensions(info);
         touchActiveTime();
         mService.getTaskChangeNotificationController().notifyTaskCreated(_taskId, realActivity);
+        // Smartisan (factory): task hidden from the recents (ActivityInfoSmtBase).
+        ((TaskRecordSmtBase) getSmtEx()).setTaskInVisible(info.getSmtEx().taskInVisible);
     }
 
     /**
@@ -397,6 +399,8 @@ class TaskRecord extends ConfigurationContainer {
         lastTaskDescription = _taskDescription;
         touchActiveTime();
         mService.getTaskChangeNotificationController().notifyTaskCreated(_taskId, realActivity);
+        // Smartisan (factory): task hidden from the recents (ActivityInfoSmtBase).
+        ((TaskRecordSmtBase) getSmtEx()).setTaskInVisible(info.getSmtEx().taskInVisible);
     }
 
     /**

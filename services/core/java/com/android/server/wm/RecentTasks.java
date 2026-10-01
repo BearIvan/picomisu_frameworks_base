@@ -886,7 +886,8 @@ class RecentTasks {
         for (int i = 0; i < size; i++) {
             final TaskRecord tr = mTasks.get(i);
 
-            if (isVisibleRecentTask(tr)) {
+            // Smartisan (factory): the recent tasks list does not hide the custom tasks.
+            if (isVisibleRecentTask(tr, false)) {
                 numVisibleTasks++;
                 if (isInVisibleRange(tr, i, numVisibleTasks, withExcluded)) {
                     // Fall through
@@ -1279,6 +1280,14 @@ class RecentTasks {
      */
     @VisibleForTesting
     boolean isVisibleRecentTask(TaskRecord task) {
+        return isVisibleRecentTask(task, true);
+    }
+
+    /**
+     * Smartisan (factory): with checkCustomTask, a system task marked invisible
+     * (TaskRecordSmtBase) is not visible either.
+     */
+    boolean isVisibleRecentTask(TaskRecord task, boolean checkCustomTask) {
         if (DEBUG_RECENTS_TRIM_TASKS) Slog.d(TAG, "isVisibleRecentTask: task=" + task
                 + " minVis=" + mMinNumVisibleTasks + " maxVis=" + mMaxNumVisibleTasks
                 + " sessionDuration=" + mActiveTasksSessionDurationMs
@@ -1286,6 +1295,11 @@ class RecentTasks {
                 + " activityType=" + task.getActivityType()
                 + " windowingMode=" + task.getWindowingMode()
                 + " intentFlags=" + task.getBaseIntent().getFlags());
+
+        if (checkCustomTask && ((TaskRecordSmtBase) task.getSmtEx()).isTaskInVisible()
+                && ((TaskRecordSmtBase) task.getSmtEx()).isSystemTask()) {
+            return false;
+        }
 
         switch (task.getActivityType()) {
             case ACTIVITY_TYPE_HOME:
