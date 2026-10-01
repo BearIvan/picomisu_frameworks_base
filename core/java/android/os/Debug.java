@@ -2587,4 +2587,15 @@ public final class Debug
     public static String dumpSysMonitorInfo(int type, String[] params) {
         return VMDebug.dumpSysMonitorInfo(type, params);
     }
+
+    /**
+     * Cropped "hprof" dump (factory PICO OS 5.13.7). The factory runtime has no native
+     * implementation behind {@link VMDebug#dumpHprofDataCrop}.
+     *
+     * @hide
+     */
+    public static void dumpHprofDataCrop(String fileName, FileDescriptor fd, boolean compress)
+            throws IOException {
+        VMDebug.dumpHprofDataCrop(fileName, fd, compress);
+    }
 }
