@@ -3,20 +3,39 @@
 
 package com.android.server.am;
 
+import android.util.SmtUidUtil;
+
 /**
- * Smartisan monitor extension state of a {@link ProcessRecord} (its {@code mMonitorEx}).
- * Reconstructed from the PICO OS 5.13.7 factory services; the getSmtUid() helpers (which need
- * the Smartisan android.util.SmtUidUtil) are not present.
+ * Reconstructed from the PICO OS 5.13.7 factory services.
  *
  * @hide
  */
 public class ProcessRecordMonitorEx {
-    /** Whether this isolated process belongs to a third party application. */
     public boolean isolatedOf3rdPartApp;
     protected ProcessRecord mProcessRecord;
     int smtUid = 1000;
 
-    public ProcessRecordMonitorEx(ProcessRecord processRecord) {
-        mProcessRecord = processRecord;
+    public ProcessRecordMonitorEx(ProcessRecord record) {
+        this.mProcessRecord = record;
+    }
+
+    public int getSmtUid(int uid, String packageName) {
+        if (uid != 1000) {
+            return uid;
+        }
+        if (this.smtUid == 1000) {
+            this.smtUid = SmtUidUtil.getSystemUidForPackage(packageName);
+        }
+        int result = this.smtUid;
+        return result;
+    }
+
+    public int getSmtUid() {
+        int result = this.mProcessRecord.uid;
+        if (this.mProcessRecord.info != null) {
+            int result2 = getSmtUid(this.mProcessRecord.info.uid, this.mProcessRecord.info.packageName);
+            return result2;
+        }
+        return result;
     }
 }

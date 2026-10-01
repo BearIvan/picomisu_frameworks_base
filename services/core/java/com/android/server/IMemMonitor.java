@@ -7,9 +7,7 @@ import android.app.IMemClient;
 import android.os.DebugSmtEx;
 
 /**
- * Smartisan memory monitor (hprof collection) implemented by the optional sys services JAR.
- * Reconstructed from the PICO OS 5.13.7 factory services; only the methods reached by the
- * ported factory code are present, with their factory default implementations.
+ * Reconstructed from the PICO OS 5.13.7 factory services.
  *
  * @hide
  */
@@ -18,12 +16,20 @@ public interface IMemMonitor {
         DebugSmtEx.printDefaultFunInfo(getClass());
     }
 
-    default void createHprof(int pid, String processName, IMemClient client, long dalvikAlloc,
-            long dalvikMax) {
+    default void createHprof(int pid, String processName, IMemClient client, long dalvikAlloc, long dalvikMax) {
         DebugSmtEx.printDefaultFunInfo(getClass());
     }
 
     default void checkHprof() {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+    }
+
+    default boolean isReportMemUsage() {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+        return false;
+    }
+
+    default void saveLastWorst(int pid, String name, long pss, long now) {
         DebugSmtEx.printDefaultFunInfo(getClass());
     }
 }

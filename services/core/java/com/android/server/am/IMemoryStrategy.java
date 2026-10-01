@@ -4,16 +4,32 @@
 package com.android.server.am;
 
 import android.os.DebugSmtEx;
+import com.android.internal.util.MemInfoReader;
+import java.util.HashMap;
 
 /**
- * Smartisan memory strategy implemented by the optional sysmonitor services JAR.
- * Reconstructed from the PICO OS 5.13.7 factory services; only the methods reached by the
- * ported factory code are present, with their factory default implementations.
+ * Reconstructed from the PICO OS 5.13.7 factory services.
  *
  * @hide
  */
 public interface IMemoryStrategy {
     default void backtraceDoneInform(String ProcessName, int pid) {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+    }
+
+    default void executeMemoryStrategy(String name, int pid, long pss, int oomAdj) {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+    }
+
+    default void executeMeminfoMemoryStrategy(MemInfoReader memInfo, HashMap<String, long[]> processMems, long usedPss, long cachedPss, long ionHeapOther) {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+    }
+
+    default void setSoundProcessMemoryStrategy(boolean flag) {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+    }
+
+    default void enterIdleStateInform(boolean flag) {
         DebugSmtEx.printDefaultFunInfo(getClass());
     }
 }
