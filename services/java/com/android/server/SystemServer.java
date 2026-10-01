@@ -1772,9 +1772,12 @@ public final class SystemServer {
             }
 
             // Dreams (interactive idle-time views, a/k/a screen savers, and doze mode)
-            traceBeginAndSlog("StartDreamManager");
-            mSystemServiceManager.startService(DreamManagerService.class);
-            traceEnd();
+            // PICO (factory): not started where Features.disableDreamService() is set.
+            if (!Features.disableDreamService()) {
+                traceBeginAndSlog("StartDreamManager");
+                mSystemServiceManager.startService(DreamManagerService.class);
+                traceEnd();
+            }
 
             traceBeginAndSlog("AddGraphicsStatsService");
             ServiceManager.addService(GraphicsStatsService.GRAPHICS_STATS_SERVICE,
