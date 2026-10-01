@@ -70,6 +70,8 @@ public class DisplayRotation {
 
     public final boolean isDefaultDisplay;
     private final boolean mSupportAutoRotation;
+    /** PICO rotation extension (factory IExtDisplayRotation). */
+    private final IExtDisplayRotation mExt;
     private final int mLidOpenRotation;
     private final int mCarDockRotation;
     private final int mDeskDockRotation;
@@ -161,6 +163,7 @@ public class DisplayRotation {
     DisplayRotation(WindowManagerService service, DisplayContent displayContent,
             DisplayPolicy displayPolicy, DisplayWindowSettings displayWindowSettings,
             Context context, Object lock) {
+        mExt = new ExtDisplayRotationImpl(this);
         mService = service;
         mDisplayContent = displayContent;
         mDisplayPolicy = displayPolicy;
@@ -251,18 +254,34 @@ public class DisplayRotation {
 
     void configure(int width, int height, int shortSizeDp, int longSizeDp) {
         final Resources res = mContext.getResources();
+        // PICO (factory): the default display maps portrait to its landscape rotation
+        // (persist.pvr.force_landscape, default true).
+        final boolean forceLandscape = mExt.forceLandscape();
         if (width > height) {
             mLandscapeRotation = Surface.ROTATION_0;
             mSeascapeRotation = Surface.ROTATION_180;
             if (res.getBoolean(com.android.internal.R.bool.config_reverseDefaultRotation)) {
                 mPortraitRotation = Surface.ROTATION_90;
+                if (forceLandscape) {
+                    mPortraitRotation = Surface.ROTATION_0;
+                }
                 mUpsideDownRotation = Surface.ROTATION_270;
             } else {
                 mPortraitRotation = Surface.ROTATION_270;
+                if (forceLandscape) {
+                    mPortraitRotation = Surface.ROTATION_0;
+                }
                 mUpsideDownRotation = Surface.ROTATION_90;
             }
         } else {
             mPortraitRotation = Surface.ROTATION_0;
+            if (forceLandscape) {
+                if (res.getBoolean(com.android.internal.R.bool.config_reverseDefaultRotation)) {
+                    mPortraitRotation = Surface.ROTATION_270;
+                } else {
+                    mPortraitRotation = Surface.ROTATION_90;
+                }
+            }
             mUpsideDownRotation = Surface.ROTATION_180;
             if (res.getBoolean(com.android.internal.R.bool.config_reverseDefaultRotation)) {
                 mLandscapeRotation = Surface.ROTATION_270;

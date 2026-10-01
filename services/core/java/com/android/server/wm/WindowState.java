@@ -217,6 +217,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.Predicate;
 
+import smartisanos.os.PeroptWhiteListParser;
+
 /** A window in the window manager. */
 class WindowState extends WindowContainer<WindowState> implements WindowManagerPolicy.WindowState {
     static final String TAG = TAG_WITH_CLASS_NAME ? "WindowState" : TAG_WM;
@@ -634,6 +636,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
      * container.
      */
     private boolean mIsDimming = false;
+
+    /** PICO window extension (factory IExtWindowState). */
+    private final IExtWindowState mExt = new ExtWindowStateImpl(this);
 
     private @Nullable InsetsSourceProvider mInsetProvider;
 
@@ -2597,6 +2602,10 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
 
     @Override
     public boolean canReceiveKeys() {
+        // PICO (factory): the XR runtime dialog takes no keys while display 0 has the focus.
+        if (mExt.disableReceiveKeys()) {
+            return false;
+        }
         return isVisibleOrAdding()
                 && (mViewVisibility == View.VISIBLE) && !mRemoveOnExit
                 && ((mAttrs.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0)
@@ -3855,6 +3864,11 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         // Now make sure the window fits in the overall display frame.
         if (fitToDisplay) {
             Gravity.applyDisplay(mAttrs.gravity, displayFrame, mWindowFrames.mFrame);
+        }
+
+        // PICO (factory): on displays with flag 1 << 15 full-display windows are inset by 1 px.
+        if (!PeroptWhiteListParser.isSkipSingleLayerComposition(mAttrs.packageName)) {
+            mExt.adjustWindowFrame(mWindowFrames, displayFrame);
         }
 
         // We need to make sure we update the CompatFrame as it is used for

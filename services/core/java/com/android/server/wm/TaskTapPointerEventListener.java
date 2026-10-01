@@ -46,6 +46,9 @@ public class TaskTapPointerEventListener implements PointerEventListener {
     private final Rect mTmpRect = new Rect();
     private int mPointerIconType = TYPE_NOT_SPECIFIED;
     public BoostFramework mPerfObj = null;
+    /** PICO extension (factory IExtTaskTapPointerEventListener). */
+    private final IExtTaskTapPointerEventListener mExt =
+            new ExtTaskTapPointerEventListenerImpl(this);
 
     public TaskTapPointerEventListener(WindowManagerService service,
             DisplayContent displayContent) {
@@ -73,6 +76,10 @@ public class TaskTapPointerEventListener implements PointerEventListener {
             break;
             case MotionEvent.ACTION_HOVER_ENTER:
             case MotionEvent.ACTION_HOVER_MOVE: {
+                // PICO (factory): no task resize pointer icons.
+                if (mExt.disableHover()) {
+                    break;
+                }
                 final int x = (int) motionEvent.getX();
                 final int y = (int) motionEvent.getY();
                 final Task task = mDisplayContent.findTaskForResizePoint(x, y);
@@ -109,6 +116,9 @@ public class TaskTapPointerEventListener implements PointerEventListener {
             }
             break;
             case MotionEvent.ACTION_HOVER_EXIT: {
+                if (mExt.disableHover()) {
+                    break;
+                }
                 final int x = (int) motionEvent.getX();
                 final int y = (int) motionEvent.getY();
                 if (mPointerIconType != TYPE_NOT_SPECIFIED) {

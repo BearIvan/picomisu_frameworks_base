@@ -89,6 +89,9 @@ class WindowToken extends WindowContainer<WindowState> {
      * Compares two child window of this token and returns -1 if the first is lesser than the
      * second in terms of z-order and 1 otherwise.
      */
+    /** PICO window token extension (factory IExtWindowToken). */
+    private final IExtWindowToken mExt = new ExtWindowTokenImpl(this);
+
     private final Comparator<WindowState> mWindowComparator =
             (WindowState newWindow, WindowState existingWindow) -> {
         final WindowToken token = WindowToken.this;
@@ -133,6 +136,10 @@ class WindowToken extends WindowContainer<WindowState> {
     }
 
     void removeAllWindowsIfPossible() {
+        // PICO (factory): the extension removes the windows from a copy of the child list.
+        if (mExt.removeAllWindowsIfPossible()) {
+            return;
+        }
         for (int i = mChildren.size() - 1; i >= 0; --i) {
             final WindowState win = mChildren.get(i);
             if (DEBUG_WINDOW_MOVEMENT) Slog.w(TAG_WM,

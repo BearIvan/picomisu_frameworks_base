@@ -220,6 +220,8 @@ public class DisplayPolicy {
     private final Context mContext;
     private final DisplayContent mDisplayContent;
     private final Object mLock;
+    /** PICO display policy extension (factory IExtDisplayPolicy). */
+    private final IExtDisplayPolicy mExt = new ExtDisplayPolicyImpl(this);
     private final Handler mHandler;
 
     private Resources mCurrentUserResources;
@@ -708,8 +710,12 @@ public class DisplayPolicy {
                     }
                 });
         displayContent.registerPointerEventListener(mSystemGestures);
-        displayContent.mAppTransition.registerListenerLocked(
-                mStatusBarController.getAppTransitionListener());
+        // PICO (factory): no status bar transitions on the 2D app displays.
+        if (!android.pico.utils.Features.disableShowInAuxiliaryDisplayToast(
+                displayContent.isDefaultDisplay)) {
+            displayContent.mAppTransition.registerListenerLocked(
+                    mStatusBarController.getAppTransitionListener());
+        }
         mImmersiveModeConfirmation = new ImmersiveModeConfirmation(mContext, looper,
                 mService.mVrModeEnabled);
         mAcquireSleepTokenRunnable = () -> {
@@ -2362,6 +2368,9 @@ public class DisplayPolicy {
                 }
             }
         }
+
+        // PICO (factory): windows of type 2998 fill the stable frame.
+        mExt.calculateFrameWhenLayoutWindowLw(win, displayFrames, pf, df, of, cf, vf, dcf, sf);
 
         final int cutoutMode = attrs.layoutInDisplayCutoutMode;
         final boolean attachedInParent = attached != null && !layoutInScreen;
