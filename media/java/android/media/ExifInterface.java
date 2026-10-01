@@ -1802,7 +1802,7 @@ public class ExifInterface {
             mIsSupportedFile = false;
             Log.w(TAG, "Invalid image: ExifInterface got an unsupported image format file"
                     + "(ExifInterface supports JPEG and some RAW image formats only) "
-                    + "or a corrupted JPEG file to ExifInterface.", e);
+                    + "or a corrupted JPEG file to ExifInterface. Error msg: " + e.getMessage());
         } finally {
             addDefaultValuesForCompatibility();
 
