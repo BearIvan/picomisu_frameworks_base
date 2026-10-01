@@ -992,6 +992,26 @@ public final class CameraManager {
 
             Log.i(TAG, "Connecting to camera service");
 
+            // PICO (factory PICO OS 5.13.7): only the packages listed (comma separated) in
+            // persist.vendor.camera.picoapp.packagelist may connect to the camera service.
+            boolean canAccess = false;
+            String packageName = ActivityThread.currentOpPackageName();
+            String packageList = SystemProperties.get("persist.vendor.camera.picoapp.packagelist");
+            if (packageList.length() > 0) {
+                TextUtils.StringSplitter splitter = new TextUtils.SimpleStringSplitter(',');
+                splitter.setString(packageList);
+                for (String str : splitter) {
+                    if (packageName.equals(str)) {
+                        canAccess = true;
+                        break;
+                    }
+                }
+            }
+            if (!canAccess) {
+                Log.i(TAG, "Do not allow connecting to camera service " + packageName);
+                return;
+            }
+
             IBinder cameraServiceBinder = ServiceManager.getService(CAMERA_SERVICE_BINDER_NAME);
             if (cameraServiceBinder == null) {
                 // Camera service is now down, leave mCameraService as null
