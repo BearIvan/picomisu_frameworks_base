@@ -3,6 +3,7 @@
 
 package android.app;
 
+import android.content.Intent;
 import android.net.ConnectivityManagerSmtEx;
 import android.os.Binder;
 import android.os.Message;
@@ -26,6 +27,8 @@ import smartisanos.util.FeatLog;
 import java.io.FileOutputStream;
 import java.io.PrintWriter;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * Smartisan extension state of an {@link ActivityThread} (its {@code mSmtEx}): prefetched
@@ -85,6 +88,31 @@ public class ActivityThreadSmtBase {
         updateSwitchState();
     }
 
+    public static void handleSpecialIntentSmt(Intent intent, final Application app) {
+        if ((intent.getSmtEx().getSmFlags() & 8) != 0) {
+            ConnectivityManagerSmtEx.clearActiveNetworkInfoCache();
+        }
+
+        boolean smtisfromsystemui = intent.getSmtEx().getSmtBooleanExtra("IS_FROM_NOTIFICATION",
+                false);
+        intent.getSmtEx().removeSmtExtra("IS_FROM_NOTIFICATION");
+        if (smtisfromsystemui) {
+            if (app != null) {
+                app.getApplicationInfo().getSmtEx().isFromSystemUI = true;
+                TimerTask task = new TimerTask() {
+                    @Override
+                    public void run() {
+                        if (app != null && app.getApplicationInfo().getSmtEx().isFromSystemUI) {
+                            app.getApplicationInfo().getSmtEx().isFromSystemUI = false;
+                        }
+                    }
+                };
+                Timer timer = new Timer();
+                timer.schedule(task, 15000);
+            }
+        }
+    }
+
     void handleBindApplicationEnd(ActivityThread.AppBindData data) {
         if (mFreezePrefetch) {
             mFreezePrefetch = false;
@@ -123,14 +151,15 @@ public class ActivityThreadSmtBase {
     }
 
     /** Smartisan part of the {@link ActivityThread.ApplicationThread} binder. */
-    public class ApplicationThreadEx {
+    protected class ApplicationThreadEx {
         private ActivityThread.ApplicationThread mApplicationThread;
 
         public ApplicationThreadEx(ActivityThread.ApplicationThread applicationThread) {
             mApplicationThread = applicationThread;
         }
 
-        public boolean onTransactEx(int code, Parcel data, Parcel reply, int flags) {
+        public boolean onTransactEx(int code, Parcel data, Parcel reply, int flags)
+                throws RemoteException {
             switch (code) {
                 case NOTIFY_MONITOR_STATS_CHANGED: {
                     boolean open = data.readInt() > 0;
