@@ -4383,6 +4383,10 @@ public final class PowerManagerService extends SystemService
         @Override // Binder call
         public void acquireWakeLock(IBinder lock, int flags, String tag, String packageName,
                 WorkSource ws, String historyTag) {
+            // Factory PICO OS 5.13.7: proximity screen-off wake locks are ignored.
+            if ((flags & PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK) != 0) {
+                return;
+            }
             if (lock == null) {
                 throw new IllegalArgumentException("lock must not be null");
             }
@@ -4415,6 +4419,10 @@ public final class PowerManagerService extends SystemService
 
         @Override // Binder call
         public void releaseWakeLock(IBinder lock, int flags) {
+            // Factory PICO OS 5.13.7: the same flag test as in acquireWakeLock (value 32).
+            if ((flags & PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK) != 0) {
+                return;
+            }
             if (lock == null) {
                 throw new IllegalArgumentException("lock must not be null");
             }
