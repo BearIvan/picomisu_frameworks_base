@@ -9,6 +9,7 @@ Landroid/app/Fragment;->requestPermissions([Ljava/lang/String;I[Ljava/lang/Strin
 Landroid/app/FragmentHostCallback;->onRequestPermissionsFromFragment(Landroid/app/Fragment;[Ljava/lang/String;I[Ljava/lang/String;)V
 Landroid/app/Notification$StandardTemplateParams;-><init>()V
 Landroid/app/Notification$StandardTemplateParams;->setMaxRemoteInputHistory(I)Landroid/app/Notification$StandardTemplateParams;
+Landroid/content/Intent;->SHUTDOWN_BROADCAST_XR:Ljava/lang/String;
 Landroid/content/pm/ApplicationInfo;->appInfoJsonConfig:Ljava/lang/String;
 Landroid/content/pm/ApplicationInfo;->appLastTime:J
 Landroid/media/AudioAttributes$Builder;->setIsContentSpatialized(Z)Landroid/media/AudioAttributes$Builder;

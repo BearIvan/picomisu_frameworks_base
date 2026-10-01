@@ -5317,6 +5317,12 @@ public class Intent implements Parcelable, Cloneable {
     public static final String METADATA_DOCK_HOME = "android.dock_home";
 
     /**
+     * PICO: broadcast action of the XR shutdown (factory PICO OS 5.13.7).
+     * @hide
+     */
+    public static final String SHUTDOWN_BROADCAST_XR = "android.intent.action.PVR_ACTION_SHUTDOWN";
+
+    /**
      * Used as a parcelable extra field in {@link #ACTION_APP_ERROR}, containing
      * the bug report.
      */
@@ -6385,6 +6391,9 @@ public class Intent implements Parcelable, Cloneable {
     private Intent mSelector;
     private ClipData mClipData;
     private int mContentUserHint = UserHandle.USER_CURRENT;
+    // PICO extension (factory PICO OS 5.13.7). The factory initialises the Smartisan
+    // IntentSmtBase mSmtEx just before it and parcels it between mExtras and mExt.
+    private IExtIntent mExt = new ExtIntentImpl(this);
     /** Token to track instant app launches. Local only; do not copy cross-process. */
     private String mLaunchToken;
 
@@ -6455,6 +6464,7 @@ public class Intent implements Parcelable, Cloneable {
                 // history.
             }
         }
+        this.mExt.copyFrom(o);
     }
 
     @Override
@@ -9639,6 +9649,10 @@ public class Intent implements Parcelable, Cloneable {
             throw new IllegalArgumentException(
                     "Can't set package name when selector is already set");
         }
+        // PICO: the VR display service moved to the system extension app.
+        if ("com.pvr.vrdisplay".equals(packageName)) {
+            packageName = "com.picovr.systemext";
+        }
         mPackage = packageName;
         return this;
     }
@@ -10508,6 +10522,7 @@ public class Intent implements Parcelable, Cloneable {
         }
         out.writeInt(mContentUserHint);
         out.writeBundle(mExtras);
+        mExt.writeToParcel(out, flags);
     }
 
     public static final @android.annotation.NonNull Parcelable.Creator<Intent> CREATOR
@@ -10558,6 +10573,7 @@ public class Intent implements Parcelable, Cloneable {
         }
         mContentUserHint = in.readInt();
         mExtras = in.readBundle();
+        mExt.readFromParcel(in);
     }
 
     /**
@@ -11061,5 +11077,10 @@ public class Intent implements Parcelable, Cloneable {
     /** @hide */
     public boolean isDocument() {
         return (mFlags & FLAG_ACTIVITY_NEW_DOCUMENT) == FLAG_ACTIVITY_NEW_DOCUMENT;
+    }
+
+    /** @hide */
+    public IExtIntent getExt() {
+        return mExt;
     }
 }
