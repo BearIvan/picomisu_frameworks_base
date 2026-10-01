@@ -2235,7 +2235,8 @@ public class ActivityStack extends ConfigurationContainer {
                             .unfreezeReason & 3) != 0) {
                         return;
                     }
-                    if (reallyVisible) {
+                    // Factory PICO OS 5.13.7: no activity becomes visible while shutting down.
+                    if (reallyVisible && !mService.mShuttingDown) {
                         // Smartisan (factory): a stopped activity of a frozen process becomes
                         // visible: unfreeze the process first.
                         if (r.isState(STOPPING, STOPPED) && r.hasProcess()
