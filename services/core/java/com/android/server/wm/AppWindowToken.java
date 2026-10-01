@@ -2697,7 +2697,12 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
                 displayConfig.uiMode, displayConfig.orientation, frame, displayFrame, insets,
                 surfaceInsets, stableInsets, isVoiceInteraction, freeform, getTask().mTaskId);
         if (a != null) {
-            if (DEBUG_ANIM) logWithStack(TAG, "Loaded animation " + a + " for " + this);
+            // Factory: app transition animations last at most 3 s.
+            a.restrictDuration(3000);
+            if (DEBUG_ANIM) {
+                logWithStack(TAG, "Loaded animation " + a + " for " + this
+                        + ", duration: " + a.getDuration());
+            }
             final int containingWidth = frame.width();
             final int containingHeight = frame.height();
             a.initialize(containingWidth, containingHeight, width, height);
