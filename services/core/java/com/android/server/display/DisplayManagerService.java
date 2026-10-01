@@ -62,6 +62,7 @@ import android.hardware.input.InputManagerInternal;
 import android.media.projection.IMediaProjection;
 import android.media.projection.IMediaProjectionManager;
 import android.os.Binder;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
@@ -98,6 +99,7 @@ import com.android.internal.util.IndentingPrintWriter;
 import com.android.server.AnimationThread;
 import com.android.server.DisplayThread;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.UiThread;
 import com.android.server.wm.SurfaceAnimationThread;
@@ -965,7 +967,12 @@ public final class DisplayManagerService extends SystemService {
         if (displayId == Display.DEFAULT_DISPLAY) {
             recordTopInsetLocked(display);
         }
-        sendDisplayEventLocked(displayId, DisplayManagerGlobal.EVENT_DISPLAY_CHANGED);
+        // Smartisan (factory): QuickBoot charging animation
+        if (SysOptBridge.getFactory().getQBStateMachine().isInQBChargingAnim()) {
+            Slog.i(TAG, "in qb charging animation, intercept onDisplayChanged call back.");
+        } else {
+            sendDisplayEventLocked(displayId, DisplayManagerGlobal.EVENT_DISPLAY_CHANGED);
+        }
     }
 
     private void applyGlobalDisplayStateLocked(List<Runnable> workQueue) {
@@ -1719,10 +1726,17 @@ public final class DisplayManagerService extends SystemService {
         private final IDisplayManagerCallback mCallback;
 
         public boolean mWifiDisplayScanRequested;
+        // Smartisan (factory): display events held back while the caller is frozen
+        DisplayManagerServiceSmtBase.CallbackRecordSmtEx smtEx;
+
+        public DisplayManagerServiceSmtBase.CallbackRecordSmtEx getSmtEx() {
+            return smtEx;
+        }
 
         public CallbackRecord(int pid, IDisplayManagerCallback callback) {
             mPid = pid;
             mCallback = callback;
+            smtEx = new DisplayManagerServiceSmtBase.CallbackRecordSmtEx(-1, mCallback);
         }
 
         @Override
@@ -1735,7 +1749,14 @@ public final class DisplayManagerService extends SystemService {
 
         public void notifyDisplayEventAsync(int displayId, int event) {
             try {
-                mCallback.onDisplayEvent(displayId, event);
+                // Smartisan (factory): pend the event for a frozen process
+                if (SysOptBridge.getFactory().getFreezeController().isPidFrozen(mPid)) {
+                    getSmtEx().notifyDisplayPendingEvent(mPid, displayId, event);
+                } else {
+                    mCallback.onDisplayEvent(displayId, event);
+                }
+            } catch (FrozenObjectException e) {
+                getSmtEx().notifyDisplayPendingEvent(mPid, displayId, event);
             } catch (RemoteException ex) {
                 Slog.w(TAG, "Failed to notify process "
                         + mPid + " that displays changed, assuming it died.", ex);
