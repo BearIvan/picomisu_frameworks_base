@@ -14,7 +14,7 @@ import com.android.server.SysOptBridge;
  * @hide
  */
 public class SessionSmtBase {
-    private IWindowSessionSmtEx mIWindowSessionSmtEx = this.new IWindowSessionSmtExBase();
+    private IWindowSessionSmtEx mIWindowSessionSmtEx = (this).new IWindowSessionSmtExBase();
     protected Session mSession;
 
     public SessionSmtBase(Session session) {

@@ -10,7 +10,6 @@ import com.android.server.LocalServices;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Objects;
 
 /**
  * Reconstructed from the PICO OS 5.13.7 factory services.
@@ -44,8 +43,7 @@ public class WindowManagerServiceSmtBase {
     }
 
     protected void initLocalServices() {
-        Objects.requireNonNull(this);
-        this.mLocalServiceSmtEx = new LocalServiceSmtBase();
+        this.mLocalServiceSmtEx = (this).new LocalServiceSmtBase();
         LocalServices.addService(WindowManagerInternalSmtBase.class, this.mLocalServiceSmtEx);
     }
 

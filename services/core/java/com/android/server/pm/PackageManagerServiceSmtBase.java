@@ -73,7 +73,7 @@ public class PackageManagerServiceSmtBase {
     // Packages listed in /data/system/overrideSdk.xml (closeOverrideProc), loaded once.
     public static ArraySet<String> mOverrideClazzIgnoreProcs = null;
 
-    private IPackageManagerSmtEx mIPackageManagerSmtEx = this.new IPackageManagerSmtExBase();
+    private IPackageManagerSmtEx mIPackageManagerSmtEx = (this).new IPackageManagerSmtExBase();
     protected PackageManagerService mPmService;
     protected PackageManagerServiceMonitorEx mPmServiceMonitorEx;
 

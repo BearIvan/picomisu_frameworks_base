@@ -27,7 +27,7 @@ import java.util.List;
 public class ActivityManagerServiceSysMoEx extends IActivityManagerSysMoEx.Stub {
     private static final String TAG = "ActivityManagerService";
     public static volatile boolean mCleanupCancelled = false;
-    protected static IActivityManagerOptEx mSmtOptEx = null;
+    protected static IActivityManagerOptEx mSmtOptEx;
     static final int sSystemMask = 129;
     private ActivityManagerService mActivityManagerService;
     final List<ActivityRecord> mPendingLaunchRecords = new LinkedList();

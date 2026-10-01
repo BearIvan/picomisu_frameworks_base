@@ -81,6 +81,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlSerializer;
 import smartisanos.api.ApplicationInfoSmt;
 import smartisanos.os.BinderCallCacheAgent;
 import smartisanos.util.FeatLog;
@@ -111,8 +112,8 @@ public class ActivityManagerServiceSmtBase {
     static final int UPDATE_HAS_ONGOING_NOTI = 303;
     static final int UPDATE_OOM_MSG = 2001;
     static final int UPDATE_OOM_TIME = 50;
-    protected static IActivityManagerOptEx mSmtOptEx = null;
-    private static ActivityManagerServiceSysMoEx.CpuStateProvider sCpuStateProvider = null;
+    protected static IActivityManagerOptEx mSmtOptEx;
+    private static ActivityManagerServiceSysMoEx.CpuStateProvider sCpuStateProvider;
     static final int sSystemMask = 129;
     protected static UidCpuUsageProvider sUidCpuUsageProvider;
     long mCachedPss = 0;
@@ -365,9 +366,7 @@ public class ActivityManagerServiceSmtBase {
 
     protected ActivityManagerServiceSmtBase(ActivityManagerService ams) {
         this.mActivityManagerService = ams;
-        ActivityManagerService activityManagerService = this.mActivityManagerService;
-        Objects.requireNonNull(activityManagerService);
-        this.mPrefetchPidsSelf = activityManagerService.new PidMap();
+        this.mPrefetchPidsSelf = this.mActivityManagerService.new PidMap();
         File systemDir = SystemServiceManager.ensureSystemDir();
         this.mChainBootBlackListFile = new AtomicFile(new File(systemDir, "chainboot.xml"));
         this.mProcessIntercept = SysOptBridge.getFactory().getProcessIntercept();
@@ -672,7 +671,7 @@ public class ActivityManagerServiceSmtBase {
                                     parcel.enforceInterface("android.app.IActivityManager");
                                     String string8 = parcel.readString();
                                     int i16 = parcel.readInt();
-                                    ArrayList arrayList = new ArrayList();
+                                    List arrayList = new ArrayList();
                                     arrayList.add(string8);
                                     SysOptBridge.getFactory().getSysPrefetchService().updatePrefetchApps(arrayList, i16);
                                     return true;
@@ -867,8 +866,8 @@ public class ActivityManagerServiceSmtBase {
     }
 
     protected void start() {
-        Objects.requireNonNull(this);
-        LocalServices.addService(ActivityManagerInternalSmtBase.class, new LocalServiceSmtExBase());
+        LocalServices.addService(ActivityManagerInternalSmtBase.class,
+                (this).new LocalServiceSmtExBase());
     }
 
     public void reportKillingEvent(String killEvent) {
@@ -1447,7 +1446,7 @@ public class ActivityManagerServiceSmtBase {
             }
         }
     };
-    private IActivityManagerSmtEx mIActivityManagerSmtEx = this.new IActivityManagerSmtExBase();
+    private IActivityManagerSmtEx mIActivityManagerSmtEx = (this).new IActivityManagerSmtExBase();
     public HashMap<Integer, String> mPrefetchApps = new HashMap<>();
 
     public void doFreezeForPendingApp() {
@@ -2054,7 +2053,7 @@ public class ActivityManagerServiceSmtBase {
         try {
             FileOutputStream fstr = new FileOutputStream("/data/system/overrideSdk.xml");
             BufferedOutputStream str = new BufferedOutputStream(fstr);
-            FastXmlSerializer fastXmlSerializer = new FastXmlSerializer();
+            XmlSerializer fastXmlSerializer = new FastXmlSerializer();
             fastXmlSerializer.setOutput(str, StandardCharsets.UTF_8.name());
             fastXmlSerializer.startDocument(null, true);
             fastXmlSerializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true);
