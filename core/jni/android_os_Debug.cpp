@@ -47,6 +47,7 @@
 #include "jni.h"
 #include <meminfo/procmeminfo.h>
 #include <meminfo/sysmeminfo.h>
+#include <meminfo_utils/sysmeminfo_utils.h>
 #include <memtrack/memtrack.h>
 #include <memunreachable/memunreachable.h>
 #include <android-base/strings.h>
@@ -470,19 +471,43 @@ static void android_os_Debug_getDirtyPages(JNIEnv *env, jobject clazz, jobject o
     android_os_Debug_getDirtyPagesPid(env, clazz, getpid(), object);
 }
 
-static jlong android_os_Debug_getPssPid(JNIEnv *env, jobject clazz, jint pid,
-        jlongArray outUssSwapPssRss, jlongArray outMemtrack)
+// Smartisan (factory PICO OS 5.13.7): a KGSL per-process memory node (bytes), 0 if it cannot be
+// read.
+static jlong read_kgsl_proc_mem(const char* path)
 {
-    jlong pss = 0;
-    jlong rss = 0;
-    jlong swapPss = 0;
-    jlong uss = 0;
-    jlong memtrack = 0;
-
-    struct graphics_memory_pss graphics_mem;
-    if (read_memtrack_memory(pid, &graphics_mem) == 0) {
-        pss = uss = rss = memtrack = graphics_mem.graphics + graphics_mem.gl + graphics_mem.other;
+    char buffer[64] = {0};
+    char* end = NULL;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        return 0;
     }
+    ssize_t len = read(fd, buffer, sizeof(buffer) - 1);
+    close(fd);
+    if (len < 0) {
+        return 0;
+    }
+    return strtoll(buffer, &end, 10);
+}
+
+// Smartisan (factory PICO OS 5.13.7 android_os_Debug_getPssPid_core): the graphics memory added
+// to the Pss/Uss/Rss comes from the KGSL nodes of the process (imported_mem = EGL,
+// gpumem_unmapped = GL) instead of memtrack; outEglGl, if it has 2 entries, receives the EGL and
+// GL sizes in kB.
+static jlong android_os_Debug_getPssPid_core(JNIEnv *env, jobject clazz, jint pid,
+        jlongArray outUssSwapPssRss, jlongArray outMemtrack, jlongArray outEglGl)
+{
+    char eglPath[128] = {0};
+    char glPath[128] = {0};
+    snprintf(eglPath, sizeof(eglPath), "/sys/class/kgsl/kgsl/proc/%d/imported_mem", pid);
+    snprintf(glPath, sizeof(glPath), "/sys/class/kgsl/kgsl/proc/%d/gpumem_unmapped", pid);
+    jlong egl = read_kgsl_proc_mem(eglPath);
+    jlong gl = read_kgsl_proc_mem(glPath);
+
+    jlong memtrack = (egl + gl) / 1024;
+    jlong pss = memtrack;
+    jlong rss = memtrack;
+    jlong swapPss = 0;
+    jlong uss = memtrack;
 
     ::android::meminfo::ProcMemInfo proc_mem(pid);
     ::android::meminfo::MemUsage stats;
@@ -520,12 +545,29 @@ static jlong android_os_Debug_getPssPid(JNIEnv *env, jobject clazz, jint pid,
         }
     }
 
+    if (outEglGl != NULL) {
+        if (env->GetArrayLength(outEglGl) >= 2) {
+            jlong* outEglGlArray = env->GetLongArrayElements(outEglGl, 0);
+            if (outEglGlArray != NULL) {
+                outEglGlArray[0] = egl / 1024;
+                outEglGlArray[1] = gl / 1024;
+            }
+            env->ReleaseLongArrayElements(outEglGl, outEglGlArray, 0);
+        }
+    }
+
     return pss;
+}
+
+static jlong android_os_Debug_getPssPid(JNIEnv *env, jobject clazz, jint pid,
+        jlongArray outUssSwapPssRss, jlongArray outMemtrack)
+{
+    return android_os_Debug_getPssPid_core(env, clazz, pid, outUssSwapPssRss, outMemtrack, NULL);
 }
 
 static jlong android_os_Debug_getPss(JNIEnv *env, jobject clazz)
 {
-    return android_os_Debug_getPssPid(env, clazz, getpid(), NULL, NULL);
+    return android_os_Debug_getPssPid_core(env, clazz, getpid(), NULL, NULL, NULL);
 }
 
 // The 1:1 mapping of MEMINFO_* enums here must match with the constants from
@@ -592,6 +634,34 @@ static void android_os_Debug_getMemInfo(JNIEnv *env, jobject clazz, jlongArray o
     }
 
     env->ReleaseLongArrayElements(out, outArray, 0);
+}
+
+// Smartisan (factory PICO OS 5.13.7): logs the meminfo of all processes (libmeminfo_utils
+// GetAllProcsMeminfoFast) under a "--- Dump all procs meminfo, reason: <callReason> --- " header
+// and appends the lines to outLines if it is not null.
+static jboolean android_os_Debug_getAllProcsMeminfoFast(JNIEnv* env, jobject clazz,
+        jstring callReason, jobject outLines)
+{
+    std::vector<std::string> lines;
+    const char* reason = env->GetStringUTFChars(callReason, NULL);
+    lines.push_back("--- Dump all procs meminfo, reason: " + std::string(reason) + " --- ");
+    env->ReleaseStringUTFChars(callReason, reason);
+
+    ::android::meminfo_utils::SysMemInfo_utils smi;
+    if (!smi.GetAllProcsMeminfoFast(&lines)) {
+        return JNI_FALSE;
+    }
+
+    if (outLines != NULL && !lines.empty()) {
+        int count = lines.size();
+        jclass arrayListClass = env->FindClass("java/util/ArrayList");
+        jmethodID arrayListAdd = env->GetMethodID(arrayListClass, "add", "(Ljava/lang/Object;)Z");
+        for (int i = 0; i < count; i++) {
+            env->CallBooleanMethod(outLines, arrayListAdd, env->NewStringUTF(lines[i].c_str()));
+        }
+        env->DeleteLocalRef(arrayListClass);
+    }
+    return JNI_TRUE;
 }
 
 // Smartisan: parses /proc/meminfo directly (without libmeminfo), including the ION and zram
@@ -952,9 +1022,16 @@ static jlong android_os_Debug_getTimeByQtimer(JNIEnv* env, jobject clazz)
  * JNI registration.
  */
 
+// Order as in the factory PICO OS 5.13.7 table, which registers getAllProcsMeminfoFast twice.
 static const JNINativeMethod gMethods[] = {
     { "getNativeHeapSize",      "()J",
             (void*) android_os_Debug_getNativeHeapSize },
+    { "getMemInfoFast",         "([J)V",
+            (void*) android_os_Debug_getMemInfoFast },
+    { "getAllProcsMeminfoFast", "(Ljava/lang/String;Ljava/util/ArrayList;)Z",
+            (void*) android_os_Debug_getAllProcsMeminfoFast },
+    { "getAllProcsMeminfoFast", "(Ljava/lang/String;Ljava/util/ArrayList;)Z",
+            (void*) android_os_Debug_getAllProcsMeminfoFast },
     { "getNativeHeapAllocatedSize", "()J",
             (void*) android_os_Debug_getNativeHeapAllocatedSize },
     { "getNativeHeapFreeSize",  "()J",
@@ -967,12 +1044,12 @@ static const JNINativeMethod gMethods[] = {
             (void*) android_os_Debug_getPss },
     { "getPss",                 "(I[J[J)J",
             (void*) android_os_Debug_getPssPid },
+    { "getPss",                 "(I[J[J[J)J",
+            (void*) android_os_Debug_getPssPid_core },
     { "getTimeByQtimer",        "()J",
             (void*) android_os_Debug_getTimeByQtimer },
     { "getMemInfo",             "([J)V",
             (void*) android_os_Debug_getMemInfo },
-    { "getMemInfoFast",         "([J)V",
-            (void*) android_os_Debug_getMemInfoFast },
     { "dumpNativeHeap",         "(Ljava/io/FileDescriptor;)V",
             (void*) android_os_Debug_dumpNativeHeap },
     { "dumpNativeMallocInfo",   "(Ljava/io/FileDescriptor;)V",

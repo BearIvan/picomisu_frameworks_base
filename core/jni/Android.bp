@@ -302,6 +302,7 @@ cc_library_shared {
         "libnativebridge_lazy",
         "libnativeloader_lazy",
         "libmemunreachable",
+        "libmeminfo_utils",
         "libhidlbase",
         "libhidltransport",
         "libhwbinder",
