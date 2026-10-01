@@ -7,7 +7,9 @@ import android.app.AppGlobals;
 import android.content.pm.IPackageManagerMonitorEx;
 import android.os.Binder;
 
+import com.android.server.LocalServices;
 import com.android.server.am.ActivityManagerServiceSysMoEx;
+import com.android.server.am.UidCpuRunnerInternal;
 import com.android.server.pm.dex.DexoptOptions;
 import com.android.server.pm.permission.PermissionManagerServiceInternal;
 
@@ -74,6 +76,19 @@ public class PackageManagerServiceMonitorEx extends IPackageManagerMonitorEx.Stu
         }
     };
 
+    /** Registers the idle dex2oat CPU observer while dexopt jobs are pending. */
+    public static void startIdleDex2oat(PackageManagerService pms) {
+        synchronized (sIdleDex2oatLock) {
+            if (sObserverRegistered) {
+                return;
+            }
+            if (pendingDexoptMap.size() > 0) {
+                registerCpuStateObserver(mIdleDex2oatObServer);
+                sObserverRegistered = true;
+            }
+        }
+    }
+
     public static void stopIdleDex2oat() {
         synchronized (sIdleDex2oatLock) {
             if (!sObserverRegistered) {
@@ -82,6 +97,19 @@ public class PackageManagerServiceMonitorEx extends IPackageManagerMonitorEx.Stu
             unregisterCpuStateObserver(mIdleDex2oatObServer);
             sObserverRegistered = false;
             sDexoptResumed = false;
+        }
+    }
+
+    private static void registerCpuStateObserver(
+            ActivityManagerServiceSysMoEx.CpuStateObserver observer) {
+        if (sCpuStateProvider == null
+                && LocalServices.getService(UidCpuRunnerInternal.class) != null) {
+            sCpuStateProvider =
+                    LocalServices.getService(UidCpuRunnerInternal.class).getUidCpuRunner();
+        }
+        if (sCpuStateProvider != null) {
+            sCpuStateProvider.registerCpuStateObserver(observer);
+            FeatLog.d(TAG, "FEAT_DELAY_DEX2OAT", 0, "registerCpuStateObserver");
         }
     }
 
