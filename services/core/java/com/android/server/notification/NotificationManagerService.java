@@ -5254,7 +5254,15 @@ public class NotificationManagerService extends SystemService {
             return false;
         }
 
-        return true;
+        // PICO: only notifications that declare a notification type are posted
+        if (r.getNotification().extras != null
+                && !TextUtils.isEmpty(r.getNotification().extras.getString("notification_type"))) {
+            return true;
+        }
+        if (DBG) {
+            Slog.d(TAG, "Ignored enqueue for no notification type");
+        }
+        return false;
     }
 
     @GuardedBy("mNotificationLock")
