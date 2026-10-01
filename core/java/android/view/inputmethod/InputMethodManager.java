@@ -1818,6 +1818,12 @@ public final class InputMethodManager {
         }
 
         if (mCurRootView != view.getRootView()) {
+            // Re-dispatch if there is a context mismatch.
+            final InputMethodManager fallbackImm = getFallbackInputMethodManagerIfNecessary(view);
+            if (fallbackImm != null) {
+                fallbackImm.focusInLocked(view);
+                return;
+            }
             // This is a request from a window that isn't in the window with
             // IME focus, so ignore it.
             if (DEBUG) Log.v(TAG, "Not IME target window, ignoring");
