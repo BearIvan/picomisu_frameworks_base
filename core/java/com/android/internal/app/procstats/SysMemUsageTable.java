@@ -119,11 +119,17 @@ public class SysMemUsageTable extends SparseMappingTable.Table {
         if (dstCount == 0) {
             dstData[dstOff+SYS_MEM_USAGE_SAMPLE_COUNT] = addCount;
             for (int i=SYS_MEM_USAGE_CACHED_MINIMUM; i<SYS_MEM_USAGE_COUNT; i++) {
+                if (addData[addOff+i] < 0) {
+                    continue;
+                }
                 dstData[dstOff+i] = addData[addOff+i];
             }
         } else if (addCount > 0) {
             dstData[dstOff+SYS_MEM_USAGE_SAMPLE_COUNT] = dstCount + addCount;
             for (int i=SYS_MEM_USAGE_CACHED_MINIMUM; i<SYS_MEM_USAGE_COUNT; i+=3) {
+                if (addData[addOff+i] < 0) {
+                    continue;
+                }
                 if (dstData[dstOff+i] > addData[addOff+i]) {
                     dstData[dstOff+i] = addData[addOff+i];
                 }
