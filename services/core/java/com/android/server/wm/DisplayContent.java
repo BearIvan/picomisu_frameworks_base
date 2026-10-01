@@ -2496,7 +2496,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         mTmpTaskForResizePointSearchResult.reset();
         for (int stackNdx = mTaskStackContainers.getChildCount() - 1; stackNdx >= 0; --stackNdx) {
             final TaskStack stack = mTaskStackContainers.getChildAt(stackNdx);
-            if (!stack.getWindowConfiguration().canResizeTask()) {
+            if (stack == null || !stack.getWindowConfiguration().canResizeTask()) {
                 return null;
             }
 

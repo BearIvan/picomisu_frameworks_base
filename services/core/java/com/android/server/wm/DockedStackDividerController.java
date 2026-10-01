@@ -354,6 +354,9 @@ public class DockedStackDividerController {
     }
 
     void getTouchRegion(Rect outRegion) {
+        if (mWindow == null) {
+            return;
+        }
         outRegion.set(mTouchRegion);
         outRegion.offset(mWindow.getFrameLw().left, mWindow.getFrameLw().top);
     }
@@ -735,7 +738,7 @@ public class DockedStackDividerController {
         if (homeVisible && topSecondaryStack != null) {
             // Home should only be considered visible if it is greater or equal to the top secondary
             // stack in terms of z-order.
-            homeVisible = homeStack.compareTo(topSecondaryStack) >= 0;
+            homeVisible = homeStack.compareTo(topSecondaryStack) > 0;
         }
         setMinimizedDockedStack(homeVisible || minimizedForRecentsAnimation, animate);
     }
