@@ -1720,6 +1720,8 @@ public class ActivityStack extends ConfigurationContainer {
         mService.updateCpuStats();
 
         if (prev.attachedToProcess()) {
+            // Smartisan (factory): remember the process paused for the home activity.
+            mService.getSmtEx().adjustHomePrevProcess(resuming, prev);
             if (DEBUG_PAUSE) Slog.v(TAG_PAUSE, "Enqueueing pending pause: " + prev);
             try {
                 EventLogTags.writeAmPauseActivity(prev.mUserId, System.identityHashCode(prev),

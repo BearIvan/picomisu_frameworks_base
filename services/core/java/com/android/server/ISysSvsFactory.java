@@ -13,8 +13,10 @@ import com.android.server.am.ActivityManagerService;
 import com.android.server.am.IBatteryStatsServiceOptEx;
 import com.android.server.am.IHandleMemoryLeak;
 import com.android.server.am.IMemoryProcessController;
+import com.android.server.am.ISingle3DApp;
 import com.android.server.am.ITaskDeepClean;
 import com.android.server.power.ISmartisanPowerAdvisor;
+import com.android.server.wm.IActivityTaskManagerOptEx;
 
 /**
  * Factory of the Smartisan system service optimizations implemented by the optional sys
@@ -27,6 +29,14 @@ import com.android.server.power.ISmartisanPowerAdvisor;
 public interface ISysSvsFactory extends ISysMonitorSvcFactory {
     default ITaskDeepClean getTaskDeepClean() {
         return new ITaskDeepClean() {};
+    }
+
+    default ISingle3DApp getSingle3DApp() {
+        return new ISingle3DApp() {};
+    }
+
+    default IActivityTaskManagerOptEx getAtmOptEx() {
+        return new IActivityTaskManagerOptEx() {};
     }
 
     default IActivityManagerOptEx getActivityManager(ActivityManagerService service) {

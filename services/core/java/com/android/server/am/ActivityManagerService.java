@@ -2553,6 +2553,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         mActivityTaskManager = atm;
         mActivityTaskManager.initialize(mIntentFirewall, mPendingIntentController,
                 DisplayThread.get().getLooper());
+        // Smartisan (factory).
+        mActivityTaskManager.getSmtEx().setAMS(this);
         mAtmInternal = LocalServices.getService(ActivityTaskManagerInternal.class);
         mStackSupervisor = mActivityTaskManager.mStackSupervisor;
 

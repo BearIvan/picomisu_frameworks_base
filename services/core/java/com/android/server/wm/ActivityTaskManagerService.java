@@ -6461,6 +6461,11 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                 if (proc == mPreviousProcess) {
                     mPreviousProcess = null;
                 }
+                // Smartisan (factory).
+                if (proc == ActivityTaskManagerService.this.getSmtEx().mPreviousVrProcess) {
+                    ActivityTaskManagerService.this.getSmtEx().mPreviousVrProcess = null;
+                }
+                ActivityTaskManagerService.this.getSmtEx().onCleanUpApplicationRecord(proc);
             }
         }
 
@@ -7096,6 +7101,9 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                     TimeUtils.formatDuration(mPreviousProcessVisibleTime, sb);
                     pw.println(sb);
                 }
+                // Smartisan (factory).
+                ActivityTaskManagerService.this.getSmtEx().dumpVrPreviousInfo(dumpPackage, needSep,
+                        pw, dumpAll);
                 if (mHeavyWeightProcess != null && (dumpPackage == null
                         || mHeavyWeightProcess.mPkgList.contains(dumpPackage))) {
                     if (needSep) {
@@ -7264,6 +7272,8 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             synchronized (mGlobalLock) {
                 pw.println("  mHomeProcess: " + mHomeProcess);
                 pw.println("  mPreviousProcess: " + mPreviousProcess);
+                pw.println("  mPreviousVrProcess: "
+                        + ActivityTaskManagerService.this.getSmtEx().mPreviousVrProcess);
                 if (mHeavyWeightProcess != null) {
                     pw.println("  mHeavyWeightProcess: " + mHeavyWeightProcess);
                 }

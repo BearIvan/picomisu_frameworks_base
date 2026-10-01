@@ -259,6 +259,9 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
     final ActivityTaskManagerService mService;
     public RootActivityContainer mRootActivityContainer;
 
+    /** PICO extension (factory IExtActivityStackSupervisor). */
+    private final IExtActivityStackSupervisor mExt = new ExtActivityStackSupervisorImpl(this);
+
     /** The historial list of recent tasks including inactive tasks */
     RecentTasks mRecentTasks;
 
@@ -2410,12 +2413,11 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
 
         // Update the current top activity.
         mTopResumedActivity = topStack.mResumedActivity;
-        // PICO (factory ExtActivityStackSupervisorImpl.setFocusDisplay): publish the display of
-        // the top resumed activity; system dialogs (android.app.Dialog) are shown there.
-        if (android.pico.utils.Features.isPvr2DEnabled() && mTopResumedActivity != null) {
-            final int displayId = mTopResumedActivity.getDisplayId();
-            android.os.SystemProperties.set("pvr.focused.display.id",
-                    String.valueOf(displayId == INVALID_DISPLAY ? DEFAULT_DISPLAY : displayId));
+        // PICO (factory): publish the display of the top resumed activity (system dialogs,
+        // android.app.Dialog, are shown there) and tell the Single3DApp policy.
+        mExt.setFocusDisplay(mTopResumedActivity);
+        if (mService != null) {
+            mService.getSmtEx().updateTopResumedActivityToSingle3DApp(mTopResumedActivity);
         }
         scheduleTopResumedActivityStateIfNeeded();
     }
@@ -2842,8 +2844,15 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
                 mWindowManager.prepareAppTransition(TRANSIT_DOCK_TASK_FROM_RECENTS, false);
             }
 
-            task = mRootActivityContainer.anyTaskForId(taskId,
-                    MATCH_TASK_IN_STACKS_OR_RECENT_TASKS_AND_RESTORE, activityOptions, ON_TOP);
+            // PICO (factory): with 2D app displays a task from recents is not restored to a
+            // stack here (startActivityInPackage places it).
+            if (android.pico.utils.Features.isPvr2DEnabled()) {
+                task = mRootActivityContainer.anyTaskForId(taskId,
+                        MATCH_TASK_IN_STACKS_OR_RECENT_TASKS, activityOptions, ON_TOP);
+            } else {
+                task = mRootActivityContainer.anyTaskForId(taskId,
+                        MATCH_TASK_IN_STACKS_OR_RECENT_TASKS_AND_RESTORE, activityOptions, ON_TOP);
+            }
             if (task == null) {
                 continueUpdateRecentsHomeStackBounds();
                 mWindowManager.executeAppTransition();
@@ -2851,7 +2860,9 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
                         "startActivityFromRecents: Task " + taskId + " not found.");
             }
 
-            if (windowingMode != WINDOWING_MODE_SPLIT_SCREEN_PRIMARY) {
+            // PICO (factory): the home stack is not moved to the front with 2D app displays.
+            if (windowingMode != WINDOWING_MODE_SPLIT_SCREEN_PRIMARY
+                    && !android.pico.utils.Features.isPvr2DEnabled()) {
                 // We always want to return to the home activity instead of the recents activity
                 // from whatever is started from the recents activity, so move the home stack
                 // forward.
