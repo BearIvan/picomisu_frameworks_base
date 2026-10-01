@@ -43,6 +43,7 @@ import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.util.Slog;
+import android.util.SmtSysLog;
 import android.util.SparseArray;
 import android.view.Display;
 import android.view.DisplayInfo;
@@ -350,11 +351,10 @@ public class DisplayModeDirector {
     }
 
     private void updateVoteLocked(int displayId, int priority, Vote vote) {
-        if (DEBUG) {
-            Slog.i(TAG, "updateVoteLocked(displayId=" + displayId
-                    + ", priority=" + Vote.priorityToString(priority)
-                    + ", vote=" + vote + ")");
-        }
+        // Smartisan (factory): always logged, through SmtSysLog.
+        SmtSysLog.i(TAG, "updateVoteLocked(displayId=" + displayId
+                + ", priority=" + Vote.priorityToString(priority)
+                + ", vote=" + vote + ")");
         if (priority < Vote.MIN_PRIORITY || priority > Vote.MAX_PRIORITY) {
             Slog.w(TAG, "Received a vote with an invalid priority, ignoring:"
                     + " priority=" + Vote.priorityToString(priority)

@@ -82,6 +82,7 @@ import android.util.MutableBoolean;
 import android.util.NtpTrustedTime;
 import android.util.Pair;
 import android.util.Slog;
+import android.util.SmtSysLog;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
@@ -195,6 +196,9 @@ class AlarmManagerService extends SystemService {
     private int mNextTickHistory;
 
     private final Injector mInjector;
+
+    // PICO (factory PICO OS 5.13.7): TIME_SET after the start-up advance to the build time.
+    private final IExtAlarmManagerService mExt;
     int mBroadcastRefCount = 0;
     PowerManager.WakeLock mWakeLock;
     SparseIntArray mAlarmsPerUid = new SparseIntArray();
@@ -931,6 +935,7 @@ class AlarmManagerService extends SystemService {
     @VisibleForTesting
     AlarmManagerService(Context context, Injector injector) {
         super(context);
+        mExt = new ExtAlarmManagerServiceImpl(this);
         mInjector = injector;
     }
 
@@ -1516,6 +1521,7 @@ class AlarmManagerService extends SystemService {
                 Slog.i(TAG, "Current time only " + mInjector.getCurrentTimeMillis()
                         + ", advancing to build time " + systemBuildTime);
                 mInjector.setKernelTime(systemBuildTime);
+                mExt.resetSystemBuildTime(mHandler, getContext());
             }
 
             // Determine SysUI's uid
@@ -1622,6 +1628,8 @@ class AlarmManagerService extends SystemService {
         }
 
         synchronized (mLock) {
+            // Smartisan (factory).
+            SmtSysLog.i(TAG, "User sets the time manually: " + millis);
             final long currentTimeMillis = mInjector.getCurrentTimeMillis();
             mInjector.setKernelTime(millis);
             final TimeZone timeZone = TimeZone.getDefault();
