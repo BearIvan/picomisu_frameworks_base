@@ -52,6 +52,7 @@ import android.util.TimeUtils;
 import android.util.proto.ProtoOutputStream;
 
 import com.android.server.SysOptBridge;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -175,7 +176,7 @@ public final class BroadcastQueue {
     private BroadcastQueueSmtBase mSmtEx = new BroadcastQueueSmtBase(this);
 
     /** PICO (factory IExtBroadcastQueue mExt): start-up broadcasts to stopped apps. */
-    private final IExtBroadcastQueue mExt = new ExtBroadcastQueueImpl(this);
+    private final IExtBroadcastQueue mExt = ExtImplFactory.getImpl(IExtBroadcastQueue.class, this);
 
     final BroadcastHandler mHandler;
 

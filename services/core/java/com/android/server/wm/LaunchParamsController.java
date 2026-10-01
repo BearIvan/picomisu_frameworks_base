@@ -29,6 +29,7 @@ import android.annotation.IntDef;
 import android.app.ActivityOptions;
 import android.content.pm.ActivityInfo.WindowLayout;
 import android.graphics.Rect;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -43,8 +44,6 @@ class LaunchParamsController {
     private final ActivityTaskManagerService mService;
     private final LaunchParamsPersister mPersister;
     private final List<LaunchParamsModifier> mModifiers = new ArrayList<>();
-    /** PICO extension (factory IExtLaunchParamsController; not called there either). */
-    private final IExtLaunchParamsController mExt = new ExtLaunchParamsControllerImpl(this);
 
     // Temporary {@link LaunchParams} for internal calculations. This is kept separate from
     // {@code mTmpCurrent} and {@code mTmpResult} to prevent clobbering values.
@@ -52,6 +51,10 @@ class LaunchParamsController {
 
     private final LaunchParams mTmpCurrent = new LaunchParams();
     private final LaunchParams mTmpResult = new LaunchParams();
+
+    /** PICO extension (factory IExtLaunchParamsController; not called there either). */
+    private final IExtLaunchParamsController mExt =
+            ExtImplFactory.getImpl(IExtLaunchParamsController.class, this);
 
     LaunchParamsController(ActivityTaskManagerService service, LaunchParamsPersister persister) {
         mService = service;

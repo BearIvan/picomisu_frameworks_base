@@ -29,6 +29,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
+import com.pico.util.ExtImplFactory;
 
 import java.util.ArrayList;
 
@@ -64,9 +65,6 @@ class TaskChangeNotificationController {
     // Global lock used by the service the instantiate objects of this class.
     private final Object mServiceLock;
     private final ActivityStackSupervisor mStackSupervisor;
-    /** PICO extension (factory IExtTaskChangeNotificationController). */
-    private final IExtTaskChangeNotificationController mExt =
-            new ExtTaskChangeNotificationControllerImpl(this);
     private final Handler mHandler;
 
     // Task stack change listeners in a remote process.
@@ -171,6 +169,10 @@ class TaskChangeNotificationController {
     private final TaskStackConsumer mNotifyTaskDisplayChanged = (l, m) -> {
         l.onTaskDisplayChanged(m.arg1, m.arg2);
     };
+
+    /** PICO extension (factory IExtTaskChangeNotificationController). */
+    private final IExtTaskChangeNotificationController mExt =
+            ExtImplFactory.getImpl(IExtTaskChangeNotificationController.class, this);
 
     @FunctionalInterface
     public interface TaskStackConsumer {

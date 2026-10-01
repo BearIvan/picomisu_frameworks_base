@@ -26,6 +26,7 @@ import android.os.ShellCommand;
 
 import com.android.internal.widget.LockPatternUtils;
 import com.android.internal.widget.LockPatternUtils.RequestThrottledException;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 
@@ -45,7 +46,8 @@ class LockSettingsShellCommand extends ShellCommand {
     private final LockPatternUtils mLockPatternUtils;
     private String mOld = "";
     private String mNew = "";
-    private IExtLockSettingsShellCommand mExt = new ExtLockSettingsShellCommandImpl(this);
+    private IExtLockSettingsShellCommand mExt =
+            ExtImplFactory.getImpl(IExtLockSettingsShellCommand.class, this);
 
     LockSettingsShellCommand(LockPatternUtils lockPatternUtils) {
         mLockPatternUtils = lockPatternUtils;

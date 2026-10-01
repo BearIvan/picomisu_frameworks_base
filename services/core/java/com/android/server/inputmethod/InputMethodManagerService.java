@@ -159,6 +159,7 @@ import com.android.server.inputmethod.InputMethodUtils.InputMethodSettings;
 import com.android.server.statusbar.StatusBarManagerService;
 import com.android.server.wm.WindowManagerInternal;
 import com.android.server.wm.WindowManagerService;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -304,9 +305,6 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
 
     @UserIdInt
     private int mLastSwitchUserId;
-
-    /** PICO input method extension (factory IExtInputMethodManagerService). */
-    private IExtInputMethodManagerService mExt = new ExtInputMethodManagerServiceImpl(this);
 
     public IExtInputMethodManagerService getExt() {
         return mExt;
@@ -933,6 +931,10 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
     @GuardedBy("mMethodMap")
     @NonNull
     private final StartInputHistory mStartInputHistory = new StartInputHistory();
+
+    /** PICO input method extension (factory IExtInputMethodManagerService). */
+    private IExtInputMethodManagerService mExt =
+            ExtImplFactory.getImpl(IExtInputMethodManagerService.class, this);
 
     class SettingsObserver extends ContentObserver {
         int mUserId;

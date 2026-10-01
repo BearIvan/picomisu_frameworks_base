@@ -54,6 +54,7 @@ import com.android.server.backup.utils.BytesReadListener;
 import com.android.server.backup.utils.FullBackupRestoreObserverUtils;
 import com.android.server.backup.utils.RestoreUtils;
 import com.android.server.backup.utils.TarBackupReader;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -127,7 +128,7 @@ public class FullRestoreEngine extends RestoreEngine {
     private byte[] mWidgetData = null;
     private long mAppVersion;
 
-    IExtFullRestoreEngine mExt = new ExtFullRestoreEngineImpl(this);
+    IExtFullRestoreEngine mExt = ExtImplFactory.getImpl(IExtFullRestoreEngine.class, this);
 
     final int mEphemeralOpToken;
 

@@ -40,6 +40,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.android.internal.view.SurfaceCallbackHelper;
+import com.pico.util.ExtImplFactory;
 
 import java.util.ArrayList;
 import java.util.concurrent.locks.ReentrantLock;
@@ -210,7 +211,7 @@ public class SurfaceView extends View implements ViewRootImpl.WindowStoppedCallb
 
     public SurfaceView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
-        mExt = new ExtSurfaceViewImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtSurfaceView.class, this);
         mRenderNode.addPositionUpdateListener(mPositionListener);
 
         setWillNotDraw(true);

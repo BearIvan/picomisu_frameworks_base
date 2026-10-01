@@ -69,6 +69,7 @@ import com.android.internal.widget.LockPatternUtils;
 import com.android.server.LocalServices;
 import com.android.server.am.ActivityManagerService;
 import com.android.server.statusbar.StatusBarManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -130,8 +131,6 @@ public class LockTaskController {
     private final IBinder mToken = new LockTaskToken();
     private final ActivityStackSupervisor mSupervisor;
     private final Context mContext;
-    /** PICO extension (factory IExtLockTaskController). */
-    private final IExtLockTaskController mExt = new ExtLockTaskControllerImpl(this);
 
     // The following system services cannot be final, because they do not exist when this class
     // is instantiated during device boot
@@ -193,6 +192,10 @@ public class LockTaskController {
      * Must only be accessed from the Handler thread.
      */
     private int mPendingDisableFromDismiss = UserHandle.USER_NULL;
+
+    /** PICO extension (factory IExtLockTaskController). */
+    private final IExtLockTaskController mExt =
+            ExtImplFactory.getImpl(IExtLockTaskController.class, this);
 
     LockTaskController(Context context, ActivityStackSupervisor supervisor,
             Handler handler) {

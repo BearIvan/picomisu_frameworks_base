@@ -25,6 +25,7 @@ import android.content.res.Configuration;
 import android.os.Parcel;
 import android.os.RemoteException;
 import android.util.Log;
+import com.pico.util.ExtImplFactory;
 
 /**
  * Stores information about a particular Task.
@@ -139,7 +140,7 @@ public class TaskInfo {
     public final Configuration configuration = new Configuration();
 
     /** PICO task info extension (factory IExtTaskInfo). */
-    private final IExtTaskInfo mExt = new ExtTaskInfoImpl(this);
+    private final IExtTaskInfo mExt = ExtImplFactory.getImpl(IExtTaskInfo.class, this);
 
     TaskInfo() {
         // Do nothing

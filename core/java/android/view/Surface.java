@@ -32,6 +32,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.util.Log;
 import android.util.Slog;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.CloseGuard;
 
@@ -126,7 +127,7 @@ public class Surface implements Parcelable {
     private long mLockedObject;
     private int mGenerationId; // incremented each time mNativeObject changes
     private final Canvas mCanvas = new CompatibleCanvas();
-    private final IExtSurface mExt = new ExtSurfaceImpl(this, mCanvas);
+    private final IExtSurface mExt = ExtImplFactory.getImpl(IExtSurface.class, this, mCanvas);
 
     // A matrix to scale the matrix set by application. This is set to null for
     // non compatibility mode.

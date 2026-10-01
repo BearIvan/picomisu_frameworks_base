@@ -82,6 +82,7 @@ import android.view.autofill.AutofillManager.AutofillClient;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.Preconditions;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.BlockGuard;
 
@@ -205,8 +206,6 @@ class ContextImpl extends Context {
 
     private final @NonNull ResourcesManager mResourcesManager;
 
-    /** PICO context extension (factory IExtContextImpl). */
-    private IExtContextImpl mExt = new ExtContextImplImpl(this);
     @UnsupportedAppUsage
     private @NonNull Resources mResources;
     private @Nullable Display mDisplay; // may be null if default display
@@ -273,6 +272,9 @@ class ContextImpl extends Context {
      */
     @ServiceInitializationState
     final int[] mServiceInitializationStateArray = new int[mServiceCache.length];
+
+    /** PICO context extension (factory IExtContextImpl). */
+    private IExtContextImpl mExt = ExtImplFactory.getImpl(IExtContextImpl.class, this);
 
     @UnsupportedAppUsage
     static ContextImpl getImpl(Context context) {

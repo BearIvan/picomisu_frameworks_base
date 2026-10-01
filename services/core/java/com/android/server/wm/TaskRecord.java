@@ -127,6 +127,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.IVoiceInteractor;
 import com.android.internal.util.XmlUtils;
 import com.android.server.wm.ActivityStack.ActivityState;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -304,9 +305,6 @@ class TaskRecord extends ConfigurationContainer {
     int mCallingUid;
     String mCallingPackage;
 
-    /** PICO extension (factory IExtTaskRecord). */
-    private final IExtTaskRecord mExt = new ExtTaskRecordImpl(this);
-
     public IExtTaskRecord getExt() {
         return mExt;
     }
@@ -344,6 +342,9 @@ class TaskRecord extends ConfigurationContainer {
 
     /** Used by fillTaskInfo */
     final TaskActivitiesReport mReuseActivitiesReport = new TaskActivitiesReport();
+
+    /** PICO extension (factory IExtTaskRecord). */
+    private final IExtTaskRecord mExt = ExtImplFactory.getImpl(IExtTaskRecord.class, this);
 
     /**
      * Don't use constructor directly. Use {@link #create(ActivityTaskManagerService, int,

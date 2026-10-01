@@ -46,6 +46,7 @@ import android.view.MotionEvent;
 import android.view.PointerIcon;
 
 import com.android.internal.os.SomeArgs;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -81,7 +82,7 @@ public final class InputManager {
     private TabletModeChangedListener mTabletModeChangedListener;
     private List<OnTabletModeChangedListenerDelegate> mOnTabletModeChangedListeners;
 
-    private final IExtInputManager mExt = new ExtInputManagerImpl(this);
+    private final IExtInputManager mExt = ExtImplFactory.getImpl(IExtInputManager.class, this);
 
     /**
      * Broadcast Action: Query available keyboard layouts.

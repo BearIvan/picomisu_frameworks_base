@@ -221,6 +221,7 @@ import com.android.server.am.ProcessRecord;
 import com.android.server.uri.UriPermissionOwner;
 import com.android.server.wm.ActivityMetricsLogger.WindowingModeTransitionInfoSnapshot;
 import com.android.server.wm.ActivityStack.ActivityState;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -951,7 +952,7 @@ public final class ActivityRecord extends ConfigurationContainer {
     }
 
     /** PICO activity extension (factory IExtActivityRecord). */
-    private IExtActivityRecord mExt = new ExtActivityRecordImpl(this);
+    private IExtActivityRecord mExt = ExtImplFactory.getImpl(IExtActivityRecord.class, this);
     // Smartisan monitor and extension state (factory PICO OS 5.13.7).
     private final ActivityRecordMonitorEx mActivityRecordMonitorEx;
     private final ActivityRecordSmtBase mActivityRecordSmtEx;
@@ -963,8 +964,6 @@ public final class ActivityRecord extends ConfigurationContainer {
             boolean _rootVoiceInteraction, ActivityStackSupervisor supervisor,
             ActivityOptions options, ActivityRecord sourceRecord) {
         mAtmService = _service;
-        // PICO (factory): the extension remembers the activity that started this one.
-        getExt().setSourceRecord(sourceRecord);
         mRootActivityContainer = _service.mRootActivityContainer;
         appToken = new Token(this, _intent);
         info = aInfo;
@@ -1105,6 +1104,8 @@ public final class ActivityRecord extends ConfigurationContainer {
             mPerf = new BoostFramework();
         mActivityRecordMonitorEx = new ActivityRecordMonitorEx(this);
         mActivityRecordSmtEx = new ActivityRecordSmtBase(this);
+        // PICO (factory): the extension remembers the activity that started this one.
+        getExt().setSourceRecord(sourceRecord);
     }
 
     void setProcess(WindowProcessController proc) {

@@ -104,6 +104,7 @@ import com.android.server.am.UserState.KeyEvictedCallback;
 import com.android.server.pm.UserManagerService;
 import com.android.server.wm.ActivityTaskManagerInternal;
 import com.android.server.wm.WindowManagerService;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -263,7 +264,7 @@ class UserController implements Handler.Callback {
     private final ArrayList<Integer> mLastActiveUsers = new ArrayList<>();
 
     // PICO extension (factory PICO OS 5.13.7).
-    private final IExtUserController mExt = new ExtUserControllerImpl(this);
+    private final IExtUserController mExt = ExtImplFactory.getImpl(IExtUserController.class, this);
 
     UserController(ActivityManagerService service) {
         this(new Injector(service));

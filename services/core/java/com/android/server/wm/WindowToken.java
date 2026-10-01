@@ -37,6 +37,7 @@ import android.os.Debug;
 import android.os.IBinder;
 import android.util.Slog;
 import android.util.proto.ProtoOutputStream;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.Comparator;
@@ -89,8 +90,6 @@ class WindowToken extends WindowContainer<WindowState> {
      * Compares two child window of this token and returns -1 if the first is lesser than the
      * second in terms of z-order and 1 otherwise.
      */
-    /** PICO window token extension (factory IExtWindowToken). */
-    private final IExtWindowToken mExt = new ExtWindowTokenImpl(this);
 
     private final Comparator<WindowState> mWindowComparator =
             (WindowState newWindow, WindowState existingWindow) -> {
@@ -107,6 +106,9 @@ class WindowToken extends WindowContainer<WindowState> {
 
         return isFirstChildWindowGreaterThanSecond(newWindow, existingWindow) ? 1 : -1;
     };
+
+    /** PICO window token extension (factory IExtWindowToken). */
+    private final IExtWindowToken mExt = ExtImplFactory.getImpl(IExtWindowToken.class, this);
 
     WindowToken(WindowManagerService service, IBinder _token, int type, boolean persistOnEmpty,
             DisplayContent dc, boolean ownerCanManageAppTokens) {

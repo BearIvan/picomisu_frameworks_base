@@ -29,6 +29,7 @@ import com.android.internal.policy.IKeyguardService;
 import com.android.server.SysOptBridge;
 import com.android.server.UiThread;
 import com.android.server.policy.WindowManagerPolicy.OnKeyguardExitResult;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 
@@ -58,9 +59,6 @@ public class KeyguardServiceDelegate {
     private final KeyguardStateMonitor.StateCallback mCallback;
 
     private DrawnListener mDrawnListenerWhenConnect;
-
-    // PICO (factory): PICO keyguard service selection.
-    private final IExtKeyguardServiceDelegate mExt = new ExtKeyguardServiceDelegateImpl(this);
 
     private static final class KeyguardState {
         KeyguardState() {
@@ -227,6 +225,10 @@ public class KeyguardServiceDelegate {
             SysOptBridge.getFactory().getSmartScenes().updateKeyguardPackage(null);
         }
     };
+
+    // PICO (factory): PICO keyguard service selection.
+    private final IExtKeyguardServiceDelegate mExt =
+            ExtImplFactory.getImpl(IExtKeyguardServiceDelegate.class, this);
 
     public boolean isShowing() {
         if (mKeyguardService != null) {

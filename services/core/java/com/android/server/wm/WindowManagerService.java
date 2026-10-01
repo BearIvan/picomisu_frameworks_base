@@ -265,6 +265,7 @@ import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.policy.WindowManagerPolicy.ScreenOffListener;
 import com.android.server.power.ShutdownThread;
 import com.android.server.utils.PriorityDump;
+import com.pico.util.ExtImplFactory;
 
 import java.io.BufferedWriter;
 import java.io.DataInputStream;
@@ -4418,10 +4419,6 @@ public class WindowManagerService extends IWindowManager.Stub
 
     final InputManagerCallback mInputManagerCallback = new InputManagerCallback(this);
     private boolean mEventDispatchingEnabled;
-    /** Smartisan window manager extension (factory PICO OS 5.13.7). */
-    private WindowManagerServiceSmtBase mSmtEx = new WindowManagerServiceSmtBase(this);
-    /** PICO window manager extension (factory IExtWindowManagerService). */
-    private IExtWindowManagerService mExt = new ExtWindowManagerServiceImpl(this);
 
     public IExtWindowManagerService getExt() {
         return mExt;
@@ -6755,6 +6752,13 @@ public class WindowManagerService extends IWindowManager.Stub
     }
 
     MousePositionTracker mMousePositionTracker = new MousePositionTracker();
+
+    /** Smartisan window manager extension (factory PICO OS 5.13.7), created after
+     * mMousePositionTracker as on the factory. */
+    private WindowManagerServiceSmtBase mSmtEx = new WindowManagerServiceSmtBase(this);
+    /** PICO window manager extension (factory IExtWindowManagerService). */
+    private IExtWindowManagerService mExt =
+            ExtImplFactory.getImpl(IExtWindowManagerService.class, this);
 
     private static class MousePositionTracker implements PointerEventListener {
         private boolean mLatestEventWasMouse;

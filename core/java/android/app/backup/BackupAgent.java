@@ -37,6 +37,7 @@ import android.system.OsConstants;
 import android.system.StructStat;
 import android.util.ArraySet;
 import android.util.Log;
+import com.pico.util.ExtImplFactory;
 
 import libcore.io.IoUtils;
 
@@ -964,7 +965,7 @@ public abstract class BackupAgent extends ContextWrapper {
 
     private final IBinder mBinder = new BackupServiceBinder().asBinder();
 
-    IExtBackupAgent mExt = new ExtBackupAgentImpl(this);
+    IExtBackupAgent mExt = ExtImplFactory.getImpl(IExtBackupAgent.class, this);
 
     /** @hide */
     public void attach(Context context) {

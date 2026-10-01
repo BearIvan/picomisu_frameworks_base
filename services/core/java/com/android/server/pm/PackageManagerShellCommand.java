@@ -98,6 +98,7 @@ import com.android.internal.content.PackageHelper;
 import com.android.internal.util.ArrayUtils;
 import com.android.server.LocalServices;
 import com.android.server.SystemConfig;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.DexFile;
 
@@ -135,7 +136,7 @@ class PackageManagerShellCommand extends ShellCommand {
             new WeakHashMap<String, Resources>();
     // PICO (factory): tells the VR display service about set-home-activity.
     private final IExtPackageManagerShellCommand mExt =
-            new ExtPackageManagerShellCommandImpl(this);
+            ExtImplFactory.getImpl(IExtPackageManagerShellCommand.class, this);
     int mTargetUser;
     boolean mBrief;
     boolean mComponents;

@@ -228,6 +228,7 @@ import com.android.server.wm.DisplayRotation;
 import com.android.server.wm.WindowManagerInternal;
 import com.android.server.wm.WindowManagerInternal.AppTransitionListener;
 
+import com.pico.util.ExtImplFactory;
 import smartisanos.util.FeatLog;
 
 import java.io.File;
@@ -441,9 +442,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
     GlobalActions mGlobalActions;
     Handler mHandler;
-
-    /** PICO VR key, home and power handling (factory IExtPhoneWindowManager mExt). */
-    private IExtPhoneWindowManager mExt = new ExtPhoneWindowManagerImpl(this);
 
     /** Smartisan starting window hooks of the factory (mHandler is still null here). */
     private PhoneWindowManagerSmtBase mSmtEx = new PhoneWindowManagerSmtBase(this, mHandler);
@@ -4987,6 +4985,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     ScreenLockTimeout mScreenLockTimeout = new ScreenLockTimeout();
+
+    /** PICO VR key, home and power handling (factory IExtPhoneWindowManager mExt). */
+    private IExtPhoneWindowManager mExt =
+            ExtImplFactory.getImpl(IExtPhoneWindowManager.class, this);
 
     @Override
     public void lockNow(Bundle options) {

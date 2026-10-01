@@ -43,6 +43,7 @@ import com.android.server.backup.BackupRestoreTask;
 import com.android.server.backup.UserBackupManagerService;
 import com.android.server.backup.remote.RemoteCall;
 import com.android.server.backup.utils.FullBackupUtils;
+import com.pico.util.ExtImplFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -64,7 +65,7 @@ public class FullBackupEngine {
     private final int mOpToken;
     private final int mTransportFlags;
     private final BackupAgentTimeoutParameters mAgentTimeoutParameters;
-    IExtFullBackupEngine mExt = new ExtFullBackupEngineImpl(this);
+    IExtFullBackupEngine mExt = ExtImplFactory.getImpl(IExtFullBackupEngine.class, this);
 
     class FullBackupRunner implements Runnable {
         private final @UserIdInt int mUserId;

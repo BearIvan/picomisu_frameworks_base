@@ -70,6 +70,7 @@ import com.android.internal.util.DumpUtils;
 import com.android.server.am.BatteryStatsService;
 import com.android.server.lights.Light;
 import com.android.server.lights.LightsManager;
+import com.pico.util.ExtImplFactory;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -236,7 +237,8 @@ public final class BatteryService extends SystemService {
         }
         // Smartisan (factory)
         SysOptBridge.getFactory().getBatteryServiceOptEx().init(mContext, this);
-        mExt = new ExtBatteryServiceImpl(this, mContext, mActivityManagerInternal, mHandler);
+        mExt = ExtImplFactory.getImpl(IExtBatteryService.class, this, mContext,
+                mActivityManagerInternal, mHandler);
     }
 
     @Override

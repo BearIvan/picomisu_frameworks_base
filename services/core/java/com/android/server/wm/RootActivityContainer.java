@@ -118,6 +118,7 @@ import com.android.server.am.ActivityManagerService;
 import com.android.server.am.AppTimeTracker;
 import com.android.server.am.UserState;
 import com.android.server.policy.WindowManagerPolicy;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -176,9 +177,6 @@ public class RootActivityContainer extends ConfigurationContainer
     // Protected as in the factory framework: read by RootActivityContainerSmtBase.
     protected final ArrayList<ActivityDisplay> mActivityDisplays = new ArrayList<>();
 
-    /** PICO extension (factory IExtRootActivityContainer). */
-    private final IExtRootActivityContainer mExt = new ExtRootActivityContainerImpl(this);
-
     public IExtRootActivityContainer getExt() {
         return mExt;
     }
@@ -215,6 +213,10 @@ public class RootActivityContainer extends ConfigurationContainer
     private final ArrayList<ActivityRecord> mTmpActivityList = new ArrayList<>();
 
     private final FindTaskResult mTmpFindTaskResult = new FindTaskResult();
+
+    /** PICO extension (factory IExtRootActivityContainer). */
+    private final IExtRootActivityContainer mExt =
+            ExtImplFactory.getImpl(IExtRootActivityContainer.class, this);
     static class FindTaskResult {
         ActivityRecord mRecord;
         boolean mIdealMatch;

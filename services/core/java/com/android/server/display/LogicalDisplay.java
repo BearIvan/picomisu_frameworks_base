@@ -24,6 +24,7 @@ import android.view.Surface;
 import android.view.SurfaceControl;
 
 import com.android.server.wm.utils.InsetUtils;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.Arrays;
@@ -58,8 +59,6 @@ import java.util.Objects;
  */
 final class LogicalDisplay {
     private final DisplayInfo mBaseDisplayInfo = new DisplayInfo();
-    /** PICO extension (factory IExtLogicalDisplay): the PICO display flags. */
-    private final IExtLogicalDisplay mExt = new ExtLogicalDisplayImpl(this);
 
     // The layer stack we use when the display has been blanked to prevent any
     // of its content from appearing.
@@ -107,6 +106,9 @@ final class LogicalDisplay {
     // Temporary rectangle used when needed.
     private final Rect mTempLayerStackRect = new Rect();
     private final Rect mTempDisplayRect = new Rect();
+
+    /** PICO extension (factory IExtLogicalDisplay): the PICO display flags. */
+    private final IExtLogicalDisplay mExt = ExtImplFactory.getImpl(IExtLogicalDisplay.class, this);
 
     public LogicalDisplay(int displayId, int layerStack, DisplayDevice primaryDisplayDevice) {
         mDisplayId = displayId;

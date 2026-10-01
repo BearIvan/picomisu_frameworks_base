@@ -47,6 +47,7 @@ import android.view.WindowManagerGlobal;
 
 import com.android.internal.policy.IKeyguardDismissCallback;
 import com.android.internal.widget.LockPatternUtils;
+import com.pico.util.ExtImplFactory;
 
 import java.util.List;
 
@@ -62,7 +63,8 @@ public class KeyguardManager {
 
     private final Context mContext;
     // PICO: factory PICO OS 5.13.7 VR keyguard extension (initialized before mContext).
-    private final IExtKeyguardManager mExt = new ExtKeyguardManagerImpl(this);
+    private final IExtKeyguardManager mExt =
+            ExtImplFactory.getImpl(IExtKeyguardManager.class, this);
     private final IWindowManager mWM;
     private final IActivityManager mAm;
     private final ITrustManager mTrustManager;

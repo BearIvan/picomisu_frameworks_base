@@ -152,6 +152,7 @@ import com.android.server.audio.AudioServiceEvents.PhoneStateEvent;
 import com.android.server.audio.AudioServiceEvents.VolumeEvent;
 import com.android.server.pm.UserManagerService;
 import com.android.server.wm.ActivityTaskManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -778,7 +779,7 @@ public class AudioService extends IAudioService.Stub
         updateStreamVolumeAlias(false /*updateVolumes*/, TAG);
         createStreamStates();
 
-        mServiceEx = new ExtAudioServiceImpl(mContext);
+        mServiceEx = ExtImplFactory.getImpl(IExtAudioService.class, mContext);
 
         // PICO OS 5.13.7: the persisted settings, the stream volume checks, the low RAM
         // attribute and the ringer mode are applied on the audio handler thread

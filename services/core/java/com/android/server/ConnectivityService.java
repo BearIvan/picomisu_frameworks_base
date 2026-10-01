@@ -207,6 +207,7 @@ import com.android.server.net.NetworkStatsFactory;
 import com.android.server.utils.PriorityDump;
 
 import com.google.android.collect.Lists;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -909,7 +910,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
     protected ConnectivityService(Context context, INetworkManagementService netManager,
             INetworkStatsService statsService, INetworkPolicyManager policyManager,
             IDnsResolver dnsresolver, IpConnectivityLog logger, INetd netd) {
-        mExt = new ExtConnectivityServiceImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtConnectivityService.class, this);
         if (DBG) log("ConnectivityService starting up");
 
         mSystemProperties = getSystemProperties();

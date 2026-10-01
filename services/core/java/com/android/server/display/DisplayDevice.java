@@ -23,6 +23,7 @@ import android.view.Display;
 import android.view.DisplayAddress;
 import android.view.Surface;
 import android.view.SurfaceControl;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 
@@ -37,13 +38,14 @@ abstract class DisplayDevice {
     private final DisplayAdapter mDisplayAdapter;
     private final IBinder mDisplayToken;
     private final String mUniqueId;
-    /** PICO extension (factory IExtDisplayDevice). */
-    private final IExtDisplayDevice mExt = new ExtDisplayDeviceImpl(this);
 
     // The display device does not manage these properties itself, they are set by
     // the display manager service.  The display device shouldn't really be looking at these.
     private int mCurrentLayerStack = -1;
     private int mCurrentOrientation = -1;
+
+    /** PICO extension (factory IExtDisplayDevice). */
+    private final IExtDisplayDevice mExt = ExtImplFactory.getImpl(IExtDisplayDevice.class, this);
     private Rect mCurrentLayerStackRect;
     private Rect mCurrentDisplayRect;
 

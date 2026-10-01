@@ -93,6 +93,7 @@ import com.android.server.deviceidle.IDeviceIdleConstraint;
 import com.android.server.deviceidle.TvConstraintController;
 import com.android.server.net.NetworkPolicyManagerInternal;
 import com.android.server.wm.ActivityTaskManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -1978,7 +1979,7 @@ public class DeviceIdleController extends SystemService
 
     @VisibleForTesting DeviceIdleController(Context context, Injector injector) {
         super(context);
-        mExt = new ExtDeviceIdleControllerImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtDeviceIdleController.class, this);
         mInjector = injector;
         mConfigFile = new AtomicFile(new File(getSystemDir(), "deviceidle.xml"));
         mHandler = mInjector.getHandler(this);

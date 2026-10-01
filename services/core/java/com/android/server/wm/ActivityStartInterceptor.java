@@ -57,6 +57,7 @@ import com.android.internal.app.SuspendedAppActivity;
 import com.android.internal.app.UnlaunchableAppActivity;
 import com.android.server.LocalServices;
 import com.android.server.am.ActivityManagerService;
+import com.pico.util.ExtImplFactory;
 
 /**
  * A class that contains activity intercepting logic for {@link ActivityStarter#startActivityLocked}
@@ -108,11 +109,11 @@ class ActivityStartInterceptor {
     @VisibleForTesting
     ActivityStartInterceptor(ActivityTaskManagerService service, ActivityStackSupervisor supervisor,
             RootActivityContainer root, Context context) {
+        mExt = ExtImplFactory.getImpl(IExtActivityStartInterceptor.class, this);
         mService = service;
         mSupervisor = supervisor;
         mRootActivityContainer = root;
         mServiceContext = context;
-        mExt = new ExtActivityStartInterceptorImpl(this);
     }
 
     /** PICO extension (factory IExtActivityStartInterceptor). */

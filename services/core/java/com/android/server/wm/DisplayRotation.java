@@ -49,6 +49,7 @@ import com.android.server.UiThread;
 import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.policy.WindowOrientationListener;
 import com.android.server.statusbar.StatusBarManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.lang.annotation.Retention;
@@ -163,7 +164,7 @@ public class DisplayRotation {
     DisplayRotation(WindowManagerService service, DisplayContent displayContent,
             DisplayPolicy displayPolicy, DisplayWindowSettings displayWindowSettings,
             Context context, Object lock) {
-        mExt = new ExtDisplayRotationImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtDisplayRotation.class, this);
         mService = service;
         mDisplayContent = displayContent;
         mDisplayPolicy = displayPolicy;

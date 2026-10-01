@@ -100,6 +100,7 @@ import com.android.server.pm.permission.PermissionManagerServiceInternal.Permiss
 import com.android.server.pm.permission.PermissionsState.PermissionState;
 import com.android.server.policy.PermissionPolicyInternal;
 import com.android.server.policy.SoftRestrictedPermissionPolicy;
+import com.pico.util.ExtImplFactory;
 
 import libcore.util.EmptyArray;
 
@@ -225,7 +226,8 @@ public class PermissionManagerService {
             mRuntimePermissionStateChangedListeners = new ArrayList<>();
 
     // PICO: factory PICO OS 5.13.7 SYSTEM_ALERT_WINDOW policy for VR / 2D floating apps.
-    private final IExtPermissionManagerService mExt = new ExtPermissionManagerServiceImpl(this);
+    private final IExtPermissionManagerService mExt =
+            ExtImplFactory.getImpl(IExtPermissionManagerService.class, this);
 
     PermissionManagerService(Context context,
             @NonNull Object externalLock) {

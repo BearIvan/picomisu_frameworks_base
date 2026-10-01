@@ -102,6 +102,7 @@ import com.android.server.power.batterysaver.BatterySaverController;
 import com.android.server.power.batterysaver.BatterySaverPolicy;
 import com.android.server.power.batterysaver.BatterySaverStateMachine;
 import com.android.server.power.batterysaver.BatterySavingStats;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -4068,7 +4069,8 @@ public final class PowerManagerService extends SystemService
         }
     };
 
-    private final IExtPowerManagerService mExt = new ExtPowerManagerServiceImpl(this);
+    private final IExtPowerManagerService mExt =
+            ExtImplFactory.getImpl(IExtPowerManagerService.class, this);
 
     /**
      * Handler for asynchronous operations performed by the power manager.

@@ -372,6 +372,7 @@ import com.android.server.wm.ActivityTaskManagerService;
 import com.android.server.wm.WindowManagerService;
 import com.android.server.wm.WindowProcessController;
 import com.android.server.ActivityTriggerService;
+import com.pico.util.ExtImplFactory;
 
 import libcore.util.EmptyArray;
 
@@ -7108,7 +7109,8 @@ public class ActivityManagerService extends IActivityManager.Stub
     IMemoryProcessController memoryProcessController =
             SysOptBridge.getFactory().getMemoryProcessController();
     // PICO extension (factory PICO OS 5.13.7).
-    private final IExtActivityManagerService mExt = new ExtActivityManagerServiceImpl(this);
+    private final IExtActivityManagerService mExt =
+            ExtImplFactory.getImpl(IExtActivityManagerService.class, this);
     // Smartisan extensions returned by getMonitorEx() and getISmtEx() (factory PICO OS 5.13.7).
     private final ActivityManagerServiceSysMoEx mMonitorEx;
     private final ActivityManagerServiceSmtBase mSmtEx;

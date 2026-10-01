@@ -169,6 +169,7 @@ import com.android.server.am.EventLogTags;
 import com.android.server.am.PendingIntentRecord;
 
 import com.google.android.collect.Sets;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -411,7 +412,7 @@ public class ActivityStack extends ConfigurationContainer {
     private final ArrayList<ActivityRecord> mTmpActivities = new ArrayList<>();
 
     // PICO activity stack extension (factory PICO OS 5.13.7).
-    private final IExtActivityStack mExt = new ExtActivityStackImpl(this);
+    private final IExtActivityStack mExt = ExtImplFactory.getImpl(IExtActivityStack.class, this);
 
     // Smartisan (factory): per-stack Smartisan state (prefetch flag, PowerAdvisor).
     private final ActivityStackSmtBase mActivityStackSmtBase = new ActivityStackSmtBase(this);

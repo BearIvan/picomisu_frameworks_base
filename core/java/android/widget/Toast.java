@@ -41,6 +41,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -119,7 +120,7 @@ public class Toast {
      * @hide
      */
     public Toast(@NonNull Context context, @Nullable Looper looper) {
-        mExt = new ExtToastImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtToast.class, this);
         mContext = context;
         mTN = new TN(context.getPackageName(), looper);
         mTN.mY = context.getResources().getDimensionPixelSize(

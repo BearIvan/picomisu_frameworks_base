@@ -41,6 +41,7 @@ import android.util.proto.ProtoOutputStream;
 
 import com.android.internal.util.ArrayUtils;
 import com.android.server.SystemConfig;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -1343,7 +1344,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         return mMonitorEx.getSmtUid(uid, packageName);
     }
 
-    private IExtApplicationInfo mExt = new ExtApplicationInfoImpl(this);
+    private IExtApplicationInfo mExt = ExtImplFactory.getImpl(IExtApplicationInfo.class, this);
 
     /**
      * Smartisan per-application configuration (JSON), set through

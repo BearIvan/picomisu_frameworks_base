@@ -123,6 +123,7 @@ import com.android.internal.util.Preconditions;
 import com.android.internal.view.BaseSurfaceHolder;
 import com.android.internal.view.RootViewSurfaceTaker;
 import com.android.internal.view.SurfaceCallbackHelper;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -7975,7 +7976,7 @@ public final class ViewRootImpl implements ViewParent,
             new InvalidateOnAnimationRunnable();
 
     // PICO extension; initialized after the other fields as in the factory framework.
-    private final IExtViewRootImpl mExt = new ExtViewRootImplImpl(this);
+    private final IExtViewRootImpl mExt = ExtImplFactory.getImpl(IExtViewRootImpl.class, this);
 
     public void dispatchInvalidateDelayed(View view, long delayMilliseconds) {
         Message msg = mHandler.obtainMessage(MSG_INVALIDATE, view);

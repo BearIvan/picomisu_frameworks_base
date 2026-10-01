@@ -143,6 +143,7 @@ import com.android.internal.widget.ScrollBarUtils;
 
 import com.google.android.collect.Lists;
 import com.google.android.collect.Maps;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -4724,9 +4725,6 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     @UnsupportedAppUsage
     protected Context mContext;
 
-    /** PICO view extension (factory IExtView). */
-    private final IExtView mExt = new ExtViewImpl(this);
-
     /** Smartisan view extension, created on first use (factory PICO OS 5.13.7). */
     private ViewSmtBase mViewSmtEx;
 
@@ -5161,6 +5159,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
 
     @LayoutRes
     private int mSourceLayoutId = ID_NULL;
+
+    /** PICO view extension (factory IExtView), created after the other field initializers. */
+    private final IExtView mExt = ExtImplFactory.getImpl(IExtView.class, this);
 
     @Nullable
     private SparseIntArray mAttributeSourceResId;

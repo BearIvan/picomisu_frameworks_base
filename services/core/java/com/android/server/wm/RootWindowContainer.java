@@ -81,6 +81,7 @@ import android.view.SurfaceControl;
 import android.view.WindowManager;
 
 import com.android.server.EventLogTags;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -156,8 +157,8 @@ class RootWindowContainer extends WindowContainer<DisplayContent>
 
     RootWindowContainer(WindowManagerService service) {
         super(service);
+        mExt = ExtImplFactory.getImpl(IExtRootWindowContainer.class, this);
         mHandler = new MyHandler(service.mH.getLooper());
-        mExt = new ExtRootWindowContainerImpl(this);
     }
 
     /** PICO VR state of the root (factory IExtRootWindowContainer). */

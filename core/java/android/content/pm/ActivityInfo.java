@@ -27,6 +27,7 @@ import android.content.res.TypedArray;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.util.Printer;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -989,7 +990,7 @@ public class ActivityInfo extends ComponentInfo implements Parcelable {
         return mSmtEx;
     }
 
-    private IExtActivityInfo mExt = new ExtActivityInfoImpl(this);
+    private IExtActivityInfo mExt = ExtImplFactory.getImpl(IExtActivityInfo.class, this);
 
     public ActivityInfo() {
     }

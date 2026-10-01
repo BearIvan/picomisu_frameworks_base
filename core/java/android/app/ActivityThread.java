@@ -171,6 +171,7 @@ import com.android.internal.util.function.pooled.PooledLambda;
 import com.android.org.conscrypt.OpenSSLSocketImpl;
 import com.android.org.conscrypt.TrustedCertificateStore;
 import com.android.server.am.MemInfoDumpProto;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.CloseGuard;
 import dalvik.system.VMDebug;
@@ -2232,7 +2233,7 @@ public final class ActivityThread extends ClientTransactionHandler {
     private Configuration mMainThreadConfig = new Configuration();
 
     // PICO extension; initialized after the other fields as in the factory framework.
-    private final IExtActivityThread mExt = new ExtActivityThreadImpl(this);
+    private final IExtActivityThread mExt = ExtImplFactory.getImpl(IExtActivityThread.class, this);
 
     Configuration applyConfigCompatMainThread(int displayDensity, Configuration config,
             CompatibilityInfo compat) {

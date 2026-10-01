@@ -211,6 +211,7 @@ import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.wm.LocalAnimationAdapter.AnimationSpec;
 import com.android.server.wm.utils.InsetUtils;
 import com.android.server.wm.utils.WmDisplayCutout;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.lang.ref.WeakReference;
@@ -640,7 +641,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     private boolean mIsDimming = false;
 
     /** PICO window extension (factory IExtWindowState). */
-    private final IExtWindowState mExt = new ExtWindowStateImpl(this);
+    private final IExtWindowState mExt = ExtImplFactory.getImpl(IExtWindowState.class, this);
 
     private @Nullable InsetsSourceProvider mInsetProvider;
 

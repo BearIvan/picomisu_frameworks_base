@@ -40,6 +40,7 @@ import android.os.Process;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -89,7 +90,7 @@ public final class Display {
 
     // Temporary display metrics structure used for compatibility mode.
     private final DisplayMetrics mTempMetrics = new DisplayMetrics();
-    private final IExtDisplay mExt = new ExtDisplayImpl(this);
+    private final IExtDisplay mExt = ExtImplFactory.getImpl(IExtDisplay.class, this);
 
     // We cache the app width and height properties briefly between calls
     // to getHeight() and getWidth() to ensure that applications perceive

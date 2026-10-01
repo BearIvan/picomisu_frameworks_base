@@ -59,6 +59,7 @@ import com.android.internal.logging.nano.MetricsProto;
 import com.android.server.PackageWatchdog;
 import com.android.server.RescueParty;
 import com.android.server.wm.WindowProcessController;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -99,7 +100,7 @@ class AppErrors {
     private final ProcessMap<BadProcessInfo> mBadProcesses = new ProcessMap<>();
 
     // PICO (factory): crash and ANR dialogs disabled by Features.FEAT_DISABLE_ANR_CRASH_DIALOG.
-    private final IExtAppErrors mExt = new ExtAppErrorsImpl(this);
+    private final IExtAppErrors mExt = ExtImplFactory.getImpl(IExtAppErrors.class, this);
 
     AppErrors(Context context, ActivityManagerService service, PackageWatchdog watchdog) {
         context.assertRuntimeOverlayThemable();

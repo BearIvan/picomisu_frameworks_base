@@ -69,6 +69,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.XmlUtils;
 import com.android.server.LocalServices;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -220,7 +221,7 @@ public final class DefaultPermissionGrantPolicy {
 
     // PICO: factory PICO OS 5.13.7 default grants for system packages.
     private final IExtDefaultPermissionGrantPolicy mExt =
-            new ExtDefaultPermissionGrantPolicyImpl(this);
+            ExtImplFactory.getImpl(IExtDefaultPermissionGrantPolicy.class, this);
 
     DefaultPermissionGrantPolicy(Context context, Looper looper,
             @NonNull PermissionManagerService permissionManager) {

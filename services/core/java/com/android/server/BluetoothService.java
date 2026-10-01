@@ -20,6 +20,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 
 import com.android.internal.os.RoSystemProperties;
+import com.pico.util.ExtImplFactory;
 
 class BluetoothService extends SystemService {
     private BluetoothManagerService mBluetoothManagerService;
@@ -30,7 +31,7 @@ class BluetoothService extends SystemService {
     public BluetoothService(Context context) {
         super(context);
         mBluetoothManagerService = new BluetoothManagerService(context);
-        mExt = new ExtBluetoothServiceImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtBluetoothService.class, this);
     }
 
     private void initialize() {

@@ -90,6 +90,7 @@ import com.android.internal.util.dump.DualDumpOutputStream;
 import com.android.server.FgThread;
 import com.android.server.LocalServices;
 import com.android.server.wm.ActivityTaskManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -184,7 +185,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
 
     private final Object mLock = new Object();
 
-    IExtUsbDeviceManager mExt = new ExtUsbDeviceManagerImpl(this);
+    IExtUsbDeviceManager mExt = ExtImplFactory.getImpl(IExtUsbDeviceManager.class, this);
 
     private final Context mContext;
     private final ContentResolver mContentResolver;

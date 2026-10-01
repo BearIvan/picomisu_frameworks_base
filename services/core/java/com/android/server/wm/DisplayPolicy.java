@@ -179,6 +179,7 @@ import com.android.server.policy.WindowOrientationListener;
 import com.android.server.statusbar.StatusBarManagerInternal;
 import com.android.server.wallpaper.WallpaperManagerInternal;
 import com.android.server.wm.utils.InsetUtils;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 
@@ -220,8 +221,6 @@ public class DisplayPolicy {
     private final Context mContext;
     private final DisplayContent mDisplayContent;
     private final Object mLock;
-    /** PICO display policy extension (factory IExtDisplayPolicy). */
-    private final IExtDisplayPolicy mExt = new ExtDisplayPolicyImpl(this);
     private final Handler mHandler;
 
     private Resources mCurrentUserResources;
@@ -3741,6 +3740,9 @@ public class DisplayPolicy {
             }
         }
     };
+
+    /** PICO display policy extension (factory IExtDisplayPolicy). */
+    private final IExtDisplayPolicy mExt = ExtImplFactory.getImpl(IExtDisplayPolicy.class, this);
 
     void onPowerKeyDown(boolean isScreenOn) {
         // Detect user pressing the power button in panic when an application has

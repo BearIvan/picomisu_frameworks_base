@@ -41,6 +41,7 @@ import android.util.TimeUtils;
 
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.util.DumpUtils;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -258,7 +259,7 @@ public class NewNetworkTimeUpdateService extends Binder implements NetworkTimeUp
 
     // PICO (factory PICO OS 5.13.7): NTP refresh from the PICO server list.
     private final IExtNewNetworkTimeUpdateService mExt =
-            new ExtNewNetworkTimeUpdateServiceImpl(this);
+            ExtImplFactory.getImpl(IExtNewNetworkTimeUpdateService.class, this);
 
     /** Handler to do the network accesses on */
     private class MyHandler extends Handler {

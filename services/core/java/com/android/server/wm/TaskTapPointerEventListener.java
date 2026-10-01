@@ -33,6 +33,7 @@ import com.android.server.am.ActivityManagerService;
 import com.android.server.wm.ActivityStackSupervisor;
 import com.android.server.wm.ActivityDisplay;
 import android.util.BoostFramework;
+import com.pico.util.ExtImplFactory;
 
 /**
  * 1. Adjust the top most focus display if touch down on some display.
@@ -48,7 +49,7 @@ public class TaskTapPointerEventListener implements PointerEventListener {
     public BoostFramework mPerfObj = null;
     /** PICO extension (factory IExtTaskTapPointerEventListener). */
     private final IExtTaskTapPointerEventListener mExt =
-            new ExtTaskTapPointerEventListenerImpl(this);
+            ExtImplFactory.getImpl(IExtTaskTapPointerEventListener.class, this);
 
     public TaskTapPointerEventListener(WindowManagerService service,
             DisplayContent displayContent) {

@@ -211,6 +211,7 @@ import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.wm.utils.DisplayRotationUtil;
 import com.android.server.wm.utils.RotationCache;
 import com.android.server.wm.utils.WmDisplayCutout;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.lang.annotation.Retention;
@@ -902,7 +903,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     DisplayContent(Display display, WindowManagerService service,
             ActivityDisplay activityDisplay) {
         super(service);
-        mExt = new ExtDisplayContentImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtDisplayContent.class, this);
         mDisplayContentSmtBase = new DisplayContentSmtBase(this);
         mAcitvityDisplay = activityDisplay;
         if (service.mRoot.getDisplayContent(display.getDisplayId()) != null) {

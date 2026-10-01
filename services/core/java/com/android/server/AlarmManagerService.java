@@ -99,6 +99,7 @@ import com.android.internal.util.IndentingPrintWriter;
 import com.android.internal.util.LocalLog;
 import com.android.internal.util.StatLogger;
 import com.android.server.AppStateTracker.Listener;
+import com.pico.util.ExtImplFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileDescriptor;
@@ -935,7 +936,7 @@ class AlarmManagerService extends SystemService {
     @VisibleForTesting
     AlarmManagerService(Context context, Injector injector) {
         super(context);
-        mExt = new ExtAlarmManagerServiceImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtAlarmManagerService.class, this);
         mInjector = injector;
     }
 

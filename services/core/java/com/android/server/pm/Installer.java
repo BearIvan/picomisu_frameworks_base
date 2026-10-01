@@ -32,6 +32,7 @@ import android.util.Slog;
 
 import com.android.internal.os.BackgroundThread;
 import com.android.server.SystemService;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.BlockGuard;
 import dalvik.system.VMRuntime;
@@ -85,7 +86,7 @@ public class Installer extends SystemService {
     public static final int FLAG_FORCE = IInstalld.FLAG_FORCE;
 
     // PICO (factory): installd connect listeners.
-    private IExtInstaller mExt = new ExtInstallerImpl(this);
+    private IExtInstaller mExt = ExtImplFactory.getImpl(IExtInstaller.class, this);
 
     private final boolean mIsolated;
 

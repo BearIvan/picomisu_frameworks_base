@@ -33,6 +33,7 @@ import android.util.Slog;
 
 import com.android.internal.app.procstats.AssociationState;
 import com.android.internal.app.procstats.ProcessStats;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -59,7 +60,8 @@ final class ContentProviderRecord implements ComponentName.WithComponentName {
     String stringName;
     String shortStringName;
     // PICO (factory): providers whose clients need no release.
-    private final IExtContentProviderRecord mExt = new ExtContentProviderRecordImpl(this);
+    private final IExtContentProviderRecord mExt =
+            ExtImplFactory.getImpl(IExtContentProviderRecord.class, this);
 
     public ContentProviderRecord(ActivityManagerService _service, ProviderInfo _info,
             ApplicationInfo ai, ComponentName _name, boolean _singleton) {

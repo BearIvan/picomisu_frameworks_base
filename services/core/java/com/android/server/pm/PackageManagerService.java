@@ -331,6 +331,7 @@ import com.android.server.policy.PermissionPolicyInternal;
 import com.android.server.security.VerityUtils;
 import com.android.server.storage.DeviceStorageMonitorInternal;
 import com.android.server.wm.ActivityTaskManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.CloseGuard;
 import dalvik.system.VMRuntime;
@@ -22957,7 +22958,8 @@ public class PackageManagerService extends IPackageManager.Stub
     private boolean mMediaMounted = false;
 
     // PICO (factory): package manager extension; created after the other field initialisers.
-    private final IExtPackageManagerService mExt = new ExtPackageManagerServiceImpl(this);
+    private final IExtPackageManagerService mExt =
+            ExtImplFactory.getImpl(IExtPackageManagerService.class, this);
 
     static String getEncryptKey() {
         try {

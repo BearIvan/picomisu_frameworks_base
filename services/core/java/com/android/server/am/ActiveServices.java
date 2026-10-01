@@ -101,6 +101,7 @@ import com.android.server.uri.NeededUriGrants;
 import com.android.server.wm.ActivityRecord;
 import com.android.server.wm.ActivityServiceConnectionsHolder;
 import com.android.server.wm.ActivityStack;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -203,7 +204,7 @@ public final class ActiveServices {
     };
 
     /** PICO (factory IExtActiveServices mExt): SyncAdapter binds while starting up. */
-    private final IExtActiveServices mExt = new ExtActiveServicesImpl(this);
+    private final IExtActiveServices mExt = ExtImplFactory.getImpl(IExtActiveServices.class, this);
 
     /**
      * Watch for apps being put into forced app standby, so we can step their fg

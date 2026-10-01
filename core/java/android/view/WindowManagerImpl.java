@@ -25,6 +25,7 @@ import android.os.IBinder;
 import android.os.RemoteException;
 
 import com.android.internal.os.IResultReceiver;
+import com.pico.util.ExtImplFactory;
 
 import java.util.List;
 
@@ -69,9 +70,9 @@ public final class WindowManagerImpl implements WindowManager {
     }
 
     private WindowManagerImpl(Context context, Window parentWindow) {
+        mExt = ExtImplFactory.getImpl(IExtWindowManagerImpl.class, this);
         mContext = context;
         mParentWindow = parentWindow;
-        mExt = new ExtWindowManagerImplImpl(this);
     }
 
     public WindowManagerImpl createLocalWindowManager(Window parentWindow) {

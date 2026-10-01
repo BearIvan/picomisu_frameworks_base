@@ -129,6 +129,7 @@ import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.pm.InstantAppResolver;
 import com.android.server.wm.ActivityStackSupervisor.PendingActivityLaunch;
 import com.android.server.wm.LaunchParamsController.LaunchParams;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.text.DateFormat;
@@ -153,8 +154,6 @@ class ActivityStarter {
     private final ActivityStackSupervisor mSupervisor;
     private final ActivityStartInterceptor mInterceptor;
     private final ActivityStartController mController;
-    /** PICO extension (factory IExtActivityStarter). */
-    private final IExtActivityStarter mExt = new ExtActivityStarterImpl(this);
 
     // Share state variable among methods when starting an activity.
     private ActivityRecord mStartActivity;
@@ -220,6 +219,10 @@ class ActivityStarter {
      * {@link #startResolvedActivity} is invoked directly.
      */
     private Request mRequest = new Request();
+
+    /** PICO extension (factory IExtActivityStarter). */
+    private final IExtActivityStarter mExt =
+            ExtImplFactory.getImpl(IExtActivityStarter.class, this);
 
     /**
      * An interface that to provide {@link ActivityStarter} instances to the controller. This is

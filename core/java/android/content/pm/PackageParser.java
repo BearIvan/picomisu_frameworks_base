@@ -106,6 +106,7 @@ import com.android.internal.os.ClassLoaderFactory;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.XmlUtils;
 import com.android.server.SystemConfig;
+import com.pico.util.ExtImplFactory;
 
 import libcore.io.IoUtils;
 import libcore.util.EmptyArray;
@@ -539,7 +540,7 @@ public class PackageParser {
 
     private static final String TAG = "PackageParser";
 
-    private final IExtPackageParser mExt = new ExtPackageParserImpl(this);
+    private final IExtPackageParser mExt = ExtImplFactory.getImpl(IExtPackageParser.class, this);
 
     @UnsupportedAppUsage
     public PackageParser() {

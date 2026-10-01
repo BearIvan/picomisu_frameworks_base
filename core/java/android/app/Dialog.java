@@ -63,6 +63,7 @@ import android.view.accessibility.AccessibilityEvent;
 import com.android.internal.R;
 import com.android.internal.app.WindowDecorActionBar;
 import com.android.internal.policy.PhoneWindow;
+import com.pico.util.ExtImplFactory;
 
 import java.lang.ref.WeakReference;
 
@@ -184,7 +185,7 @@ public class Dialog implements DialogInterface, Window.Callback,
     }
 
     Dialog(@NonNull Context context, @StyleRes int themeResId, boolean createContextThemeWrapper) {
-        mExt = new ExtDialogImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtDialog.class, this);
         if (createContextThemeWrapper) {
             if (themeResId == Resources.ID_NULL) {
                 final TypedValue outValue = new TypedValue();

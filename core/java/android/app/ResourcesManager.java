@@ -47,6 +47,7 @@ import android.view.DisplayAdjustments;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.IndentingPrintWriter;
+import com.pico.util.ExtImplFactory;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -163,7 +164,8 @@ public class ResourcesManager {
     private final ArrayMap<Pair<Integer, DisplayAdjustments>, WeakReference<Display>>
             mAdjustedDisplays = new ArrayMap<>();
 
-    private final IExtResourcesManager mExt = new ExtResourcesManagerImpl(this);
+    private final IExtResourcesManager mExt =
+            ExtImplFactory.getImpl(IExtResourcesManager.class, this);
 
     @UnsupportedAppUsage
     public static ResourcesManager getInstance() {

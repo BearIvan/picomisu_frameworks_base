@@ -82,6 +82,7 @@ import com.android.internal.view.IInputMethodClient;
 import com.android.internal.view.IInputMethodManager;
 import com.android.internal.view.IInputMethodSession;
 import com.android.internal.view.InputBindResult;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -851,15 +852,16 @@ public final class InputMethodManager {
         }
     };
 
-    /** PICO input method manager extension (factory IExtInputMethodManager). */
-    private final IExtInputMethodManager mExt = new ExtInputMethodManagerImpl(this);
-
     /** @hide */
     public IExtInputMethodManager getExt() {
         return mExt;
     }
 
     final InputConnection mDummyInputConnection = new BaseInputConnection(this, false);
+
+    /** PICO input method manager extension (factory IExtInputMethodManager). */
+    private final IExtInputMethodManager mExt =
+            ExtImplFactory.getImpl(IExtInputMethodManager.class, this);
 
     /**
      * For layoutlib to clean up static objects inside {@link InputMethodManager}.

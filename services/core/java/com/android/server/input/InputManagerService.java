@@ -95,6 +95,7 @@ import com.android.server.DisplayThread;
 import com.android.server.LocalServices;
 import com.android.server.Watchdog;
 import com.android.server.policy.WindowManagerPolicy;
+import com.pico.util.ExtImplFactory;
 
 import libcore.io.IoUtils;
 import libcore.io.Streams;
@@ -192,7 +193,8 @@ public class InputManagerService extends IInputManager.Stub
     private IWindow mFocusedWindow;
     private boolean mFocusedWindowHasCapture;
 
-    private final IExtInputManagerService mExt = new ExtInputManagerServiceImpl(this);
+    private final IExtInputManagerService mExt =
+            ExtImplFactory.getImpl(IExtInputManagerService.class, this);
 
     private static native long nativeInit(InputManagerService service,
             Context context, MessageQueue messageQueue);

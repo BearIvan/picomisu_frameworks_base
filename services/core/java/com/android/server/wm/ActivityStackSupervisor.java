@@ -146,6 +146,7 @@ import com.android.server.am.ActivityManagerService;
 import com.android.server.am.EventLogTags;
 import com.android.server.am.ProcessRecord;
 import com.android.server.am.UserState;
+import com.pico.util.ExtImplFactory;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -265,9 +266,6 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
 
     final ActivityTaskManagerService mService;
     public RootActivityContainer mRootActivityContainer;
-
-    /** PICO extension (factory IExtActivityStackSupervisor). */
-    private final IExtActivityStackSupervisor mExt = new ExtActivityStackSupervisorImpl(this);
 
     /** The historial list of recent tasks including inactive tasks */
     RecentTasks mRecentTasks;
@@ -415,6 +413,10 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
      * like the docked stack going empty.
      */
     private boolean mAllowDockedStackResize = true;
+
+    /** PICO extension (factory IExtActivityStackSupervisor). */
+    private final IExtActivityStackSupervisor mExt =
+            ExtImplFactory.getImpl(IExtActivityStackSupervisor.class, this);
 
     private KeyguardController mKeyguardController;
 

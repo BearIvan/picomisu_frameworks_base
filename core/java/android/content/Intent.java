@@ -67,6 +67,7 @@ import android.util.Log;
 import android.util.proto.ProtoOutputStream;
 
 import com.android.internal.util.XmlUtils;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -6395,7 +6396,7 @@ public class Intent implements Parcelable, Cloneable {
     // and parcelled between mExtras and mExt.
     private final IntentSmtBase mSmtEx = new IntentSmtBase(this);
     // PICO extension (factory PICO OS 5.13.7).
-    private IExtIntent mExt = new ExtIntentImpl(this);
+    private IExtIntent mExt = ExtImplFactory.getImpl(IExtIntent.class, this);
     /** Token to track instant app launches. Local only; do not copy cross-process. */
     private String mLaunchToken;
 

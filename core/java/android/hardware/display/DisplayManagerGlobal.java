@@ -41,6 +41,7 @@ import android.view.Display;
 import android.view.DisplayAdjustments;
 import android.view.DisplayInfo;
 import android.view.Surface;
+import com.pico.util.ExtImplFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -77,14 +78,16 @@ public final class DisplayManagerGlobal {
 
     @UnsupportedAppUsage
     private final IDisplayManager mDm;
-    /** PICO extension (factory IExtDisplayManagerGlobal). */
-    private final IExtDisplayManagerGlobal mExt = new ExtDisplayManagerGlobalImpl(this);
 
     private DisplayManagerCallback mCallback;
     private final ArrayList<DisplayListenerDelegate> mDisplayListeners =
             new ArrayList<DisplayListenerDelegate>();
 
     private final SparseArray<DisplayInfo> mDisplayInfoCache = new SparseArray<DisplayInfo>();
+
+    /** PICO extension (factory IExtDisplayManagerGlobal). */
+    private final IExtDisplayManagerGlobal mExt =
+            ExtImplFactory.getImpl(IExtDisplayManagerGlobal.class, this);
     private final ColorSpace mWideColorSpace;
     private int[] mDisplayIdCache;
 

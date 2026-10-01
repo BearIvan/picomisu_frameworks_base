@@ -48,6 +48,7 @@ import android.util.Slog;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.DumpUtils;
 import com.android.server.backup.utils.RandomAccessFileUtils;
+import com.pico.util.ExtImplFactory;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -114,7 +115,7 @@ public class Trampoline extends IBackupManager.Stub {
     private HandlerThread mHandlerThread;
     private Handler mHandler;
 
-    IExtTrampoline mExt = new ExtTrampolineImpl(this);
+    IExtTrampoline mExt = ExtImplFactory.getImpl(IExtTrampoline.class, this);
 
     public Trampoline(Context context) {
         mContext = context;

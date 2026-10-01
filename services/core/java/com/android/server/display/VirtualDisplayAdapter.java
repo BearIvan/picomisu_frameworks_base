@@ -45,6 +45,7 @@ import android.view.SurfaceControl;
 
 import com.android.internal.annotations.VisibleForTesting;
 
+import com.pico.util.ExtImplFactory;
 import smartisanos.os.PeroptWhiteListParser;
 
 import java.io.PrintWriter;
@@ -86,7 +87,7 @@ public class VirtualDisplayAdapter extends DisplayAdapter {
             Context context, Handler handler, Listener listener,
             SurfaceControlDisplayFactory surfaceControlDisplayFactory) {
         super(syncRoot, context, handler, listener, TAG);
-        mExt = new ExtVirtualDisplayAdapterImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtVirtualDisplayAdapter.class, this);
         mHandler = handler;
         mSurfaceControlDisplayFactory = surfaceControlDisplayFactory;
     }

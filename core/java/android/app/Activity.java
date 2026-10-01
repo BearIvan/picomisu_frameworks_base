@@ -139,6 +139,7 @@ import com.android.internal.app.IVoiceInteractor;
 import com.android.internal.app.ToolbarActionBar;
 import com.android.internal.app.WindowDecorActionBar;
 import com.android.internal.policy.PhoneWindow;
+import com.pico.util.ExtImplFactory;
 
 import dalvik.system.VMRuntime;
 
@@ -942,7 +943,7 @@ public class Activity extends ContextThemeWrapper
     private final ActivitySmtBase mSmtEx = new ActivitySmtBase();
 
     // PICO (factory): resume report, VR permission requests, finish hooks.
-    private IExtActivity mExt = new ExtActivityImpl(this);
+    private IExtActivity mExt = ExtImplFactory.getImpl(IExtActivity.class, this);
 
     private AutofillPopupWindow mAutofillPopupWindow;
 

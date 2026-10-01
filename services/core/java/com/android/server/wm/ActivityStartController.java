@@ -52,6 +52,7 @@ import com.android.server.am.PendingIntentRecord;
 import com.android.server.wm.ActivityStackSupervisor.PendingActivityLaunch;
 import com.android.server.wm.ActivityStarter.DefaultFactory;
 import com.android.server.wm.ActivityStarter.Factory;
+import com.pico.util.ExtImplFactory;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -135,7 +136,7 @@ public class ActivityStartController {
         mFactory.setController(this);
         mPendingRemoteAnimationRegistry = new PendingRemoteAnimationRegistry(service,
                 service.mH);
-        mExt = new ExtActivityStartControllerImpl(this, service);
+        mExt = ExtImplFactory.getImpl(IExtActivityStartController.class, this, mService);
     }
 
     /** PICO VR activity start routing (factory IExtActivityStartController). */

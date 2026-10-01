@@ -274,6 +274,7 @@ import com.android.server.pm.UserManagerService;
 import com.android.server.policy.PermissionPolicyInternal;
 import com.android.server.uri.UriGrantsManagerInternal;
 import com.android.server.vr.VrManagerInternal;
+import com.pico.util.ExtImplFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -654,10 +655,18 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
 
     private int mDeviceOwnerUid = Process.INVALID_UID;
 
+    /** PICO internal extension (factory IExtActivityTaskManagerInternal). */
+    private final IExtActivityTaskManagerInternal mAtmExt =
+            ExtImplFactory.getImpl(IExtActivityTaskManagerInternal.class, this);
+
     // Smartisan extension of the ActivityTaskManagerInternal, returned by
     // LocalService.getSmtEx() (factory PICO OS 5.13.7).
     private final ActivityTaskManagerInternalSmtBase mATInternalSmtEx =
             new ActivityTaskManagerInternalSmtBase(this);
+
+    /** PICO extension (factory IExtActivityTaskManagerService). */
+    private final IExtActivityTaskManagerService mExt =
+            ExtImplFactory.getImpl(IExtActivityTaskManagerService.class, this);
 
     private final class FontScaleSettingObserver extends ContentObserver {
         private final Uri mFontScaleUri = Settings.System.getUriFor(FONT_SCALE);
@@ -697,8 +706,6 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
     @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
     public ActivityTaskManagerService(Context context) {
         mContext = context;
-        // PICO (factory): registers this service with the API layer.
-        mExt.init();
         mFactoryTest = FactoryTest.getMode();
         mSystemThread = ActivityThread.currentActivityThread();
         mUiContext = mSystemThread.getSystemUiContext();
@@ -706,16 +713,12 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         mInternal = new LocalService();
         GL_ES_VERSION = SystemProperties.getInt("ro.opengles.version", GL_ES_VERSION_UNDEFINED);
         mSmtEx = new ActivityTaskManagerServiceSmtEx(this);
+        // PICO (factory): registers this service with the API layer.
+        mExt.init();
     }
 
     // Smartisan extension state of the activity task manager (factory PICO OS 5.13.7).
     private final ActivityTaskManagerServiceSmtEx mSmtEx;
-
-    /** PICO internal extension (factory IExtActivityTaskManagerInternal). */
-    private final IExtActivityTaskManagerInternal mAtmExt =
-            new ExtActivityTaskManagerInternalImpl(this);
-    /** PICO extension (factory IExtActivityTaskManagerService). */
-    private final IExtActivityTaskManagerService mExt = new ExtActivityTaskManagerServiceImpl(this);
 
     public IExtActivityTaskManagerService getExt() {
         return mExt;

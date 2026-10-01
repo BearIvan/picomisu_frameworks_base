@@ -134,6 +134,7 @@ import com.android.server.backup.utils.FileUtils;
 import com.android.server.backup.utils.SparseArrayUtils;
 
 import com.google.android.collect.Sets;
+import com.pico.util.ExtImplFactory;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -1342,7 +1343,8 @@ public class UserBackupManagerService {
         }
     };
 
-    IExtUserBackupManagerService mExt = new ExtUserBackupManagerServiceImpl(this);
+    IExtUserBackupManagerService mExt =
+            ExtImplFactory.getImpl(IExtUserBackupManagerService.class, this);
 
     // Add the backup agents in the given packages to our set of known backup participants.
     // If 'packageNames' is null, adds all backup agents in the whole system.

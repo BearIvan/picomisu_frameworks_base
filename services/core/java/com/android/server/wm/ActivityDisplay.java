@@ -72,6 +72,7 @@ import android.util.BoostFramework;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.am.EventLogTags;
 
+import com.pico.util.ExtImplFactory;
 import smartisanos.os.PeroptWhiteListParser;
 
 import java.io.PrintWriter;
@@ -180,7 +181,8 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
     }
 
     /** PICO VR state of this display (factory IExtActivityDisplay). */
-    private final IExtActivityDisplay mExt = new ExtActivityDisplayImpl(this);
+    private final IExtActivityDisplay mExt =
+            ExtImplFactory.getImpl(IExtActivityDisplay.class, this);
 
     public IExtActivityDisplay getExt() {
         return mExt;

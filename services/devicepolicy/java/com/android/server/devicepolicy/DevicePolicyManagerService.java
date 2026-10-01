@@ -260,6 +260,7 @@ import com.android.server.uri.UriGrantsManagerInternal;
 import com.android.server.wm.ActivityTaskManagerInternal;
 
 import com.google.android.collect.Sets;
+import com.pico.util.ExtImplFactory;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -2205,7 +2206,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
 
     @VisibleForTesting
     DevicePolicyManagerService(Injector injector) {
-        mExt = new ExtDevicePolicyManagerServiceImpl(this);
+        mExt = ExtImplFactory.getImpl(IExtDevicePolicyManagerService.class, this);
         mInjector = injector;
         mContext = Preconditions.checkNotNull(injector.mContext);
         mHandler = new Handler(Preconditions.checkNotNull(injector.getMyLooper()));
