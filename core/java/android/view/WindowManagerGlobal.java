@@ -20,6 +20,7 @@ import android.animation.ValueAnimator;
 import android.annotation.NonNull;
 import android.annotation.UnsupportedAppUsage;
 import android.app.ActivityManager;
+import android.app.ActivityThread;
 import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
@@ -29,6 +30,7 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.pico.utils.Features;
 import android.util.AndroidRuntimeException;
 import android.util.ArraySet;
 import android.util.Log;
@@ -191,6 +193,10 @@ public final class WindowManagerGlobal {
                     if (sWindowManagerService != null) {
                         ValueAnimator.setDurationScale(
                                 sWindowManagerService.getCurrentAnimatorScale());
+                        if (Features.enableLocalAnimation(ActivityThread.currentPackageName())
+                                && ValueAnimator.getDurationScale() == 0.0f) {
+                            ValueAnimator.setDurationScale(1.0f);
+                        }
                     }
                 } catch (RemoteException e) {
                     throw e.rethrowFromSystemServer();
@@ -215,6 +221,11 @@ public final class WindowManagerGlobal {
                                 @Override
                                 public void onAnimatorScaleChanged(float scale) {
                                     ValueAnimator.setDurationScale(scale);
+                                    if (Features.enableLocalAnimation(
+                                            ActivityThread.currentPackageName())
+                                            && ValueAnimator.getDurationScale() == 0.0f) {
+                                        ValueAnimator.setDurationScale(1.0f);
+                                    }
                                 }
                             });
                 } catch (RemoteException e) {
