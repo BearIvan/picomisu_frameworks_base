@@ -64,6 +64,9 @@ class TaskChangeNotificationController {
     // Global lock used by the service the instantiate objects of this class.
     private final Object mServiceLock;
     private final ActivityStackSupervisor mStackSupervisor;
+    /** PICO extension (factory IExtTaskChangeNotificationController). */
+    private final IExtTaskChangeNotificationController mExt =
+            new ExtTaskChangeNotificationControllerImpl(this);
     private final Handler mHandler;
 
     // Task stack change listeners in a remote process.
@@ -388,6 +391,10 @@ class TaskChangeNotificationController {
     }
 
     void notifyActivityForcedResizable(int taskId, int reason, String packageName) {
+        // PICO (factory): not for tasks on virtual (2D app) displays.
+        if (mExt.disableNotifyActivityForcedResizable(mStackSupervisor, taskId)) {
+            return;
+        }
         mHandler.removeMessages(NOTIFY_FORCED_RESIZABLE_MSG);
         final Message msg = mHandler.obtainMessage(NOTIFY_FORCED_RESIZABLE_MSG, taskId, reason,
                 packageName);

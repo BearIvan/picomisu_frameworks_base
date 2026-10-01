@@ -112,7 +112,11 @@ class ActivityStartInterceptor {
         mSupervisor = supervisor;
         mRootActivityContainer = root;
         mServiceContext = context;
+        mExt = new ExtActivityStartInterceptorImpl(this);
     }
+
+    /** PICO extension (factory IExtActivityStartInterceptor). */
+    private final IExtActivityStartInterceptor mExt;
 
     /**
      * Effectively initialize the class before intercepting the start intent. The values set in this
@@ -169,6 +173,18 @@ class ActivityStartInterceptor {
         if (interceptHarmfulAppIfNeeded()) {
             // If the app has a "harmful app" warning associated with it, we should ask to uninstall
             // before issuing the work challenge.
+            return true;
+        }
+        // PICO (factory): in hand-tracking mode a VR app without hand tracking support is
+        // replaced by the hand dialog; the dialog activity is resolved for the real caller.
+        if (mExt.intercept(mServiceContext)) {
+            mCallingPid = mRealCallingPid;
+            mCallingUid = mRealCallingUid;
+            mResolvedType = null;
+            mRInfo = mSupervisor.resolveIntent(mIntent, mResolvedType, mUserId, 0,
+                    mRealCallingUid);
+            mAInfo = mSupervisor.resolveActivity(mIntent, mRInfo, mStartFlags,
+                    null /*profilerInfo*/);
             return true;
         }
         return interceptWorkProfileChallengeIfNeeded();

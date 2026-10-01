@@ -130,6 +130,8 @@ public class LockTaskController {
     private final IBinder mToken = new LockTaskToken();
     private final ActivityStackSupervisor mSupervisor;
     private final Context mContext;
+    /** PICO extension (factory IExtLockTaskController). */
+    private final IExtLockTaskController mExt = new ExtLockTaskControllerImpl(this);
 
     // The following system services cannot be final, because they do not exist when this class
     // is instantiated during device boot
@@ -291,7 +293,9 @@ public class LockTaskController {
      * @return whether the requested task is disallowed to be launched.
      */
     boolean isLockTaskModeViolation(TaskRecord task, boolean isNewClearTask) {
-        if (isLockTaskModeViolationInternal(task, isNewClearTask)) {
+        // PICO (factory): the seethrough settings app is always allowed.
+        if (!mExt.ignoreLockTaskModeCheck(task)
+                && isLockTaskModeViolationInternal(task, isNewClearTask)) {
             showLockTaskToast();
             return true;
         }

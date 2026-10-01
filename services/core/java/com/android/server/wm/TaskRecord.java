@@ -304,6 +304,13 @@ class TaskRecord extends ConfigurationContainer {
     int mCallingUid;
     String mCallingPackage;
 
+    /** PICO extension (factory IExtTaskRecord). */
+    private final IExtTaskRecord mExt = new ExtTaskRecordImpl(this);
+
+    public IExtTaskRecord getExt() {
+        return mExt;
+    }
+
     final ActivityTaskManagerService mService;
 
     private final Rect mTmpStableBounds = new Rect();
@@ -875,8 +882,7 @@ class TaskRecord extends ConfigurationContainer {
         setLockTaskAuth(r);
         // PICO (factory): a task re-rooted by a new activity takes over that activity's caller.
         final ActivityStack stack = getStack();
-        if (android.pico.utils.Features.isPvr2DEnabled() && stack != null
-                && mActivities.indexOf(r) == -1) {
+        if (stack != null && mActivities.indexOf(r) == -1) {
             stack.getExt().updateCaller(r);
         }
     }
@@ -2413,6 +2419,8 @@ class TaskRecord extends ConfigurationContainer {
         info.supportsSplitScreenMultiWindow = supportsSplitScreenWindowingMode();
         info.resizeMode = mResizeMode;
         info.configuration.setTo(getConfiguration());
+        // PICO (factory): the calling package goes into the task info extras.
+        mExt.fillTaskInfo(info);
     }
 
     /**

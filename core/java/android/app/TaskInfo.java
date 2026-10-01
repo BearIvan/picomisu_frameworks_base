@@ -138,6 +138,9 @@ public class TaskInfo {
     @UnsupportedAppUsage
     public final Configuration configuration = new Configuration();
 
+    /** PICO task info extension (factory IExtTaskInfo). */
+    private final IExtTaskInfo mExt = new ExtTaskInfoImpl(this);
+
     TaskInfo() {
         // Do nothing
     }
@@ -186,6 +189,8 @@ public class TaskInfo {
         supportsSplitScreenMultiWindow = source.readBoolean();
         resizeMode = source.readInt();
         configuration.readFromParcel(source);
+        // PICO (factory): the extras follow the AOSP fields.
+        mExt.readFromParcel(source);
     }
 
     /**
@@ -221,6 +226,12 @@ public class TaskInfo {
         dest.writeBoolean(supportsSplitScreenMultiWindow);
         dest.writeInt(resizeMode);
         configuration.writeToParcel(dest, flags);
+        mExt.writeToParcel(dest, flags);
+    }
+
+    /** @hide */
+    public IExtTaskInfo getExt() {
+        return mExt;
     }
 
     @Override

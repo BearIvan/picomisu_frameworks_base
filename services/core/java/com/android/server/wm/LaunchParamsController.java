@@ -43,6 +43,8 @@ class LaunchParamsController {
     private final ActivityTaskManagerService mService;
     private final LaunchParamsPersister mPersister;
     private final List<LaunchParamsModifier> mModifiers = new ArrayList<>();
+    /** PICO extension (factory IExtLaunchParamsController; not called there either). */
+    private final IExtLaunchParamsController mExt = new ExtLaunchParamsControllerImpl(this);
 
     // Temporary {@link LaunchParams} for internal calculations. This is kept separate from
     // {@code mTmpCurrent} and {@code mTmpResult} to prevent clobbering values.

@@ -175,6 +175,13 @@ public class RootActivityContainer extends ConfigurationContainer
     // Protected as in the factory framework: read by RootActivityContainerSmtBase.
     protected final ArrayList<ActivityDisplay> mActivityDisplays = new ArrayList<>();
 
+    /** PICO extension (factory IExtRootActivityContainer). */
+    private final IExtRootActivityContainer mExt = new ExtRootActivityContainerImpl(this);
+
+    public IExtRootActivityContainer getExt() {
+        return mExt;
+    }
+
     /** Reference to default display so we can quickly look it up. */
     private ActivityDisplay mDefaultDisplay;
     private final SparseArray<IntArray> mDisplayAccessUIDs = new SparseArray<>();
@@ -1486,6 +1493,8 @@ public class RootActivityContainer extends ConfigurationContainer
         // The caller must tell the controller of {@link ActivityDisplay} to release its container
         // {@link DisplayContent}. That is done in {@link ActivityDisplay#releaseSelfIfNeeded}).
         mActivityDisplays.remove(activityDisplay);
+        // PICO (factory).
+        mExt.onRemoveChild(activityDisplay);
     }
 
     Configuration getDisplayOverrideConfiguration(int displayId) {

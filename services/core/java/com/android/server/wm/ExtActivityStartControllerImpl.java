@@ -299,6 +299,9 @@ public class ExtActivityStartControllerImpl {
         mSystemExt.notifyVirtualDisplayVisibilityChanged(display.mDisplayId, false);
     }
 
+    public void onDisplayRemoved(ActivityDisplay activityDisplay) {
+    }
+
     public void onTaskMovedToFront(ActivityDisplay activityDisplay, String reason) {
         if (!Features.isPvr2DEnabled() || activityDisplay == null) {
             return;
