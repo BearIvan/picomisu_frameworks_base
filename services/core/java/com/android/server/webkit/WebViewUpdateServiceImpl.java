@@ -17,7 +17,6 @@ package com.android.server.webkit;
 
 import android.content.Context;
 import android.content.pm.PackageInfo;
-import android.os.AsyncTask;
 import android.os.UserHandle;
 import android.util.Slog;
 import android.webkit.WebViewProviderInfo;
@@ -100,9 +99,6 @@ public class WebViewUpdateServiceImpl {
 
         boolean multiProcessEnabled = isMultiProcessEnabled();
         mSystemInterface.notifyZygote(multiProcessEnabled);
-        if (multiProcessEnabled) {
-            AsyncTask.THREAD_POOL_EXECUTOR.execute(this::startZygoteWhenReady);
-        }
     }
 
     void startZygoteWhenReady() {
