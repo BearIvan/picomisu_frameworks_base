@@ -234,6 +234,7 @@ import android.media.audiofx.AudioEffect;
 import android.net.Proxy;
 import android.net.Uri;
 import android.os.AppZygote;
+import android.os.AsyncTask;
 import android.os.BatteryStats;
 import android.os.Binder;
 import android.os.BinderProxy;
@@ -403,6 +404,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import smartisanos.os.PeroptWhiteListParser;
 
 public class ActivityManagerService extends IActivityManager.Stub
         implements Watchdog.Monitor, BatteryStatsImpl.BatteryCallback {
@@ -453,6 +455,8 @@ public class ActivityManagerService extends IActivityManager.Stub
     public static final int STOCK_PM_FLAGS = PackageManager.GET_SHARED_LIBRARY_FILES;
 
     static final String SYSTEM_DEBUGGABLE = "ro.debuggable";
+    // Smartisan (factory): read by the sys-services ApplicationFreezer.
+    static final boolean mDebuggable = "1".equals(SystemProperties.get(SYSTEM_DEBUGGABLE, "0"));
 
     public static final String ANR_TRACE_DIR = "/data/anr";
 
@@ -1704,6 +1708,11 @@ public class ActivityManagerService extends IActivityManager.Stub
             case PUSH_TEMP_WHITELIST_UI_MSG: {
                 pushTempWhitelist();
             } break;
+            case 300: {
+                // Smartisan (factory).
+                SysOptBridge.getFactory().getActivityManager(ActivityManagerService.this)
+                        .handleMessageUiHandlerOpt(msg);
+            } break;
             }
         }
     }
@@ -1938,6 +1947,22 @@ public class ActivityManagerService extends IActivityManager.Stub
                     mProcessList.handleAllTrustStorageUpdateLocked();
                 }
             } break;
+            // Smartisan (factory): messages of ActivityManagerServiceSmtBase and the
+            // sys-services activity manager extension.
+            case ActivityManagerServiceSmtBase.HARD_CLEAN_TIMEOUT: {
+                mSmtEx.mHardClean = false;
+                Slog.i(TAG, "HardClean false");
+            } break;
+            case ActivityManagerServiceSmtBase.UPDATE_OOM_MSG: {
+                synchronized (ActivityManagerService.this) {
+                    updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_NONE);
+                    mSmtEx.mNextUpdateOomTime = Long.MAX_VALUE;
+                }
+            } break;
+            case ActivityManagerServiceSmtBase.KILL_APP_SET_MSG: {
+                SysOptBridge.getFactory().getActivityManager(ActivityManagerService.this)
+                        .forceStopAppSet(msg.arg1, msg.arg2);
+            } break;
             }
         }
     }
@@ -1951,45 +1976,15 @@ public class ActivityManagerService extends IActivityManager.Stub
         public void handleMessage(Message msg) {
             switch (msg.what) {
             case COLLECT_PSS_BG_MSG: {
+                // Smartisan (factory): the pss of the pending processes is collected first
+                // (from the sys-services meminfo cache, frozen processes included), then the
+                // native processes and the system memory, with the Smartisan memory strategy.
                 long start = SystemClock.uptimeMillis();
                 MemInfoReader memInfo = null;
                 synchronized (ActivityManagerService.this) {
                     if (mFullPssPending) {
                         mFullPssPending = false;
                         memInfo = new MemInfoReader();
-                    }
-                }
-                if (memInfo != null) {
-                    updateCpuStatsNow();
-                    long nativeTotalPss = 0;
-                    final List<ProcessCpuTracker.Stats> stats;
-                    synchronized (mProcessCpuTracker) {
-                        stats = mProcessCpuTracker.getStats( (st)-> {
-                            return st.vsize > 0 && st.uid < FIRST_APPLICATION_UID;
-                        });
-                    }
-                    final int N = stats.size();
-                    for (int j = 0; j < N; j++) {
-                        synchronized (mPidsSelfLocked) {
-                            if (mPidsSelfLocked.indexOfKey(stats.get(j).pid) >= 0) {
-                                // This is one of our own processes; skip it.
-                                continue;
-                            }
-                        }
-                        nativeTotalPss += Debug.getPss(stats.get(j).pid, null, null);
-                    }
-                    memInfo.readMemInfo();
-                    synchronized (ActivityManagerService.this) {
-                        if (DEBUG_PSS) Slog.d(TAG_PSS, "Collected native and kernel memory in "
-                                + (SystemClock.uptimeMillis()-start) + "ms");
-                        final long cachedKb = memInfo.getCachedSizeKb();
-                        final long freeKb = memInfo.getFreeSizeKb();
-                        final long zramKb = memInfo.getZramTotalSizeKb();
-                        final long kernelKb = memInfo.getKernelUsedSizeKb();
-                        EventLogTags.writeAmMeminfo(cachedKb*1024, freeKb*1024, zramKb*1024,
-                                kernelKb*1024, nativeTotalPss*1024);
-                        mProcessStats.addSysMemUsageLocked(cachedKb, freeKb, zramKb, kernelKb,
-                                nativeTotalPss);
                     }
                 }
 
@@ -2007,17 +2002,21 @@ public class ActivityManagerService extends IActivityManager.Stub
                                     "Collected pss of " + num + " processes in "
                                     + (SystemClock.uptimeMillis() - start) + "ms");
                             mPendingPssProcesses.clear();
-                            return;
+                            break;
                         }
                         proc = mPendingPssProcesses.remove(0);
+                        if (proc == null) {
+                            break;
+                        }
                         procState = proc.pssProcState;
                         statType = proc.pssStatType;
                         lastPssTime = proc.lastPssTime;
                         long now = SystemClock.uptimeMillis();
-                        if (proc.thread != null && procState == proc.setProcState
+                        if ((proc.thread != null || proc.getSmtEx().inFreezeStat())
+                                && procState == proc.setProcState
                                 && (lastPssTime+ProcessList.PSS_SAFE_TIME_FROM_STATE_CHANGE)
                                         < now) {
-                            pid = proc.pid;
+                            pid = proc.getSmtEx().getPid();
                         } else {
                             ProcessList.abortNextPssTime(proc.procStateMemTracker);
                             if (DEBUG_PSS) Slog.d(TAG_PSS, "Skipped pss collection of " + pid +
@@ -2030,11 +2029,23 @@ public class ActivityManagerService extends IActivityManager.Stub
                     }
                     if (proc != null) {
                         long startTime = SystemClock.currentThreadTimeMillis();
-                        long pss = Debug.getPss(pid, tmp, null);
+                        final int oomAdj = proc.getSetAdjWithServices();
+                        final long[] egl = new long[2];
+                        long pss = SysOptBridge.getFactory()
+                                .getActivityManager(ActivityManagerService.this)
+                                .getMemInfoCache(proc, tmp, egl);
+                        if (memInfo != null) {
+                            mSmtEx.collectCachedPss(proc.processName, proc.pid, pss, egl[0],
+                                    egl[1], oomAdj, true);
+                        }
+                        mSmtEx.executeMemoryStrategy(proc.processName, proc.pid, pss, oomAdj);
                         long endTime = SystemClock.currentThreadTimeMillis();
                         synchronized (ActivityManagerService.this) {
-                            if (pss != 0 && proc.thread != null && proc.setProcState == procState
-                                    && proc.pid == pid && proc.lastPssTime == lastPssTime) {
+                            if (pss != 0
+                                    && (proc.thread != null || proc.getSmtEx().inFreezeStat())
+                                    && proc.setProcState == procState
+                                    && proc.getSmtEx().getPid() == pid
+                                    && proc.lastPssTime == lastPssTime) {
                                 num++;
                                 ProcessList.commitNextPssTime(proc.procStateMemTracker);
                                 recordPssSampleLocked(proc, procState, pss, tmp[0], tmp[1], tmp[2],
@@ -2051,7 +2062,67 @@ public class ActivityManagerService extends IActivityManager.Stub
                         }
                     }
                 } while (true);
-            }
+
+                if (memInfo != null) {
+                    updateCpuStatsNow();
+                    long nativeTotalPss = 0;
+                    final List<ProcessCpuTracker.Stats> stats;
+                    synchronized (mProcessCpuTracker) {
+                        stats = mProcessCpuTracker.getStats( (st)-> {
+                            return st.vsize > 0 && st.uid < FIRST_APPLICATION_UID;
+                        });
+                    }
+                    final int N = stats.size();
+                    for (int j = 0; j < N; j++) {
+                        synchronized (mPidsSelfLocked) {
+                            if (mPidsSelfLocked.indexOfKey(stats.get(j).pid) >= 0) {
+                                // This is one of our own processes; skip it.
+                                continue;
+                            }
+                            // Smartisan (factory): a frozen native process is skipped.
+                            if (SysOptBridge.getFactory().getFreezeController().isPidFrozen(
+                                    stats.get(j).pid)) {
+                                continue;
+                            }
+                        }
+                        // Smartisan (factory): native pss with EGL/GL, recorded for the
+                        // Smartisan process stats and memory strategy.
+                        final long[] tmpNative = new long[3];
+                        final long[] eglNative = new long[2];
+                        final long pss = Debug.getPss(stats.get(j).pid, tmpNative, null,
+                                eglNative);
+                        SysMonitorSvcBridge.getFactory().getProcessStatsServiceOptEx()
+                                .addNativeMemUsage(stats.get(j).name, stats.get(j).uid,
+                                        stats.get(j).pid, pss, tmpNative[0], tmpNative[2]);
+                        EventLogTags.writeAmPss(stats.get(j).pid, stats.get(j).uid,
+                                stats.get(j).name, pss, tmpNative[0], tmpNative[1],
+                                tmpNative[2], -1, -1, -1L);
+                        mSmtEx.collectCachedPss(stats.get(j).name, stats.get(j).pid, pss,
+                                eglNative[0], eglNative[1], -1000, false);
+                        nativeTotalPss += pss;
+                    }
+                    memInfo.readMemInfo();
+                    synchronized (ActivityManagerService.this) {
+                        if (DEBUG_PSS) Slog.d(TAG_PSS, "Collected native and kernel memory in "
+                                + (SystemClock.uptimeMillis()-start) + "ms");
+                        final long cachedKb = memInfo.getCachedSizeKb();
+                        final long freeKb = memInfo.getFreeSizeKb();
+                        final long zramKb = memInfo.getZramTotalSizeKb();
+                        final long kernelKb = memInfo.getKernelUsedSizeKb();
+                        EventLogTags.writeAmMeminfo(cachedKb*1024, freeKb*1024, zramKb*1024,
+                                kernelKb*1024, nativeTotalPss*1024);
+                        mProcessStats.addSysMemUsageLocked(cachedKb, freeKb, zramKb, kernelKb,
+                                nativeTotalPss);
+                        // Smartisan (factory): memory strategy on the collected totals. The
+                        // factory also passes the ION heap other than EGL; Source has no ION
+                        // accounting (Debug.getIonHeapsSizeKb), which the factory counts as 0
+                        // when there is no ION heap.
+                        mSmtEx.executeMeminfoMemoryStrategy(memInfo, mSmtEx.mProcessMems,
+                                mSmtEx.mTotalPss - mSmtEx.mCachedPss, mSmtEx.mCachedPss, 0);
+                        mSmtEx.resetProcStatsCollectData();
+                    }
+                }
+            } break;
 
             case DEFER_PSS_MSG: {
                 deferPssForActivityStart();
@@ -2077,6 +2148,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             break;
 
             }
+            // Smartisan (factory): Smartisan background messages.
+            ActivityManagerServiceSmtBase.handleMessageSmt(msg, ActivityManagerService.this);
         }
     };
 
@@ -2095,6 +2168,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
             ServiceManager.addService("permission", new PermissionController(this));
             ServiceManager.addService("processinfo", new ProcessInfoService(this));
+            // Smartisan (factory): publishes the Smartisan system services.
+            mSmtEx.setSystemProcess();
 
             ApplicationInfo info = mContext.getPackageManager().getApplicationInfo(
                     "android", STOCK_PM_FLAGS | MATCH_SYSTEM_ONLY);
@@ -2111,8 +2186,13 @@ public class ActivityManagerService extends IActivityManager.Stub
                 app.maxAdj = ProcessList.SYSTEM_ADJ;
                 app.makeActive(mSystemThread.getApplicationThread(), mProcessStats);
                 mPidsSelfLocked.put(app);
+                // Smartisan (factory).
+                SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updatePidUidInfo(
+                        app.pid, app.getSmtEx().getSmtUid());
                 mProcessList.updateLruProcessLocked(app, false, null);
                 updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_NONE);
+                // Smartisan (factory).
+                mSmtEx.scheduleUpdateOomAdj(true);
             }
         } catch (PackageManager.NameNotFoundException e) {
             throw new RuntimeException(
@@ -2481,6 +2561,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         LockGuard.installLock(this, LockGuard.INDEX_ACTIVITY);
         mInjector = new Injector();
         mContext = systemContext;
+        // Smartisan (factory).
+        SysOptBridge.getFactory().setActivityManagerService(this);
         mMonitorEx = new ActivityManagerServiceSysMoEx(this);
         mSmtEx = new ActivityManagerServiceSmtBase(this);
 
@@ -2506,6 +2588,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         mProcessList.init(this, activeUids);
         mLowMemDetector = new LowMemDetector(this);
         mOomAdjuster = new OomAdjuster(this, mProcessList, activeUids);
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getActivityManager(this)
+                .setmMaxCachedProcesses(mConstants.MAX_CACHED_PROCESSES);
 
         // Broadcast policy parameters
         final BroadcastConstants foreConstants = new BroadcastConstants(
@@ -2616,6 +2701,8 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         Watchdog.getInstance().addMonitor(this);
         Watchdog.getInstance().addThread(mHandler);
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getActivityManager(this).initSmartisanOS();
 
         // bind background threads to little cores
         // this is expected to fail inside of framework tests because apps can't touch cpusets directly
@@ -2648,6 +2735,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         mBatteryStatsService.publish();
         mAppOpsService.publish(mContext);
         Slog.d("AppOps", "AppOpsService published");
+        // Smartisan (factory).
+        mSmtEx.start();
         LocalServices.addService(ActivityManagerInternal.class, new LocalService());
         mActivityTaskManager.onActivityManagerInternalAdded();
         mUgmInternal.onActivityManagerInternalAdded();
@@ -2788,7 +2877,11 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }
         try {
-            return super.onTransact(code, data, reply, flags);
+            if (super.onTransact(code, data, reply, flags)) {
+                return true;
+            }
+            // Smartisan (factory): Smartisan transactions of the activity manager.
+            return mSmtEx.onTransactSmtEx(code, data, reply, flags);
         } catch (RuntimeException e) {
             // The activity manager only throws certain exceptions intentionally, so let's
             // log all others.
@@ -3073,6 +3166,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             ApplicationInfo info, boolean knownToBeDead, int intentFlags,
             HostingRecord hostingRecord, boolean allowWhileBooting,
             boolean isolated, boolean keepIfLarge) {
+        // Smartisan (factory).
+        getSmtEx().trimSystemMemoryIfNeeded(processName, info);
         return mProcessList.startProcessLocked(processName, info, knownToBeDead, intentFlags,
                 hostingRecord, allowWhileBooting, isolated, 0 /* isolatedUid */, keepIfLarge,
                 null /* ABI override */, null /* entryPoint */, null /* entryPointArgs */,
@@ -3489,6 +3584,17 @@ public class ActivityManagerService extends IActivityManager.Stub
                                     item.procStateSeq);
                         }
                     }
+                    // Smartisan (factory): freezer state of the uid, raw transaction 1020
+                    // (uid, frozenStat) for observers registered with the 0x20000 flag.
+                    if ((reg.which & UidRecordSmtBase.CHANGE_FROZEN) != 0
+                            && (change & UidRecordSmtBase.CHANGE_FROZEN) != 0) {
+                        Parcel data = Parcel.obtain();
+                        data.writeInterfaceToken("android.app.IUidObserver");
+                        data.writeInt(item.uid);
+                        data.writeInt(item.mSmtEx.frozenStat);
+                        observer.asBinder().transact(1020, data, null, IBinder.FLAG_ONEWAY);
+                        data.recycle();
+                    }
                 }
                 final int duration = (int) (SystemClock.uptimeMillis() - start);
                 if (reg.mMaxDispatchTime < duration) {
@@ -3708,6 +3814,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             info.putString("shortMsg", "Process crashed.");
             finishInstrumentationLocked(app, Activity.RESULT_CANCELED, info);
         });
+        // Smartisan (factory).
+        mOomAdjuster.getOptEx().appDiedLocked(app);
+        SysOptBridge.getFactory().getActivityManager(this).appDiedLocked(app, pid, null, false);
     }
 
     ProcessRecord getRecordForAppLocked(IApplicationThread thread) {
@@ -3802,6 +3911,11 @@ public class ActivityManagerService extends IActivityManager.Stub
     @GuardedBy("this")
     final void appDiedLocked(ProcessRecord app, int pid, IApplicationThread thread,
             boolean fromBinderDied) {
+        // Smartisan (factory).
+        getSmtEx().monitorAppDiedLocked(app);
+        SysOptBridge.getFactory().getActivityManager(this).appDiedLocked(app, pid, thread,
+                fromBinderDied);
+        app.getSmtEx().resetPreviousAlive();
         // First check if this ProcessRecord is actually active for the pid.
         synchronized (mPidsSelfLocked) {
             ProcessRecord curProc = mPidsSelfLocked.get(pid);
@@ -3818,6 +3932,10 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         if (!app.killed) {
             if (!fromBinderDied) {
+                // Smartisan (factory).
+                app.getSmtEx().killedReason = "appDiedNotFromBinder";
+                getSmtEx().reportKillingEvent(KillingStatsUtils.buildOtherKillingEventItem(
+                        app.getSmtEx().getCanonicalName(), app.uid, "appDiedNotFromBinder"));
                 killProcessQuiet(pid);
             }
             ProcessList.killProcessGroup(app.uid, pid);
@@ -3845,8 +3963,15 @@ public class ActivityManagerService extends IActivityManager.Stub
             if (mUxPerf != null && !mForceStopKill && !app.isNotResponding() && !app.isCrashing()) {
                 mUxPerf.perfUXEngine_events(BoostFramework.UXE_EVENT_KILL, 0, app.processName, 0);
             }
-            if (mUxPerf != null)
+            if (mUxPerf != null) {
+                // Smartisan (factory): perOpt white list SMFlag 0x4 processes.
+                final PeroptWhiteListParser.WhiteItem whiteItem =
+                        PeroptWhiteListParser.packageWhiteList.get(app.processName);
+                if (whiteItem != null && (whiteItem.SMFlag & 4) != 0) {
+                    mUxPerf.perfHint(4503, app.processName, -1, 1);
+                }
                 mUxPerf.perfHint(BoostFramework.VENDOR_HINT_KILL, app.processName, pid, 0);//sending Kill notification to PreKill iresspective of Kill reason.
+            }
 
             EventLog.writeEvent(EventLogTags.AM_PROC_DIED, app.userId, app.pid, app.processName,
                     app.setAdj, app.setProcState);
@@ -3855,7 +3980,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             handleAppDiedLocked(app, false, true);
 
             if (doOomAdj) {
-                updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_PROCESS_END);
+                // Smartisan (factory): deferred oom adj update.
+                mSmtEx.scheduleUpdateOomAdj(false);
             }
             if (doLowMem) {
                 doLowMemReportIfNeededLocked(app);
@@ -4295,6 +4421,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                 mAllowLowerMemLevel = true;
                 mProcessList.killPackageProcessesLocked(null /* packageName */, -1 /* appId */,
                         UserHandle.USER_ALL, ProcessList.CACHED_APP_MIN_ADJ, "kill all background");
+                // Smartisan (factory).
+                mSmtEx.scheduleUpdateOomAdj(true);
 
                 doLowMemReportIfNeededLocked(null);
             }
@@ -4488,16 +4616,29 @@ public class ActivityManagerService extends IActivityManager.Stub
                 // It hasn't been long enough that we want to take another sample; return
                 // the last one.
                 infos[i].set(proc.lastMemInfo);
+                // Smartisan (factory).
+                Slog.d(TAG, "use cached meminfo");
                 continue;
             }
             final long startTime = SystemClock.currentThreadTimeMillis();
-            final Debug.MemoryInfo memInfo = new Debug.MemoryInfo();
-            Debug.getMemoryInfo(pids[i], memInfo);
+            // Smartisan (factory): the sys-services meminfo of the process, if it has one.
+            Debug.MemoryInfo memInfo = proc != null
+                    ? SysOptBridge.getFactory().getActivityManager(this).obtainMemInfo(proc,
+                            pids[i], callingUid, now, proc.lastPssTime)
+                    : null;
+            if (memInfo == null) {
+                memInfo = new Debug.MemoryInfo();
+                Debug.getMemoryInfo(pids[i], memInfo);
+                if (proc != null) {
+                    proc.getSmtEx().memoryInfo = memInfo;
+                }
+            }
             final long endTime = SystemClock.currentThreadTimeMillis();
             infos[i].set(memInfo);
             if (proc != null) {
                 synchronized (this) {
-                    proc.lastMemInfo = memInfo;
+                    // Smartisan (factory).
+                    proc.lastMemInfo = proc.getSmtEx().memoryInfo;
                     proc.lastMemInfoTime = SystemClock.uptimeMillis();
                     if (proc.thread != null && proc.setAdj == oomAdj) {
                         // Record this for posterity if the process has been stable.
@@ -4750,11 +4891,29 @@ public class ActivityManagerService extends IActivityManager.Stub
             mAppErrors.resetProcessCrashTimeLocked(packageName == null, appId, userId);
         }
         mForceStopKill = true;
+        // Smartisan (factory): note the force stop of a perOpt-flagged package (not on removal).
+        final boolean pkgRemoved = "pkg removed".equals(reason)
+                || "deletePackageX".equals(reason);
+        if (packageName != null && !pkgRemoved) {
+            try {
+                ApplicationInfo ai = mContext.getPackageManager().getApplicationInfo(
+                        packageName, 0);
+                if (ai != null && ai.getSmtEx() != null
+                        && (ai.getSmtEx().peroptFlag & 0x40000) != 0) {
+                    SysOptBridge.getFactory().getProcessIntercept()
+                            .updatePackagesKilledTimeByForceStop(packageName);
+                }
+            } catch (PackageManager.NameNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
 
+        // Smartisan (factory): the kill reason carries the force stop reason.
         boolean didSomething = mProcessList.killPackageProcessesLocked(packageName, appId, userId,
                 ProcessList.INVALID_ADJ, callerWillRestart, true /* allowRestart */, doit,
                 evenPersistent, true /* setRemoved */,
-                packageName == null ? ("stop user " + userId) : ("stop " + packageName));
+                (packageName == null ? ("stop user " + userId) : ("stop " + packageName))
+                        + " : " + reason);
 
         didSomething |=
                 mAtmInternal.onForceStopPackage(packageName, doit, evenPersistent, userId);
@@ -4898,6 +5057,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                 cleanUpApplicationRecordLocked(app, false, false, -1,
                             true /*replacingPid*/);
                 mPidsSelfLocked.remove(app);
+                // Smartisan (factory).
+                SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().removePid(app.pid);
                 app = null;
             }
         } else {
@@ -4921,6 +5082,10 @@ public class ActivityManagerService extends IActivityManager.Stub
                     + " (IApplicationThread " + thread + "); dropping process");
             EventLog.writeEvent(EventLogTags.AM_DROP_PROCESS, pid);
             if (pid > 0 && pid != MY_PID) {
+                // Smartisan (factory).
+                getSmtEx().reportKillingEvent(KillingStatsUtils.buildOtherKillingEventItem(
+                        KillingStatsUtils.getNameForUid(callingUid), callingUid,
+                        "attachApplicationLocked"));
                 killProcessQuiet(pid);
                 //TODO: killProcessGroup(app.info.uid, pid);
             } else {
@@ -4931,6 +5096,12 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
             }
             return false;
+        }
+
+        // Smartisan (factory): prefetch launch.
+        if (app.info.getSmtEx().isPrefetch) {
+            app.getSmtEx().isPrefetch = true;
+            SysOptBridge.getFactory().getPrefetchManager().putPrefetch(app);
         }
 
         // If this application record is still attached to a previous
@@ -4950,6 +5121,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                     app, pid, thread);
             thread.asBinder().linkToDeath(adr, 0);
             app.deathRecipient = adr;
+            // Smartisan (factory).
+            SysOptBridge.getFactory().getSmtResourceControl().selectLaunchCpusetStatus(
+                    app.pid, app.getSmtEx().getSmtUid(), true);
         } catch (RemoteException e) {
             app.resetPackageList(mProcessStats);
             mProcessList.startProcessLocked(app,
@@ -4972,6 +5146,10 @@ public class ActivityManagerService extends IActivityManager.Stub
         app.cached = false;
         app.killedByAm = false;
         app.killed = false;
+        // Smartisan (factory).
+        if (!Build.IS_DEBUGGABLE) {
+            SysOptBridge.getFactory().getActivityManager(this).setAppDebugFlag(app);
+        }
 
 
         // We carefully use the same state that PackageManager uses for
@@ -5039,6 +5217,11 @@ public class ActivityManagerService extends IActivityManager.Stub
                     + app.getWindowProcessController().getConfiguration());
             ApplicationInfo appInfo = instr != null ? instr.mTargetInfo : app.info;
             app.compat = compatibilityInfoForPackage(appInfo);
+            // Smartisan (factory).
+            appInfo.getSmtEx().mStrictModeFlags = getSmtEx().mStrictModeFlags;
+            if (app.info.getSmtEx().isPrefetch && !appInfo.getSmtEx().isPrefetch) {
+                appInfo.getSmtEx().isPrefetch = true;
+            }
 
             ProfilerInfo profilerInfo = null;
             String preBindAgent = null;
@@ -5208,11 +5391,14 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         boolean badApp = false;
         boolean didSomething = false;
+        // Smartisan (factory).
+        boolean hasActivity = false;
 
         // See if the top visible activity is waiting to run in this process...
         if (normalMode) {
             try {
                 didSomething = mAtmInternal.attachApplication(app.getWindowProcessController());
+                hasActivity = true;
             } catch (Exception e) {
                 Slog.wtf(TAG, "Exception thrown launching activities in " + app, e);
                 badApp = true;
@@ -5264,10 +5450,45 @@ public class ActivityManagerService extends IActivityManager.Stub
             return false;
         }
 
+        // Smartisan (factory): background group for new 3rd-party processes without activity.
+        final boolean wasBg3rdApp =
+                app.getCurrentSchedulingGroup() == ProcessListSmtBase.SCHED_GROUP_BG_3RD_APP;
+        final long nowElapsed = SystemClock.elapsedRealtime();
         if (!didSomething) {
-            updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_PROCESS_BEGIN);
+            mSmtEx.scheduleUpdateOomAdj(false);
             checkTime(startTime, "attachApplicationLocked: after updateOomAdjLocked");
+        } else if (!hasActivity && (app.getSmtEx().smartisanFlag & 2) == 0
+                && ((app.info.flags & ActivityManagerServiceSmtBase.sSystemMask) == 0
+                        || app.getMonitorEx().isolatedOf3rdPartApp)
+                && app.uid != mCurResumedUid
+                && getSmtEx().mFocusedApp != null
+                && app.info.uid != getSmtEx().mFocusedApp.uid
+                && !app.getSmtEx().hasOnGoingNotification
+                && (app.info.getSmtEx().uidGroupID == -1
+                        || app.info.getSmtEx().uidGroupID
+                                != getSmtEx().mFocusedApp.info.getSmtEx().uidGroupID)
+                && shouldPutBackground(app, nowElapsed)) {
+            app.setSchedGroup = ProcessListSmtBase.SCHED_GROUP_BG_3RD_APP;
+            asyncSetProcessGroup(app.pid, app.setSchedGroup);
+            if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                Slog.i(TAG, "Setting process group of new non activity app:" + app.processName
+                        + " / " + app.pid + " to " + app.getCurrentSchedulingGroup()
+                        + ", mCurResumedUid=" + mCurResumedUid + ", app.uid=" + app.uid);
+            }
+        } else if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+            Slog.i(TAG, "new process, hasActivity=" + hasActivity + ", system="
+                    + (app.info.flags & ActivityManagerServiceSmtBase.sSystemMask)
+                    + ", uid=" + app.uid + ", mCurResumedUid=" + mCurResumedUid
+                    + ", mFocusedApp.uid=" + (getSmtEx().mFocusedApp == null
+                            ? "null" : Integer.valueOf(getSmtEx().mFocusedApp.uid)));
+        } else if (app.info.getSmtEx().isPrefetch) {
+            app.setSchedGroup = ProcessListSmtBase.SCHED_GROUP_PREFETCH_VR_APP;
         }
+        SysOptBridge.getFactory().getCollect3rdInfo().setCurResumedUid(mCurResumedUid);
+        SysOptBridge.getFactory().getCollect3rdInfo().recordAttach3rdInfo(app, hasActivity,
+                nowElapsed, wasBg3rdApp);
+        getSmtEx().updateAppInfo(app.info);
+        SysOptBridge.getFactory().getActivityManager(this).onAttachApplicationLocked(app);
 
         StatsLog.write(
                 StatsLog.PROCESS_START_TIME,
@@ -5281,6 +5502,51 @@ public class ActivityManagerService extends IActivityManager.Stub
                 app.hostingRecord.getType(),
                 (app.hostingRecord.getName() != null ? app.hostingRecord.getName() : ""));
         return true;
+    }
+
+    /** Smartisan (factory PICO OS 5.13.7), see attachApplicationLocked. */
+    boolean shouldPutBackground(ProcessRecord app, long nowElapsed) {
+        if (!app.info.getSmtEx().goodToOperateProc(nowElapsed, 4)) {
+            if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                Slog.d(TAG, "app: " + app + " was perceptible at: "
+                        + app.info.getSmtEx().perceptibleTime + ", nowElapsed is: " + nowElapsed);
+            }
+            return false;
+        }
+        if (!SysOptBridge.getFactory().getActivityManager(this).getmEnablePeropt()) {
+            return false;
+        }
+        if (app.info.getSmtEx().isLimited == 0 && SysOptBridge.getFactory()
+                .getActivityManager(this).getmUidCpuRunner().getCpuBusyCount() < 5) {
+            if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                Slog.d(TAG, "app: " + app + " unlimited: " + app.info.getSmtEx().isLimited);
+            }
+            return false;
+        }
+        if (SysOptBridge.getFactory().getActivityManager(this).getmUidCpuRunner()
+                .getCpuBusyCount() == 0
+                && SysOptBridge.getFactory().getActivityManager(this).getmPackStats()
+                        .getOrder(app.uid, 100) < 3
+                && SysOptBridge.getFactory().getActivityManager(this).getmPackStats()
+                        .isRecent(nowElapsed, 900000L, app.uid)) {
+            return false;
+        }
+        return (app.info.getSmtEx().smartisanFlag & 2) == 0;
+    }
+
+    /** Smartisan (factory PICO OS 5.13.7). */
+    void asyncSetProcessGroup(final int pid, final int processGroup) {
+        AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Process.setProcessGroup(pid, processGroup);
+                } catch (Exception e) {
+                    Slog.w(TAG, "Failed setting process group of " + pid
+                            + " to " + processGroup, e);
+                }
+            }
+        });
     }
 
     @Override
@@ -5347,6 +5613,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                 mHandler.sendEmptyMessageDelayed(DELETE_DUMPHEAP_MSG, delay);
             }
         }, dumpheapFilter);
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getActivityManager(this).getmUidCpuRunner()
+                .registerBackupModeReceiver();
 
         // Inform checkpointing systems of success
         try {
@@ -5405,6 +5674,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                     });
             mUserController.scheduleStartProfiles();
         }
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getSmartService().finishBooting();
 
         Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
     }
@@ -5739,7 +6010,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                 pr.forcingToImportant = null;
                 updateProcessForegroundLocked(pr, false, 0, false);
             }
-            updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_UI_VISIBILITY);
+            // Smartisan (factory): deferred oom adj update.
+            mSmtEx.scheduleUpdateOomAdj(false);
         }
     }
 
@@ -5785,7 +6057,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
 
             if (changed) {
-                updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_UI_VISIBILITY);
+                // Smartisan (factory): deferred oom adj update.
+                mSmtEx.scheduleUpdateOomAdj(false);
             }
         }
     }
@@ -6244,11 +6517,15 @@ public class ActivityManagerService extends IActivityManager.Stub
         enforceNotIsolatedCaller("grantUriPermission");
         GrantUri grantUri = new GrantUri(userId, uri, false);
         synchronized(this) {
-            final ProcessRecord r = getRecordForAppLocked(caller);
+            // Smartisan (factory): include frozen processes; a frozen caller is ignored.
+            final ProcessRecord r = getRecordForAppLocked(caller, true);
             if (r == null) {
                 throw new SecurityException("Unable to find app for caller "
                         + caller
                         + " when granting permission to uri " + grantUri);
+            }
+            if (r.getSmtEx().inFreezeStat()) {
+                return;
             }
             if (targetPkg == null) {
                 throw new IllegalArgumentException("null target");
@@ -6276,11 +6553,15 @@ public class ActivityManagerService extends IActivityManager.Stub
             final int modeFlags, int userId) {
         enforceNotIsolatedCaller("revokeUriPermission");
         synchronized(this) {
-            final ProcessRecord r = getRecordForAppLocked(caller);
+            // Smartisan (factory): include frozen processes; a frozen caller is ignored.
+            final ProcessRecord r = getRecordForAppLocked(caller, true);
             if (r == null) {
                 throw new SecurityException("Unable to find app for caller "
                         + caller
                         + " when revoking permission to uri " + uri);
+            }
+            if (r.getSmtEx().inFreezeStat()) {
+                return;
             }
             if (uri == null) {
                 Slog.w(TAG, "revokeUriPermission: null uri");
@@ -6538,6 +6819,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if (DEBUG_MU) Slog.v(TAG_MU,
                         "generateApplicationProvidersLocked, cpi.uid = " + cpr.uid);
                 app.pubProviders.put(cpi.name, cpr);
+                // Smartisan (factory): do not freeze until the provider is published.
+                app.getSmtEx().setFreezeBlockFlagsLocked(1, cpr);
                 if (!cpi.multiprocess || !"android".equals(cpi.packageName)) {
                     // Don't add this if it is a platform component that is marked
                     // to run in multiple processes, because this is actually
@@ -6583,6 +6866,21 @@ public class ActivityManagerService extends IActivityManager.Stub
         synchronized (mPidsSelfLocked) {
             r = mPidsSelfLocked.get(Binder.getCallingPid());
         }
+        // Smartisan (factory): a frozen caller is not in the pid map; also look in the LRU list.
+        if (r == null) {
+            r = SysOptBridge.getFactory().getProcessListOptEx().findFrozenAppProcessByPid(
+                    Binder.getCallingPid());
+        }
+        if (r == null) {
+            synchronized (this) {
+                for (int i = mProcessList.mLruProcesses.size() - 1; i >= 0; i--) {
+                    final ProcessRecord proc = mProcessList.mLruProcesses.get(i);
+                    if (proc != null && proc.pid == Binder.getCallingPid()) {
+                        r = proc;
+                    }
+                }
+            }
+        }
         if (r == null) {
             return "Failed to find PID " + Binder.getCallingPid();
         }
@@ -6599,7 +6897,8 @@ public class ActivityManagerService extends IActivityManager.Stub
      */
     private final String checkContentProviderPermissionLocked(
             ProviderInfo cpi, ProcessRecord r, int userId, boolean checkUser) {
-        final int callingPid = (r != null) ? r.pid : Binder.getCallingPid();
+        // Smartisan (factory): the pid survives a freezer detach.
+        final int callingPid = (r != null) ? r.mSmtEx.getPid() : Binder.getCallingPid();
         final int callingUid = (r != null) ? r.uid : Binder.getCallingUid();
         boolean checkedGrants = false;
         if (checkUser) {
@@ -6704,6 +7003,11 @@ public class ActivityManagerService extends IActivityManager.Stub
                 conn.unstableCount = 1;
                 conn.numUnstableIncs = 1;
             }
+            // Smartisan (factory).
+            if (cpr.proc != null && conn.client != null && cpr.proc.uid != conn.client.uid) {
+                SysOptBridge.getFactory().getFreezeController().importantProviderChange(
+                        cpr.proc.uid, true, conn.client);
+            }
             cpr.connections.add(conn);
             r.conProviders.add(conn);
             startAssociationLocked(r.uid, r.processName, r.getCurProcState(),
@@ -6723,6 +7027,11 @@ public class ActivityManagerService extends IActivityManager.Stub
                     + conn.client.processName + " from process "
                     + cpr.info.processName + ": " + cpr.name.flattenToShortString()
                     + " scnt=" + conn.stableCount + " uscnt=" + conn.unstableCount);
+            // Smartisan (factory).
+            if (cpr.proc != null && conn.client != null && cpr.proc.uid != conn.client.uid) {
+                SysOptBridge.getFactory().getFreezeController().importantProviderChange(
+                        cpr.proc.uid, false, conn.client);
+            }
             if (stable) {
                 conn.stableCount--;
             } else {
@@ -6732,6 +7041,12 @@ public class ActivityManagerService extends IActivityManager.Stub
                 conn.stopAssociation();
                 cpr.connections.remove(conn);
                 conn.client.conProviders.remove(conn);
+                // Smartisan (factory).
+                if (cpr.proc != null && conn.client != null
+                        && cpr.proc.uid != conn.client.uid) {
+                    SysOptBridge.getFactory().getFreezeController().clientConnectionRemoveEvent(
+                            cpr.proc.uid, conn.client.uid);
+                }
                 if (conn.client.setProcState < PROCESS_STATE_LAST_ACTIVITY) {
                     // The client is more important than last activity -- note the time this
                     // is happening, so we keep the old provider process around a bit as last
@@ -6822,12 +7137,16 @@ public class ActivityManagerService extends IActivityManager.Stub
 
             ProcessRecord r = null;
             if (caller != null) {
-                r = getRecordForAppLocked(caller);
+                // Smartisan (factory): a frozen caller gets no provider.
+                r = getRecordForAppLocked(caller, true);
                 if (r == null) {
                     throw new SecurityException(
                             "Unable to find app for caller " + caller
                           + " (pid=" + Binder.getCallingPid()
                           + ") when getting content provider " + name);
+                }
+                if (r.getSmtEx().inFreezeStat()) {
+                    return null;
                 }
             }
 
@@ -6927,6 +7246,13 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
                 checkTime(startTime,
                         "getContentProviderImpl: after checkContentProviderPermission");
+
+                // Smartisan (factory): thaw the provider process before using it.
+                if (!SysOptBridge.getFactory().getApplicationFreezer().unfreezeAppIfNeededLocked(
+                        cpr.proc, IApplicationFreezer.UnfreezeReason.NEED_CONTENT_PROVIDER, r,
+                        cpr)) {
+                    return null;
+                }
 
                 final long origId = Binder.clearCallingIdentity();
 
@@ -7140,18 +7466,33 @@ public class ActivityManagerService extends IActivityManager.Stub
                         checkTime(startTime, "getContentProviderImpl: looking for process record");
                         ProcessRecord proc = getProcessRecordLocked(
                                 cpi.processName, cpr.appInfo.uid, false);
+                        if (proc == null) {
+                            // Smartisan (factory): a frozen provider process is thawed here.
+                            proc = SysOptBridge.getFactory().getApplicationFreezer()
+                                    .unfreezeAppIfNeededLocked(null, cpi.processName,
+                                            cpr.appInfo.uid,
+                                            IApplicationFreezer.UnfreezeReason
+                                                    .NEED_CONTENT_PROVIDER, r, cpr);
+                        }
                         if (proc != null && proc.thread != null && !proc.killed) {
                             if (DEBUG_PROVIDER) Slog.d(TAG_PROVIDER,
                                     "Installing in existing process " + proc);
                             if (!proc.pubProviders.containsKey(cpi.name)) {
                                 checkTime(startTime, "getContentProviderImpl: scheduling install");
                                 proc.pubProviders.put(cpi.name, cpr);
+                                // Smartisan (factory): do not freeze until it is published.
+                                proc.getSmtEx().setFreezeBlockFlagsLocked(1, cpr);
                                 try {
                                     proc.thread.scheduleInstallProvider(cpi);
                                 } catch (RemoteException e) {
                                 }
                             }
                         } else {
+                            // Smartisan (factory): process start interception.
+                            if (!SysOptBridge.getFactory().getProcessIntercept()
+                                    .isProviderAllowStart(r, cpr)) {
+                                return null;
+                            }
                             checkTime(startTime, "getContentProviderImpl: before start process");
                             proc = startProcessLocked(cpi.processName,
                                     cpr.appInfo, false, 0,
@@ -7384,7 +7725,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                     throw new NullPointerException("connection is null");
                 }
                 if (decProviderCountLocked(conn, null, null, stable)) {
-                    updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_REMOVE_PROVIDER);
+                    // Smartisan (factory): deferred oom adj update.
+                    mSmtEx.scheduleUpdateOomAdj(false);
                 }
             }
         } finally {
@@ -7425,7 +7767,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             ContentProviderRecord localCpr = mProviderMap.getProviderByClass(comp, userId);
             if (localCpr.hasExternalProcessHandles()) {
                 if (localCpr.removeExternalProcessHandleLocked(token)) {
-                    updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_REMOVE_PROVIDER);
+                    // Smartisan (factory): deferred oom adj update.
+                    mSmtEx.scheduleUpdateOomAdj(false);
                 } else {
                     Slog.e(TAG, "Attmpt to remove content provider " + localCpr
                             + " with no external reference for token: "
@@ -7446,13 +7789,17 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         enforceNotIsolatedCaller("publishContentProviders");
         synchronized (this) {
-            final ProcessRecord r = getRecordForAppLocked(caller);
+            // Smartisan (factory): include frozen processes.
+            final ProcessRecord r = getRecordForAppLocked(caller, true);
             if (DEBUG_MU) Slog.v(TAG_MU, "ProcessRecord uid = " + r.uid);
             if (r == null) {
                 throw new SecurityException(
                         "Unable to find app for caller " + caller
                       + " (pid=" + Binder.getCallingPid()
                       + ") when publishing content providers");
+            }
+            if (r.getSmtEx().inFreezeStat()) {
+                Slog.e(TAG, "frozen app publishing provider r: " + r);
             }
 
             final long origId = Binder.clearCallingIdentity();
@@ -7499,6 +7846,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                         dst.setProcess(r);
                         dst.notifyAll();
                     }
+                    // Smartisan (factory): the provider is published, the process may freeze.
+                    r.getSmtEx().clearFreezeBlockFlagsLocked(1, dst);
                     updateOomAdjLocked(r, true, OomAdjuster.OOM_ADJ_REASON_GET_PROVIDER);
                     maybeUpdateProviderUsageStatsLocked(r, src.info.packageName,
                             src.info.authority);
@@ -7671,6 +8020,10 @@ public class ActivityManagerService extends IActivityManager.Stub
         // Now that the settings provider is published we can consider sending
         // in a rescue party.
         RescueParty.onSettingsProviderPublished(mContext);
+        // Smartisan (factory).
+        if (!Build.IS_DEBUGGABLE) {
+            SysOptBridge.getFactory().getActivityManager(this).initSettingObservers();
+        }
 
         //mUsageStatsService.monitorPackages();
     }
@@ -7893,7 +8246,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                     new HostingRecord("added application",
                             customProcess != null ? customProcess : info.processName));
             mProcessList.updateLruProcessLocked(app, false, null);
-            updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_PROCESS_BEGIN);
+            // Smartisan (factory): deferred oom adj update.
+            mSmtEx.scheduleUpdateOomAdj(true);
         }
 
         // This package really, really can not be stopped.
@@ -8008,6 +8362,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         final boolean timedout = mAtmInternal.shuttingDown(mBooted, timeout);
 
         mAppOpsService.shutdown();
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getSmartService().shutdown();
         if (mUsageStatsService != null) {
             mUsageStatsService.prepareShutdown();
         }
@@ -8015,6 +8371,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         synchronized (this) {
             mProcessStats.shutdownLocked();
         }
+        // Smartisan (factory).
+        ActivityManagerServiceSmtBase.writeConfigFile();
 
         return timedout;
     }
@@ -9078,8 +9436,15 @@ public class ActivityManagerService extends IActivityManager.Stub
             // Make sure we have the current profile info, since it is needed for security checks.
             mUserController.onSystemReady();
             mAppOpsService.systemReady();
+            // Smartisan (factory).
+            SysOptBridge.getFactory().getSmartScenes().systemReady(mContext);
+            SysOptBridge.getFactory().getActivityManager(this).systemReady();
             mSystemReady = true;
+            // Smartisan (factory).
+            mSmtEx.systemReady(mContext, mHandler);
         }
+        // Smartisan (factory).
+        mSmtEx.amsSystemReadyEarlyPhase();
 
         try {
             sTheRealBuildSerial = IDeviceIdentifiersPolicyService.Stub.asInterface(
@@ -9117,6 +9482,9 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         Slog.i(TAG, "System now ready");
         EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_AMS_READY, SystemClock.uptimeMillis());
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_ams_ready",
+                SystemClock.elapsedRealtime());
 
         mAtmInternal.updateTopComponentForFactoryTest();
         mAtmInternal.getLaunchObserverRegistry().registerLaunchObserver(mActivityLaunchObserver);
@@ -9255,6 +9623,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             traceLog.traceEnd(); // ActivityManagerStartApps
             traceLog.traceEnd(); // PhaseActivityManagerReady
         }
+        // Smartisan (factory).
+        SmartisanAm.SmartisanAmUtils.getInstance().initService(this);
+        SysOptBridge.getFactory().getActivityManager(this).registerPeroptWhiteListReceiver();
     }
 
     private void watchDeviceProvisioning(Context context) {
@@ -9326,7 +9697,8 @@ public class ActivityManagerService extends IActivityManager.Stub
      */
     public void handleApplicationCrash(IBinder app,
             ApplicationErrorReport.ParcelableCrashInfo crashInfo) {
-        ProcessRecord r = findAppProcess(app, "Crash");
+        // Smartisan (factory): also find the Smartisan (frozen) processes.
+        ProcessRecord r = findAppProcess(app, "Crash", 3);
         final String processName = app == null ? "system_server"
                 : (r == null ? "unknown" : r.processName);
 
@@ -9374,10 +9746,20 @@ public class ActivityManagerService extends IActivityManager.Stub
             crashInfo.crashTag = crashInfo.crashTag + " " + relaunchReasonString;
         }
 
-        addErrorToDropBox(
-                eventType, r, processName, null, null, null, null, null, null, crashInfo);
+        // Smartisan (factory): an XR native crash of the process is not added to the dropbox.
+        if ("crash".equals(eventType)) {
+            addErrorToDropBox(
+                    eventType, r, processName, null, null, null, null, null, null, crashInfo);
+        } else if (r != null && !r.getSmtEx().getXRCrashed()) {
+            addErrorToDropBox(
+                    eventType, r, processName, null, null, null, null, null, null, crashInfo);
+        } else {
+            Slog.w(TAG, r + " native crashed, no to dropbox");
+        }
 
         mAppErrors.crashApplication(r, crashInfo);
+        // Smartisan (factory).
+        mSmtEx.handleUpload(mContext, processName, eventType);
     }
 
     public void handleApplicationStrictModeViolation(
@@ -9557,12 +9939,17 @@ public class ActivityManagerService extends IActivityManager.Stub
      * @return the corresponding {@link ProcessRecord} object, or null if none could be found
      */
     private ProcessRecord findAppProcess(IBinder app, String reason) {
+        return findAppProcess(app, reason, 0);
+    }
+
+    /** Smartisan (factory PICO OS 5.13.7): see ProcessList#findAppProcessLocked. */
+    private ProcessRecord findAppProcess(IBinder app, String reason, int includeSmtProcess) {
         if (app == null) {
             return null;
         }
 
         synchronized (this) {
-            return mProcessList.findAppProcessLocked(app, reason);
+            return mProcessList.findAppProcessLocked(app, reason, includeSmtProcess);
         }
     }
 
@@ -9591,9 +9978,23 @@ public class ActivityManagerService extends IActivityManager.Stub
             sb.append("UID: ").append(process.uid).append("\n");
             MemInfoReader memInfo = new MemInfoReader();
             memInfo.getSmtEx().readMemInfoFast();
+            // Smartisan (factory): extra dropbox headers.
+            sb.append("Tag: ").append(
+                    ((process.info.flags & ActivityManagerServiceSmtBase.sSystemMask) == 0
+                            || process.getMonitorEx().isolatedOf3rdPartApp)
+                            ? "data_app" : "system_app").append("\n");
+            sb.append("is_background: ")
+                    .append(process.isInterestingToUserLocked() ? "No" : "Yes").append("\n");
+            sb.append("is_screen_on: ").append(mSmtEx.isScreenOn() ? "Yes" : "No").append("\n");
+            long bootTime = System.currentTimeMillis() - SystemClock.elapsedRealtime();
+            sb.append("boot_time: ").append(bootTime).append("\n");
+            sb.append("start_time: ").append(process.startTime + bootTime).append("\n");
             sb.append("ram_free_size: ").append(stringifyKBSize(
                     memInfo.getSmtEx().getCachedSizeFastKb()
                             + memInfo.getSmtEx().getFreeSizeFastKb())).append("\n");
+            sb.append("rom_free_size: ").append(
+                    stringifyKBSize(ActivityManagerServiceSmtBase.getRomFreeMemoryKb()))
+                    .append("\n");
             int flags = process.info.flags;
             IPackageManager pm = AppGlobals.getPackageManager();
             sb.append("Flags: 0x").append(Integer.toHexString(flags)).append("\n");
@@ -9615,6 +10016,10 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
             if (process.info.isInstantApp()) {
                 sb.append("Instant-App: true\n");
+            }
+            String smtExtraInfo = process.getSmtEx().getSmtExtraInfo();
+            if (smtExtraInfo != null) {
+                sb.append("SmtExtraInfo: ").append(smtExtraInfo);
             }
         }
     }
@@ -9712,10 +10117,19 @@ public class ActivityManagerService extends IActivityManager.Stub
         if (Debug.isDebuggerConnected()) {
             sb.append("Debugger: Connected\n");
         }
+        // Smartisan (factory).
+        if (mSmtEx != null) {
+            sb.append("is_screen_on: ").append(mSmtEx.isScreenOn() ? "Yes" : "No").append("\n");
+        }
         if (crashInfo != null && crashInfo.crashTag != null && !crashInfo.crashTag.isEmpty()) {
             sb.append("Crash-Tag: ").append(crashInfo.crashTag).append("\n");
         }
         sb.append("\n");
+        // Smartisan (factory): ANR monitor information of the process.
+        final String supplementInfo = eventType.contains("anr")
+                ? SysMonitorSvcBridge.getFactory().getAnrMonitor().getMonitorInfo(subject,
+                        process.pid, processName)
+                : null;
 
         // Do the rest in a worker thread to avoid blocking the caller on I/O
         // (After this point, we shouldn't access AMS internal data structures.)
@@ -9724,6 +10138,10 @@ public class ActivityManagerService extends IActivityManager.Stub
             public void run() {
                 if (report != null) {
                     sb.append(report);
+                }
+                // Smartisan (factory).
+                if (supplementInfo != null) {
+                    sb.append(supplementInfo);
                 }
 
                 String setting = Settings.Global.ERROR_LOGCAT_PREFIX + dropboxTag;
@@ -9769,6 +10187,12 @@ public class ActivityManagerService extends IActivityManager.Stub
                     }
                 }
 
+                // Smartisan (factory): the logd priority boost of an ANR ends here.
+                Slog.i(TAG, "endSchedPriorityLogd");
+                if (dropboxTag.contains("anr")) {
+                    SysOptBridge.getFactory().getSchedLogdPriority().endSchedPriorityLogd(
+                            process.pid);
+                }
                 dbox.addText(dropboxTag, sb.toString());
             }
         };
@@ -10684,6 +11108,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                     }
                 }
             }
+            // Smartisan (factory).
+            SysOptBridge.getFactory().getActivityManager(this).dumpProcessesLocked(pw,
+                    dumpPackage);
         }
 
         if (mProcessList.mIsolatedProcesses.size() > 0) {
@@ -11036,6 +11463,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }
         pw.println("  mForceBackgroundCheck=" + mForceBackgroundCheck);
+        // Smartisan (factory).
+        SysOptBridge.getFactory().createFreezeStats().dumpFreezeStats(pw);
     }
 
     @GuardedBy("this")
@@ -12599,8 +13028,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             final int oomAdj;
             final boolean hasActivities;
             synchronized (this) {
-                thread = r.thread;
-                pid = r.pid;
+                // Smartisan (factory): thread and pid survive a freezer detach.
+                thread = r.thread != null ? r.thread : r.getSmtEx().thread;
+                pid = r.pid > 0 ? r.pid : r.getSmtEx().pid;
                 oomAdj = r.getSetAdjWithServices();
                 hasActivities = r.hasActivities();
             }
@@ -12921,14 +13351,17 @@ public class ActivityManagerService extends IActivityManager.Stub
                     pw.println(totalPss - cachedPss);
                 }
             }
+            // Smartisan (factory): the kgsl global allocations count as kernel memory.
+            final long kgslGlobals = SysOptBridge.getFactory().getSmartService().getKgslGlobals();
+            final long kernelUsed = memInfo.getKernelUsedSizeKb() + kgslGlobals;
             long lostRAM = memInfo.getTotalSizeKb() - (totalPss - totalSwapPss)
                     - memInfo.getFreeSizeKb() - memInfo.getCachedSizeKb()
-                    - memInfo.getKernelUsedSizeKb() - memInfo.getZramTotalSizeKb();
+                    - kernelUsed - memInfo.getZramTotalSizeKb();
             if (!opts.isCompact) {
                 pw.print(" Used RAM: "); pw.print(stringifyKBSize(totalPss - cachedPss
-                        + memInfo.getKernelUsedSizeKb())); pw.print(" (");
+                        + kernelUsed)); pw.print(" (");
                 pw.print(stringifyKBSize(totalPss - cachedPss)); pw.print(" used pss + ");
-                pw.print(stringifyKBSize(memInfo.getKernelUsedSizeKb())); pw.print(" kernel)\n");
+                pw.print(stringifyKBSize(kernelUsed)); pw.print(" kernel)\n");
                 pw.print(" Lost RAM: "); pw.println(stringifyKBSize(lostRAM));
             } else {
                 pw.print("lostram,"); pw.println(lostRAM);
@@ -12941,6 +13374,14 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 pw.print(" physical used for ");
                                 pw.print(stringifyKBSize(memInfo.getSwapTotalSizeKb()
                                         - memInfo.getSwapFreeSizeKb()));
+                                // Smartisan (factory): zram / ufs split of the used swap.
+                                final long[] swapsUsed = SysOptBridge.getFactory()
+                                        .getActivityManager(this).getSwapsUsed();
+                                pw.print("(");
+                                pw.print(stringifyKBSize(swapsUsed[0]));
+                                pw.print(" zram + ");
+                                pw.print(stringifyKBSize(swapsUsed[1]));
+                                pw.print(" ufs)");
                                 pw.print(" in swap (");
                                 pw.print(stringifyKBSize(memInfo.getSwapTotalSizeKb()));
                                 pw.println(" total swap)");
@@ -13112,8 +13553,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             final int oomAdj;
             final boolean hasActivities;
             synchronized (this) {
-                thread = r.thread;
-                pid = r.pid;
+                // Smartisan (factory): thread and pid survive a freezer detach.
+                thread = r.thread != null ? r.thread : r.getSmtEx().thread;
+                pid = r.pid > 0 ? r.pid : r.getSmtEx().pid;
                 oomAdj = r.getSetAdjWithServices();
                 hasActivities = r.hasActivities();
             }
@@ -13731,18 +14173,10 @@ public class ActivityManagerService extends IActivityManager.Stub
     private final boolean removeDyingProviderLocked(ProcessRecord proc,
             ContentProviderRecord cpr, boolean always) {
         final boolean inLaunching = mLaunchingProviders.contains(cpr);
-
-        if (!inLaunching || always) {
-            synchronized (cpr) {
-                cpr.launchingApp = null;
-                cpr.notifyAll();
-            }
-            mProviderMap.removeProviderByClass(cpr.name, UserHandle.getUserId(cpr.uid));
-            String names[] = cpr.info.authority.split(";");
-            for (int j = 0; j < names.length; j++) {
-                mProviderMap.removeProviderByName(names[j], UserHandle.getUserId(cpr.uid));
-            }
-        }
+        // Smartisan (factory): a provider process that is being frozen keeps its provider
+        // records and the connections of its own (smt) uid; the map cleanup runs after the
+        // connection loop.
+        final boolean isFreezing = proc != null && proc.getSmtEx().isFreezing();
 
         for (int i = cpr.connections.size() - 1; i >= 0; i--) {
             ContentProviderConnection conn = cpr.connections.get(i);
@@ -13755,6 +14189,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
             }
             ProcessRecord capp = conn.client;
+            if (isFreezing && capp.info.getSmtUid() == proc.info.getSmtUid()) {
+                continue;
+            }
             conn.dead = true;
             if (conn.stableCount > 0) {
                 if (!capp.isPersistent() && capp.thread != null
@@ -13776,6 +14213,26 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if (conn.client.conProviders.remove(conn)) {
                     stopAssociationLocked(capp.uid, capp.processName, cpr.uid,
                             cpr.appInfo.longVersionCode, cpr.name, cpr.info.processName);
+                    // Smartisan (factory).
+                    if (cpr.proc != null && conn.client != null
+                            && cpr.proc.uid != conn.client.uid) {
+                        SysOptBridge.getFactory().getFreezeController()
+                                .clientConnectionRemoveEvent(cpr.proc.uid, conn.client.uid);
+                    }
+                }
+            }
+        }
+
+        if (!inLaunching || always) {
+            synchronized (cpr) {
+                cpr.launchingApp = null;
+                cpr.notifyAll();
+            }
+            if (!isFreezing) {
+                mProviderMap.removeProviderByClass(cpr.name, UserHandle.getUserId(cpr.uid));
+                String names[] = cpr.info.authority.split(";");
+                for (int j = 0; j < names.length; j++) {
+                    mProviderMap.removeProviderByName(names[j], UserHandle.getUserId(cpr.uid));
                 }
             }
         }
@@ -13797,6 +14254,20 @@ public class ActivityManagerService extends IActivityManager.Stub
     @GuardedBy("this")
     final boolean cleanUpApplicationRecordLocked(ProcessRecord app,
             boolean restarting, boolean allowRestart, int index, boolean replacingPid) {
+        return cleanUpApplicationRecordLocked(app, restarting, allowRestart, index, replacingPid,
+                false);
+    }
+
+    /**
+     * Smartisan (factory PICO OS 5.13.7): a process that is being frozen (sys-services
+     * ApplicationFreezer, fromFrozen = true) keeps its package list, death recipient, providers,
+     * provider connections, receivers and process name; only its runtime state is cleaned up.
+     */
+    @GuardedBy("this")
+    final boolean cleanUpApplicationRecordLocked(final ProcessRecord app,
+            boolean restarting, boolean allowRestart, int index, boolean replacingPid,
+            boolean fromFrozen) {
+        final boolean freezing = app.getSmtEx().isFreezing();
         if (index >= 0) {
             removeLruProcessLocked(app);
             ProcessList.remove(app.pid);
@@ -13823,17 +14294,22 @@ public class ActivityManagerService extends IActivityManager.Stub
         app.setCrashing(false);
         app.setNotResponding(false);
 
-        app.resetPackageList(mProcessStats);
-        app.unlinkDeathRecipient();
-        app.makeInactive(mProcessStats);
-        app.waitingToKill = null;
-        app.forcingToImportant = null;
-        updateProcessForegroundLocked(app, false, 0, false);
-        app.setHasForegroundActivities(false);
-        app.hasShownUi = false;
-        app.treatLikeActivity = false;
-        app.hasAboveClient = false;
-        app.setHasClientActivities(false);
+        if (!freezing) {
+            app.resetPackageList(mProcessStats);
+            app.unlinkDeathRecipient();
+            app.makeInactive(mProcessStats);
+            // Smartisan (factory).
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().removeClient(app.pid);
+            app.waitingToKill = null;
+            app.forcingToImportant = null;
+            app.setHasForegroundActivities(false);
+            app.hasShownUi = false;
+            app.treatLikeActivity = false;
+            app.hasAboveClient = false;
+            app.setHasClientActivities(false);
+        }
+        // Smartisan (factory): keeps the foreground service types.
+        updateProcessForegroundLocked(app, false, app.getForegroundServiceTypes(), false);
 
         mServices.killServicesLocked(app, allowRestart);
 
@@ -13842,7 +14318,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         // Remove published content providers.
         for (int i = app.pubProviders.size() - 1; i >= 0; i--) {
             ContentProviderRecord cpr = app.pubProviders.valueAt(i);
-            final boolean always = app.bad || !allowRestart;
+            final boolean always = app.bad || !allowRestart || freezing;
             boolean inLaunching = removeDyingProviderLocked(app, cpr, always);
             if ((inLaunching || always) && cpr.hasConnectionOrHandle()) {
                 // We left the provider in the launching list, need to
@@ -13850,18 +14326,24 @@ public class ActivityManagerService extends IActivityManager.Stub
                 restart = true;
             }
 
-            cpr.provider = null;
-            cpr.setProcess(null);
+            if (!freezing) {
+                cpr.provider = null;
+                cpr.setProcess(null);
+            }
         }
-        app.pubProviders.clear();
+        if (!freezing) {
+            app.pubProviders.clear();
+            // Smartisan (factory).
+            app.getSmtEx().resetFreezeBlockFlagsLocked(1);
+        }
 
         // Take care of any launching providers waiting for this process.
-        if (cleanupAppInLaunchingProvidersLocked(app, false)) {
+        if (cleanupAppInLaunchingProvidersLocked(app, freezing)) {
             restart = true;
         }
 
         // Unregister from connected content providers.
-        if (!app.conProviders.isEmpty()) {
+        if (!app.conProviders.isEmpty() && !freezing) {
             for (int i = app.conProviders.size() - 1; i >= 0; i--) {
                 ContentProviderConnection conn = app.conProviders.get(i);
                 conn.provider.connections.remove(conn);
@@ -13892,10 +14374,12 @@ public class ActivityManagerService extends IActivityManager.Stub
         skipCurrentReceiverLocked(app);
 
         // Unregister any receivers.
-        for (int i = app.receivers.size() - 1; i >= 0; i--) {
-            removeReceiverLocked(app.receivers.valueAt(i));
+        if (!freezing) {
+            for (int i = app.receivers.size() - 1; i >= 0; i--) {
+                removeReceiverLocked(app.receivers.valueAt(i));
+            }
+            app.receivers.clear();
         }
-        app.receivers.clear();
 
         // If the app is undergoing backup, tell the backup manager about it
         final BackupRecord backupTarget = mBackupTargets.get(app.userId);
@@ -13916,15 +14400,17 @@ public class ActivityManagerService extends IActivityManager.Stub
             });
         }
 
-        for (int i = mPendingProcessChanges.size() - 1; i >= 0; i--) {
-            ProcessChangeItem item = mPendingProcessChanges.get(i);
-            if (app.pid > 0 && item.pid == app.pid) {
-                mPendingProcessChanges.remove(i);
-                mAvailProcessChanges.add(item);
+        if (!freezing) {
+            for (int i = mPendingProcessChanges.size() - 1; i >= 0; i--) {
+                ProcessChangeItem item = mPendingProcessChanges.get(i);
+                if (app.pid > 0 && item.pid == app.pid) {
+                    mPendingProcessChanges.remove(i);
+                    mAvailProcessChanges.add(item);
+                }
             }
+            mUiHandler.obtainMessage(DISPATCH_PROCESS_DIED_UI_MSG, app.pid, app.info.uid,
+                    null).sendToTarget();
         }
-        mUiHandler.obtainMessage(DISPATCH_PROCESS_DIED_UI_MSG, app.pid, app.info.uid,
-                null).sendToTarget();
 
         // If the caller is restarting this app, then leave it in its
         // current lists and let the caller take care of it.
@@ -13935,7 +14421,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         if (!app.isPersistent() || app.isolated) {
             if (DEBUG_PROCESSES || DEBUG_CLEANUP) Slog.v(TAG_CLEANUP,
                     "Removing non-persistent process during cleanup: " + app);
-            if (!replacingPid) {
+            if (!replacingPid && !freezing) {
                 mProcessList.removeProcessNameLocked(app.processName, app.uid, app);
             }
             mAtmInternal.clearHeavyWeightProcessIfEquals(app.getWindowProcessController());
@@ -13954,7 +14440,10 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         mAtmInternal.onCleanUpApplicationRecord(app.getWindowProcessController());
 
-        if (restart && !app.isolated) {
+        if (ActivityManagerDebugConfigSmtEx.DEBUG_FREEZE && restart && freezing) {
+            Slog.w("ActivityManagerService", "cleanup freeze process but need restart!!");
+        }
+        if (restart && !app.isolated && !freezing) {
             // We have components that still need to be running in the
             // process, so re-launch it.
             if (index < 0) {
@@ -13967,7 +14456,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             return true;
         } else if (app.pid > 0 && app.pid != MY_PID) {
             // Goodbye!
-            mPidsSelfLocked.remove(app);
+            mPidsSelfLocked.remove(app, fromFrozen);
+            // Smartisan (factory).
+            SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().removePid(app.pid);
             mHandler.removeMessages(PROC_START_TIMEOUT_MSG, app);
             mBatteryStatsService.noteProcessFinish(app.processName, app.info.uid);
             if (app.isolated) {
@@ -14318,10 +14809,16 @@ public class ActivityManagerService extends IActivityManager.Stub
                             : new ComponentName("android", "FullBackupAgent");
 
             // startProcessLocked() returns existing proc's record if it's already running
-            ProcessRecord proc = startProcessLocked(app.processName, app,
-                    false, 0,
-                    new HostingRecord("backup", hostingName),
-                    false, false, false);
+            // Smartisan (factory): a frozen backup target is thawed instead of started.
+            ProcessRecord proc = SysOptBridge.getFactory().getApplicationFreezer()
+                    .unfreezeAppIfNeededLocked(null, app.processName, app.uid,
+                            IApplicationFreezer.UnfreezeReason.NEED_BACKUP_AGENT, null, null);
+            if (proc == null) {
+                proc = startProcessLocked(app.processName, app,
+                        false, 0,
+                        new HostingRecord("backup", hostingName),
+                        false, false, false);
+            }
             if (proc == null) {
                 Slog.e(TAG, "Unable to start backup agent process " + r);
                 return false;
@@ -14549,12 +15046,16 @@ public class ActivityManagerService extends IActivityManager.Stub
         boolean instantApp;
         synchronized(this) {
             if (caller != null) {
-                callerApp = getRecordForAppLocked(caller);
+                // Smartisan (factory): include frozen processes; a frozen caller is ignored.
+                callerApp = getRecordForAppLocked(caller, true);
                 if (callerApp == null) {
                     throw new SecurityException(
                             "Unable to find app for caller " + caller
                             + " (pid=" + Binder.getCallingPid()
                             + ") when registering receiver " + receiver);
+                }
+                if (callerApp.getSmtEx().inFreezeStat()) {
+                    return null;
                 }
                 if (callerApp.info.uid != SYSTEM_UID &&
                         !callerApp.pkgList.containsKey(callerPackage) &&
@@ -15471,6 +15972,28 @@ public class ActivityManagerService extends IActivityManager.Stub
                 + " replacePending=" + replacePending);
 
         int NR = registeredReceivers != null ? registeredReceivers.size() : 0;
+        // Smartisan (factory): registered receivers of frozen processes are skipped, unless the
+        // broadcast comes from the system UI (then the process is thawed).
+        for (int i = NR - 1; i >= 0; i--) {
+            final BroadcastFilter bf = registeredReceivers.get(i);
+            final ProcessRecord app = bf.receiverList != null ? bf.receiverList.app : null;
+            if (app == null) {
+                if (DEBUG_BROADCAST) {
+                    Slog.v(TAG, "freeze remove null or freeze registered receiver in app: "
+                            + app);
+                }
+                registeredReceivers.remove(i);
+                NR--;
+            } else if (app.getSmtEx().inFreezeStat()) {
+                if (intent.getSmtEx().getSmtBooleanExtra("from_system_ui", false)) {
+                    SysOptBridge.getFactory().getApplicationFreezer().unfreezeProcessLocked(app,
+                            true, IApplicationFreezer.UnfreezeReason.NEED_BROADCAST);
+                } else {
+                    registeredReceivers.remove(i);
+                    NR--;
+                }
+            }
+        }
         if (!ordered && NR > 0) {
             // If we are not serializing this broadcast, then send the
             // registered receivers separately so they don't wait for the
@@ -15706,7 +16229,11 @@ public class ActivityManagerService extends IActivityManager.Stub
         synchronized(this) {
             intent = verifyBroadcastLocked(intent);
 
-            final ProcessRecord callerApp = getRecordForAppLocked(caller);
+            // Smartisan (factory): include frozen processes; a frozen caller is ignored.
+            final ProcessRecord callerApp = getRecordForAppLocked(caller, true);
+            if (callerApp != null && callerApp.getSmtEx().inFreezeStat()) {
+                return ActivityManager.BROADCAST_SUCCESS;
+            }
             final int callingPid = Binder.getCallingPid();
             final int callingUid = Binder.getCallingUid();
 
@@ -15819,6 +16346,11 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 r = queue.getMatchingOrderedReceiver(who);
                 if (r != null) {
+                    // Smartisan (factory): the receiving app finished the broadcast.
+                    if (UserHandle.isApp(r.curApp.uid) && r.curApp != null && r.intent != null) {
+                        SysOptBridge.getFactory().getFreezeController().receiveBroadcastEvent(
+                                r.curApp.uid, r.curApp.pid, true, true, r.intent);
+                    }
                     doNext = r.queue.finishReceiverLocked(r, resultCode,
                         resultData, resultExtras, resultAbort, true);
                 }
@@ -15850,6 +16382,12 @@ public class ActivityManagerService extends IActivityManager.Stub
         // Refuse possible leaked file descriptors
         if (arguments != null && arguments.hasFileDescriptors()) {
             throw new IllegalArgumentException("File descriptors passed in Bundle");
+        }
+        // Smartisan (factory): process start interception.
+        if (getProcessRecordLocked(className.getPackageName(), callingUid, false) == null
+                && !SysOptBridge.getFactory().getProcessIntercept().isAllowStartInstrumentation(
+                        className.getPackageName(), className.getClassName(), callingUid)) {
+            return false;
         }
 
         synchronized(this) {
@@ -15996,9 +16534,13 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
 
         synchronized(this) {
-            ProcessRecord app = getRecordForAppLocked(target);
+            // Smartisan (factory): include frozen processes; a frozen one is ignored.
+            ProcessRecord app = getRecordForAppLocked(target, true);
             if (app == null) {
                 Slog.w(TAG, "addInstrumentationResults: no app for " + target);
+                return;
+            }
+            if (app.getSmtEx().inFreezeStat()) {
                 return;
             }
             final long origId = Binder.clearCallingIdentity();
@@ -16055,9 +16597,13 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
 
         synchronized(this) {
-            ProcessRecord app = getRecordForAppLocked(target);
+            // Smartisan (factory): include frozen processes; a frozen one is ignored.
+            ProcessRecord app = getRecordForAppLocked(target, true);
             if (app == null) {
                 Slog.w(TAG, "finishInstrumentation: no app for " + target);
+                return;
+            }
+            if (app.getSmtEx().inFreezeStat()) {
                 return;
             }
             final long origId = Binder.clearCallingIdentity();
@@ -16313,8 +16859,11 @@ public class ActivityManagerService extends IActivityManager.Stub
      */
     void recordPssSampleLocked(ProcessRecord proc, int procState, long pss, long uss, long swapPss,
             long rss, int statType, long pssDuration, long now) {
-        EventLogTags.writeAmPss(proc.pid, proc.uid, proc.processName, pss * 1024, uss * 1024,
-                swapPss * 1024, rss * 1024, statType, procState, pssDuration);
+        // Smartisan (factory): the pid survives a freezer detach.
+        EventLogTags.writeAmPss(proc.getSmtEx().getPid(), proc.uid, proc.processName, pss * 1024,
+                uss * 1024, swapPss * 1024, rss * 1024, statType, procState, pssDuration);
+        // Smartisan (factory).
+        proc.mSmtEx.addPssHistoryLocked(now, pss, proc);
         proc.lastPssTime = now;
         proc.baseProcessTracker.addPss(
                 pss, uss, rss, true, statType, pssDuration, proc.pkgList.mPkgList);
@@ -16385,6 +16934,11 @@ public class ActivityManagerService extends IActivityManager.Stub
      * Schedule PSS collection of a process.
      */
     boolean requestPssLocked(ProcessRecord proc, int procState) {
+        return requestPssLocked(proc, procState, SystemClock.uptimeMillis());
+    }
+
+    /** Smartisan (factory PICO OS 5.13.7): the PSS collection policy needs the current time. */
+    boolean requestPssLocked(ProcessRecord proc, int procState, long now) {
         if (mPendingPssProcesses.contains(proc)) {
             return false;
         }
@@ -16398,6 +16952,10 @@ public class ActivityManagerService extends IActivityManager.Stub
             mBgHandler.sendEmptyMessageDelayed(COLLECT_PSS_BG_MSG, deferral);
         }
         if (DEBUG_PSS) Slog.d(TAG_PSS, "Requesting pss of: " + proc);
+        // Smartisan (factory).
+        if (!ProcessRecordSmtBase.allowPssCollect(proc, false, false, now)) {
+            return false;
+        }
         proc.pssProcState = procState;
         proc.pssStatType = ProcessStats.ADD_PSS_INTERNAL_SINGLE;
         mPendingPssProcesses.add(proc);
@@ -16449,18 +17007,28 @@ public class ActivityManagerService extends IActivityManager.Stub
         mPendingPssProcesses.clear();
         for (int i = mProcessList.getLruSizeLocked() - 1; i >= 0; i--) {
             ProcessRecord app = mProcessList.mLruProcesses.get(i);
-            if (app.thread == null || app.getCurProcState() == PROCESS_STATE_NONEXISTENT) {
+            // Smartisan (factory): frozen processes are included.
+            if ((app.thread == null && !app.getSmtEx().inFreezeStat())
+                    || app.getCurProcState() == PROCESS_STATE_NONEXISTENT) {
                 continue;
             }
             if (memLowered || (always && now >
                             app.lastStateTime+ProcessList.PSS_SAFE_TIME_FROM_STATE_CHANGE)
                     || now > (app.lastStateTime+ProcessList.PSS_ALL_INTERVAL)) {
+                // Smartisan (factory): the cached pss is used when collecting is not allowed.
+                if (!ProcessRecordSmtBase.allowPssCollect(app, memLowered, true, now)) {
+                    mSmtEx.collectCachedPss(app);
+                    continue;
+                }
                 app.pssProcState = app.setProcState;
                 app.pssStatType = always ? ProcessStats.ADD_PSS_INTERNAL_ALL_POLL
                         : ProcessStats.ADD_PSS_INTERNAL_ALL_MEM;
                 app.nextPssTime = ProcessList.computeNextPssTime(app.getCurProcState(),
                         app.procStateMemTracker, mTestPssMode, mAtmInternal.isSleeping(), now);
                 mPendingPssProcesses.add(app);
+            } else {
+                // Smartisan (factory).
+                mSmtEx.collectCachedPss(app);
             }
         }
         if (!mBgHandler.hasMessages(COLLECT_PSS_BG_MSG)) {
@@ -16738,6 +17306,13 @@ public class ActivityManagerService extends IActivityManager.Stub
                 change |= (pendingChange.change & (UidRecord.CHANGE_CACHED
                         | UidRecord.CHANGE_UNCACHED));
             }
+            // Smartisan (factory): if there is no change in freeze state, keep the pending one.
+            if ((change & UidRecordSmtBase.CHANGE_FROZEN) == 0) {
+                change |= (pendingChange.change & UidRecordSmtBase.CHANGE_FROZEN);
+                Slog.i(TAG, "no change in freeze state, keep pending uid=" + pendingChange.uid
+                        + " oldFrozen=" + pendingChange.mSmtEx.frozenStat
+                        + " curFrozen=" + uidRec.getSmtEx().curFrozenStat);
+            }
             // If this is a report of the UID being gone, then we shouldn't keep any previous
             // report of it being active or cached.  (That is, a gone uid is never active,
             // and never cached.)
@@ -16754,6 +17329,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         pendingChange.processState = uidRec != null ? uidRec.setProcState : PROCESS_STATE_NONEXISTENT;
         pendingChange.ephemeral = uidRec != null ? uidRec.ephemeral : isEphemeralLocked(uid);
         pendingChange.procStateSeq = uidRec != null ? uidRec.curProcStateSeq : 0;
+        // Smartisan (factory).
+        pendingChange.mSmtEx.schedGroup = uidRec != null ? uidRec.getSmtEx().curSchedGroup : 0;
+        pendingChange.mSmtEx.frozenStat = uidRec != null ? uidRec.getSmtEx().curFrozenStat : 0;
         if (uidRec != null) {
             uidRec.lastReportedChange = change;
             uidRec.updateLastDispatchedProcStateSeq(change);
@@ -16766,15 +17344,27 @@ public class ActivityManagerService extends IActivityManager.Stub
             // all proc state changes.
             if ((change & UidRecord.CHANGE_ACTIVE) != 0) {
                 mLocalPowerManager.uidActive(pendingChange.uid);
+                // Smartisan (factory).
+                SysOptBridge.getFactory().getSmartScenes().onUidActive(pendingChange.uid);
             }
             if ((change & UidRecord.CHANGE_IDLE) != 0) {
                 mLocalPowerManager.uidIdle(pendingChange.uid);
             }
             if ((change & UidRecord.CHANGE_GONE) != 0) {
                 mLocalPowerManager.uidGone(pendingChange.uid);
+                // Smartisan (factory).
+                SysOptBridge.getFactory().getSmartScenes().onUidGone(pendingChange.uid);
             } else {
                 mLocalPowerManager.updateUidProcState(pendingChange.uid,
                         pendingChange.processState);
+                // Smartisan (factory).
+                SysOptBridge.getFactory().getSmartScenes().updateUidProcState(pendingChange.uid,
+                        pendingChange.processState);
+            }
+            // Smartisan (factory).
+            if ((change & UidRecordSmtBase.CHANGE_FROZEN) != 0) {
+                SysOptBridge.getFactory().getPowerManager().uidFrozen(pendingChange.uid,
+                        pendingChange.mSmtEx.frozenStat == 2);
             }
         }
     }
@@ -16838,12 +17428,15 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
 
             proc.setReportedForegroundServiceTypes(fgServiceTypes);
-            ProcessChangeItem item = enqueueProcessChangeItemLocked(proc.pid, proc.info.uid);
+            // Smartisan (factory): the pid survives a freezer detach.
+            ProcessChangeItem item = enqueueProcessChangeItemLocked(
+                    proc.pid > 0 ? proc.pid : proc.getSmtEx().pid, proc.info.uid);
             item.changes = ProcessChangeItem.CHANGE_FOREGROUND_SERVICES;
             item.foregroundServiceTypes = fgServiceTypes;
 
             if (oomAdj) {
-                updateOomAdjLocked(OomAdjuster.OOM_ADJ_REASON_UI_VISIBILITY);
+                // Smartisan (factory): deferred oom adj update.
+                mSmtEx.scheduleUpdateOomAdj(true);
             }
         }
     }
@@ -16985,7 +17578,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             int factor = numTrimming/3;
             int minFactor = 2;
             if (mAtmInternal.getHomeProcess() != null) minFactor++;
-            if (mAtmInternal.getPreviousProcess() != null) minFactor++;
+            // Smartisan (factory): the previous VR process counts as a previous process.
+            if (mAtmInternal.getPreviousProcess() != null
+                    || mAtmInternal.getSmtEx().getPreviousVrProcess() != null) minFactor++;
             if (factor < minFactor) factor = minFactor;
             int curLevel = ComponentCallbacks2.TRIM_MEMORY_COMPLETE;
             for (int i=N-1; i>=0; i--) {
@@ -17419,7 +18014,8 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         // Now update the oom adj for all processes. Don't skip this, since other callers
         // might be depending on it.
-        updateOomAdjLocked(oomAdjReason);
+        // Smartisan (factory): deferred oom adj update.
+        mSmtEx.scheduleUpdateOomAdj(false);
     }
 
     /** This method sends the specified signal to each of the persistent apps */
