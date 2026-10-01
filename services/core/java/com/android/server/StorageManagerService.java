@@ -83,6 +83,7 @@ import android.os.IVoldListener;
 import android.os.IVoldTaskListener;
 import android.os.Looper;
 import android.os.Message;
+import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.ParcelableException;
 import android.os.PersistableBundle;
@@ -266,6 +267,12 @@ class StorageManagerService extends IStorageManager.Stub
     private HandlerThread mMonitorThread;
     private Handler mMonitorHandler;
     private Runnable mMonitorRunnable;
+
+    /** Arguments of the last unlockUserKey() call, reused by retryUnlockUserKey(). */
+    private int mTmpUserId;
+    private int mTmpSerialNumber;
+    private byte[] mTmpToken;
+    private byte[] mTmpSecret;
 
     /**
      * Our goal is for all Android devices to be usable as development devices,
@@ -2841,9 +2848,47 @@ class StorageManagerService extends IStorageManager.Stub
         }
     }
 
+    /**
+     * Asks vold to restore the saved CE key (debug.restore.ce.key) and unlocks the user key
+     * again with the arguments of the last unlockUserKey() call.
+     */
+    private boolean retryUnlockUserKey() {
+        boolean ret = true;
+        try {
+            Slog.i(TAG, "restore ce key");
+            SystemProperties.set("debug.restore.ce.key", "1");
+            Thread.sleep(4000);
+            Slog.i(TAG, "retry unlockUserKey");
+            mVold.unlockUserKey(mTmpUserId, mTmpSerialNumber, encodeBytes(mTmpToken),
+                    encodeBytes(mTmpSecret));
+        } catch (Exception e) {
+            Slog.e(TAG, "retryUnlockUserKey failure:" + e);
+            ret = false;
+        }
+        return ret;
+    }
+
+    /** Reports a restored file to the stab service (android.stab.IBStabService). */
+    private void notifyStabdFileRestoreStat(String name) {
+        try {
+            IBinder stabProxy = ServiceManager.getService("stabservice");
+            if (stabProxy != null) {
+                Parcel data = Parcel.obtain();
+                data.writeInterfaceToken("android.stab.IBStabService");
+                data.writeLong(System.currentTimeMillis());
+                data.writeLong(SystemClock.uptimeMillis());
+                data.writeString(name);
+                data.writeInt(0);
+                stabProxy.transact(11, data, null, IBinder.FLAG_ONEWAY);
+                data.recycle();
+            }
+        } catch (RemoteException e) {
+        }
+    }
+
     @Override
     public void unlockUserKey(int userId, int serialNumber, byte[] token, byte[] secret) {
-        Slog.d(TAG, "unlockUserKey: " + userId);
+        Slog.i(TAG, "unlockUserKey: " + userId);
         enforcePermission(android.Manifest.permission.STORAGE_INTERNAL);
 
         if (StorageManager.isFileEncryptedNativeOrEmulated()) {
@@ -2853,12 +2898,27 @@ class StorageManagerService extends IStorageManager.Stub
                 throw new IllegalStateException("Secret required to unlock secure user " + userId);
             }
 
+            boolean unlockFail = false;
             try {
+                mTmpUserId = userId;
+                mTmpSerialNumber = serialNumber;
+                mTmpToken = token;
+                mTmpSecret = secret;
                 mVold.unlockUserKey(userId, serialNumber, encodeBytes(token),
                         encodeBytes(secret));
             } catch (Exception e) {
                 Slog.wtf(TAG, e);
-                return;
+                unlockFail = true;
+            } finally {
+                if (unlockFail) {
+                    boolean ret = true;
+                    ret = retryUnlockUserKey();
+                    if (!ret) {
+                        Log.wtf(TAG, "unlockUserKey:retryUnlockUserKey failure", new Throwable());
+                        return;
+                    }
+                    notifyStabdFileRestoreStat("unlock_user_key");
+                }
             }
         }
 
@@ -2902,6 +2962,11 @@ class StorageManagerService extends IStorageManager.Stub
 
         try {
             mVold.prepareUserStorage(volumeUuid, userId, serialNumber, flags);
+            Slog.i(TAG, "prepareUserStorage:serialNumber=" + serialNumber + ",volumeUuid="
+                    + volumeUuid + ",flags=" + flags);
+            if (flags == StorageManager.FLAG_STORAGE_CE) {
+                SystemProperties.set("debug.save.ce.key", "1");
+            }
         } catch (Exception e) {
             Slog.wtf(TAG, e);
         }
