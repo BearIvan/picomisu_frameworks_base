@@ -676,6 +676,11 @@ final class FillUi {
                 // it should not crash the system.
                 Slog.wtf(TAG, "Exception showing window " + params, e);
                 mCallback.onDestroy();
+            } catch (WindowManager.InvalidDisplayException e) {
+                // WM throws an InvalidDisplayException if the display of the anchor window is
+                // gone (e.g. a removed virtual display); it should not crash the system.
+                Slog.wtf(TAG, "Exception showing window " + params, e);
+                mCallback.onDestroy();
             }
         }
 
