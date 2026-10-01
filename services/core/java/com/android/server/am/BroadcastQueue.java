@@ -51,6 +51,8 @@ import android.util.StatsLog;
 import android.util.TimeUtils;
 import android.util.proto.ProtoOutputStream;
 
+import com.android.server.SysOptBridge;
+
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
@@ -320,6 +322,11 @@ public final class BroadcastQueue {
 
         boolean started = false;
         try {
+            // Smartisan (factory): tell the freeze controller about the ordered delivery.
+            if (UserHandle.isApp(app.uid)) {
+                SysOptBridge.getFactory().getFreezeController().receiveBroadcastEvent(app.uid,
+                        app.pid, false, true, r.intent);
+            }
             if (DEBUG_BROADCAST_LIGHT) Slog.v(TAG_BROADCAST,
                     "Delivering to component " + r.curComponent
                     + ": " + r);
@@ -329,6 +336,7 @@ public final class BroadcastQueue {
                     mService.compatibilityInfoForPackage(r.curReceiver.applicationInfo),
                     r.resultCode, r.resultData, r.resultExtras, r.ordered, r.userId,
                     app.getReportedProcState());
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().notesBDTrack(r.queue.mQueueName, 2);
             if (DEBUG_BROADCAST)  Slog.v(TAG_BROADCAST,
                     "Process cur broadcast " + r + " DELIVERED for app " + app);
             started = true;
@@ -459,6 +467,7 @@ public final class BroadcastQueue {
         final ActivityInfo receiver = r.curReceiver;
         final long finishTime = SystemClock.uptimeMillis();
         final long elapsed = finishTime - r.receiverTime;
+        SysMonitorSvcBridge.getFactory().getAnrMonitor().cancelBroadcast(r);
         r.state = BroadcastRecord.IDLE;
         if (state == BroadcastRecord.IDLE) {
             Slog.w(TAG_BROADCAST, "finishReceiver [" + mQueueName + "] called but state is IDLE");
@@ -585,6 +594,11 @@ public final class BroadcastQueue {
         // Send the intent to the receiver asynchronously using one-way binder calls.
         if (app != null) {
             if (app.thread != null) {
+                // Smartisan (factory): tell the freeze controller about the delivery.
+                if (UserHandle.isApp(app.uid)) {
+                    SysOptBridge.getFactory().getFreezeController().receiveBroadcastEvent(app.uid,
+                            app.pid, false, ordered, intent);
+                }
                 // If we have an app thread, do the call through that so it is
                 // correctly ordered with other one-way calls.
                 try {
@@ -767,6 +781,9 @@ public final class BroadcastQueue {
 
         if (skip) {
             r.delivery[index] = BroadcastRecord.DELIVERY_SKIPPED;
+            if (ordered) {
+                SysMonitorSvcBridge.getFactory().getAnrMonitor().cancelBroadcast(r);
+            }
             return;
         }
 
@@ -825,6 +842,8 @@ public final class BroadcastQueue {
             }
             if (ordered) {
                 r.state = BroadcastRecord.CALL_DONE_RECEIVE;
+                SysMonitorSvcBridge.getFactory().getAnrMonitor().notesBDTrack(r.queue.mQueueName,
+                        1);
             }
         } catch (RemoteException e) {
             Slog.w(TAG, "Failure sending broadcast " + r.intent, e);
@@ -1279,6 +1298,7 @@ public final class BroadcastQueue {
 
         final BroadcastOptions brOptions = r.options;
         final Object nextReceiver = r.receivers.get(recIdx);
+        SysMonitorSvcBridge.getFactory().getAnrMonitor().monitorBroadcast(r);
 
         if (nextReceiver instanceof BroadcastFilter) {
             // Simple case: this is a registered receiver who gets
@@ -1575,6 +1595,7 @@ public final class BroadcastQueue {
             r.state = BroadcastRecord.IDLE;
             r.manifestSkipCount++;
             scheduleBroadcastsLocked();
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().cancelBroadcast(r);
             return;
         }
         r.manifestCount++;
@@ -1602,6 +1623,17 @@ public final class BroadcastQueue {
         } catch (IllegalArgumentException e) {
             Slog.w(TAG, "Failed trying to unstop package "
                     + r.curComponent.getPackageName() + ": " + e);
+        }
+
+        // Smartisan (factory): the process intercept may refuse the receiver (it then finishes
+        // it itself); otherwise thaw a frozen receiver process before the delivery.
+        if (app == null || app.thread == null) {
+            if (!mSmtEx.isBroadcastAllowStart(info, r)) {
+                return;
+            }
+            app = SysOptBridge.getFactory().getApplicationFreezer().unfreezeAppIfNeededLocked(app,
+                    targetProcess, info.activityInfo.applicationInfo.uid,
+                    IApplicationFreezer.UnfreezeReason.NEED_BROADCAST, null, null);
         }
 
         // Is this receiver's application already running?
@@ -1640,6 +1672,7 @@ public final class BroadcastQueue {
         if (DEBUG_BROADCAST)  Slog.v(TAG_BROADCAST,
                 "Need to start app ["
                 + mQueueName + "] " + targetProcess + " for broadcast " + r);
+        SysMonitorSvcBridge.getFactory().getAnrMonitor().notesBDTrack(r.queue.mQueueName, 0);
         if ((r.curApp=mService.startProcessLocked(targetProcess,
                 info.activityInfo.applicationInfo, true,
                 r.intent.getFlags() | Intent.FLAG_FROM_BACKGROUND,
@@ -1798,6 +1831,10 @@ public final class BroadcastQueue {
         scheduleBroadcastsLocked();
 
         if (!debugging && anrMessage != null) {
+            if (app != null && UserHandle.isApp(app.uid)) {
+                SysOptBridge.getFactory().getFreezeController().broadcastTimeoutEvent(app.uid,
+                        app.pid, r.intent);
+            }
             // Post the ANR to the handler since we do not want to process ANRs while
             // potentially holding our lock.
             mHandler.post(new AppNotResponding(app, anrMessage));
