@@ -47,6 +47,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -1836,6 +1837,30 @@ public final class Debug
      * @hide
      */
     public static native long getPss(int pid, long[] outUssSwapPssRss, long[] outMemtrack);
+
+    /**
+     * Smartisan: getPss(pid, outUssSwapPssRss, outMemtrack) that also fills outEglGl with the
+     * EGL and GL memtrack sizes of the process.
+     * @hide
+     */
+    public static native long getPss(int pid, long[] outUssSwapPssRss, long[] outMemtrack,
+            long[] outEglGl);
+
+    /**
+     * Smartisan: collects the meminfo of all processes quickly (logged with callReason);
+     * optional output lines are appended to outLines.
+     * @hide
+     */
+    public static native boolean getAllProcsMeminfoFast(String callReason,
+            ArrayList<String> outLines);
+
+    /**
+     * Smartisan: getAllProcsMeminfoFast(callReason, null).
+     * @hide
+     */
+    public static boolean getAllProcsMeminfoFast(String callReason) {
+        return getAllProcsMeminfoFast(callReason, null);
+    }
 
     /**
      * Smartisan: the ARM generic timer (QTimer) counter converted to milliseconds, used by the

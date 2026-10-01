@@ -26,6 +26,8 @@ import android.webkit.WebViewZygote;
 
 import dalvik.system.VMRuntime;
 
+import java.util.ArrayList;
+
 /**
  * Tools for managing OS processes.
  */
@@ -1169,6 +1171,27 @@ public class Process {
      * @hide
      */
     public static final native void removeAllProcessGroups();
+
+    /**
+     * PICO OS 5.13.7 (Smartisan cgroup freezer): moves the processes of the uid/pid process
+     * group into (freeze == true) or out of the freezer cgroup; returns the pids moved.
+     * @hide
+     */
+    public static final native ArrayList setProcessFreezeGroup(int uid, int pid, boolean freeze)
+            throws IllegalArgumentException, SecurityException;
+
+    /**
+     * PICO OS 5.13.7 (Smartisan cgroup freezer): selects the cgroup freezer (true) or the
+     * signal freezer for setProcessFreezeGroup.
+     * @hide
+     */
+    public static final native void useCGroupFreeze(boolean use);
+
+    /**
+     * PICO OS 5.13.7 (Smartisan cgroup freezer): pids of the uid/pid process group.
+     * @hide
+     */
+    public static final native int[] getChildProcessViaGroup(int uid, int pid);
 
     /**
      * PICO OS 5.13.7 (Smartisan UI first): sets the UI-first level {@code val} (1..4, 255 to
