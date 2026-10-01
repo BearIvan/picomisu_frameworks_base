@@ -279,12 +279,7 @@ public class UpstreamNetworkMonitor {
     }
 
     private boolean isCellularUpstreamPermitted() {
-        if (mEntitlementMgr != null) {
-            return mEntitlementMgr.isCellularUpstreamPermitted();
-        } else {
-            // This flow should only happens in testing.
-            return true;
-        }
+        return false;
     }
 
     private void handleAvailable(Network network) {
