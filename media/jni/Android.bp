@@ -21,6 +21,7 @@ cc_library_shared {
         "android_media_MediaSync.cpp",
         "android_media_PlayerSpatialHelperImpl.cpp",
         "android_media_ResampleInputStream.cpp",
+        "android_media_SpatialCoordConverter.cpp",
         "android_media_Streams.cpp",
         "android_media_SyncParams.cpp",
         "android_mtp_MtpDatabase.cpp",

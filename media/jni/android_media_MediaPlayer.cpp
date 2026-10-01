@@ -1444,6 +1444,7 @@ extern int register_android_media_MediaExtractor(JNIEnv *env);
 extern int register_android_media_MediaCodecList(JNIEnv *env);
 extern int register_android_media_MediaHTTPConnection(JNIEnv *env);
 extern int register_android_media_PlayerSpatialHelper(JNIEnv *env);
+extern int register_android_media_SpatialCoordConverter(JNIEnv *env);
 extern int register_android_media_MediaMetadataRetriever(JNIEnv *env);
 extern int register_android_media_MediaMuxer(JNIEnv *env);
 extern int register_android_media_MediaRecorder(JNIEnv *env);
@@ -1566,10 +1567,14 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
         goto bail;
     }
 
-    // PICO: android.media.PlayerSpatialHelperImpl (libspatialaudio). The factory registers
-    // android.media.SpatialCoordConverter next, which this build does not carry.
+    // PICO: android.media.PlayerSpatialHelperImpl and SpatialCoordConverter (libspatialaudio).
     if (register_android_media_PlayerSpatialHelper(env) < 0) {
         ALOGE("ERROR: PlayerSpatialHelper native registration failed");
+        goto bail;
+    }
+
+    if (register_android_media_SpatialCoordConverter(env) < 0) {
+        ALOGE("ERROR: SpatialCoordConverter native registration failed");
         goto bail;
     }
 
