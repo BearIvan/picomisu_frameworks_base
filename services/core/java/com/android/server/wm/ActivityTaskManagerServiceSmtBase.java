@@ -23,11 +23,7 @@ import java.util.List;
  * Smartisan extension state of the {@link ActivityTaskManagerService}. Reconstructed from the
  * PICO OS 5.13.7 factory services (com.android.server.wm.ActivityTaskManagerServiceSmtBase).
  *
- * Not ported: updateTopDisplayType (it writes WindowProcessControllerSmtBase.mTopDisplayType,
- * and the Smartisan WindowProcessController layer is not in Source) and, in
- * {@link #updateTopResumedActivityToSingle3DApp}, ActivityRecordSmtBase.setLaunchSource (no
- * Smartisan ActivityRecord layer); the Single3DApp implementation itself lives in the factory
- * sys-services JAR, which Source does not ship, so the default no-op ISingle3DApp is used.
+ * The Single3DApp implementation lives in the factory sys-services JAR.
  *
  * @hide
  */
@@ -166,6 +162,8 @@ public abstract class ActivityTaskManagerServiceSmtBase {
     public void updateTopResumedActivityToSingle3DApp(ActivityRecord topResumedActivity) {
         if (topResumedActivity != null && topResumedActivity.getDisplay() != null
                 && topResumedActivity.getDisplay().mDisplay != null) {
+            topResumedActivity.getActivityRecordSmtEx().setLaunchSource(
+                    topResumedActivity.launchedFromUid, topResumedActivity.launchedFromPackage);
             SysOptBridge.getFactory().getSingle3DApp().updateTopResumedActivity(
                     topResumedActivity, topResumedActivity.getDisplay().mDisplay.getType());
         }
@@ -267,5 +265,12 @@ public abstract class ActivityTaskManagerServiceSmtBase {
 
     public TaskRecord getTaskRecordByTaskIdForDeepClean(int taskId) {
         return null;
+    }
+
+    /** LocalService.getTopApp: the top app process learns the type of its display. */
+    public void updateTopDisplayType(ActivityRecord top) {
+        if (top != null && top.getDisplay() != null && top.app != null) {
+            top.app.getWPCSmtEx().mTopDisplayType = top.getDisplay().mDisplay.getType();
+        }
     }
 }

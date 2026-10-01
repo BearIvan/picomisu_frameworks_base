@@ -240,6 +240,7 @@ import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.internal.notification.SystemNotificationChannels;
+import com.android.internal.os.BackgroundThread;
 import com.android.internal.os.TransferPipe;
 import com.android.internal.os.logging.MetricsLoggerWrapper;
 import com.android.internal.policy.IKeyguardDismissCallback;
@@ -250,7 +251,9 @@ import com.android.internal.util.Preconditions;
 import com.android.internal.util.function.pooled.PooledLambda;
 import com.android.server.AttributeCache;
 import com.android.server.DeviceIdleController;
+import com.android.server.ISmartService;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.SystemServiceManager;
 import com.android.server.UiThread;
@@ -263,6 +266,7 @@ import com.android.server.am.BaseErrorDialog;
 import com.android.server.am.EventLogTags;
 import com.android.server.am.PendingIntentController;
 import com.android.server.am.PendingIntentRecord;
+import com.android.server.am.ProcessRecord;
 import com.android.server.am.UserState;
 import com.android.server.appop.AppOpsService;
 import com.android.server.firewall.IntentFirewall;
@@ -1073,6 +1077,12 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         userId = getActivityStartController().checkTargetUser(userId, validateIncomingUser,
                 Binder.getCallingPid(), Binder.getCallingUid(), "startActivityAsUser");
 
+        // Smartisan (factory): launch-time statistics.
+        if (intent.getSmtEx().getLaunchStartTime() == -1) {
+            intent.getSmtEx().markLaunchStartTime(SystemClock.uptimeMillis());
+        }
+        intent.getSmtEx().markAMSStartTime(SystemClock.uptimeMillis());
+
         // TODO: Switch to user app stacks here.
         return getActivityStartController().obtainStarter(intent, "startActivityAsUser")
                 .setCaller(caller)
@@ -1723,6 +1733,15 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             ActivityRecord.activityResumedLocked(token);
             mWindowManager.notifyAppResumedFinished(token);
         }
+        // Smartisan (factory): the VR shell resumed: reset the CPU/GPU level.
+        final ActivityRecord r = ActivityRecord.forTokenLocked(token);
+        if (r != null && r.appInfo != null && r.appInfo.getSmtEx() != null
+                && r.appInfo.getSmtEx().isVrShell) {
+            Slog.d(TAG, "activityResumed :" + r.packageName);
+            BackgroundThread.getHandler().removeMessages(4247);
+            SysOptBridge.getFactory().getSmartService().transact(
+                    ISmartService.PXRPS_RESET_CPU_GPU_LEVEL, 0, 1);
+        }
         Binder.restoreCallingIdentity(origId);
     }
 
@@ -1786,6 +1805,12 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             mAmInternal.killProcess(restartingName, restartingUid, "restartActivityProcess");
         }
         mAmInternal.trimApplications();
+
+        // Smartisan (factory): memory process controller.
+        if (r != null && r.app != null) {
+            SysOptBridge.getFactory().getMemoryProcessController().onActivityStopped(
+                    r.app.getPid());
+        }
 
         Binder.restoreCallingIdentity(origId);
     }
@@ -2098,8 +2123,14 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                     return;
                 }
                 final ActivityRecord r = stack.topRunningActivityLocked();
-                if (r != null && r.moveFocusableActivityToTop("setFocusedStack")) {
-                    mRootActivityContainer.resumeFocusedStacksTopActivities();
+                if (r != null) {
+                    // Smartisan (factory): back to the default process group.
+                    if (r.app != null) {
+                        r.app.getWPCSmtEx().bringProcessToDefaultLocked();
+                    }
+                    if (r.moveFocusableActivityToTop("setFocusedStack")) {
+                        mRootActivityContainer.resumeFocusedStacksTopActivities();
+                    }
                 }
             }
         } finally {
@@ -2149,14 +2180,35 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
     @Override
     public boolean removeTask(int taskId) {
         enforceCallerIsRecentsOrHasPermission(REMOVE_TASKS, "removeTask()");
-        synchronized (mGlobalLock) {
-            final long ident = Binder.clearCallingIdentity();
-            try {
-                return mStackSupervisor.removeTaskByIdLocked(taskId, true, REMOVE_FROM_RECENTS,
-                        "remove-task");
-            } finally {
-                Binder.restoreCallingIdentity(ident);
+        // Smartisan (factory): with the memory push to UFS enabled, a task removed by the PICO
+        // shortcut whose app has the 0x10000 perf-opt flag is kept alive for VR and moved to
+        // the back instead.
+        final int callingPid = getCallingPid();
+        final TaskRecord tr = getSmtEx().getTaskRecordByTaskIdForDeepClean(taskId);
+        final long ident = Binder.clearCallingIdentity();
+        boolean ret = false;
+        try {
+            final ProcessRecord processRecord = getSmtEx().mAMS.getSmtEx().pidsSelfGet(
+                    getSmtEx().mAMS, callingPid);
+            final TaskRecord tr1 = mRootActivityContainer.anyTaskForId(taskId,
+                    MATCH_TASK_IN_STACKS_OR_RECENT_TASKS);
+            synchronized (mGlobalLock) {
+                final ActivityRecord topActivity = tr != null ? tr1.getTopActivity() : null;
+                if (SysOptBridge.getFactory().getMemoryProcessController().getMemPushUfsEnable()
+                        && processRecord != null
+                        && processRecord.getSmtEx().getProcessName().equals("com.pvr.shortcut")
+                        && topActivity != null
+                        && (topActivity.info.applicationInfo.getSmtEx().peroptFlag & 65536) != 0) {
+                    topActivity.info.applicationInfo.getSmtEx().keepAliveForVr = true;
+                    tr1.getStack().moveTaskToBackLocked(taskId);
+                } else {
+                    ret = mStackSupervisor.removeTaskByIdLocked(taskId, true,
+                            REMOVE_FROM_RECENTS, "remove-task");
+                }
             }
+            return ret;
+        } finally {
+            Binder.restoreCallingIdentity(ident);
         }
     }
 
@@ -5352,6 +5404,15 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             }
             app.onConfigurationChanged(configCopy);
         }
+        // Smartisan (factory): the frozen processes get the new configuration too.
+        final ArrayMap<String, SparseArray<WindowProcessController>> names =
+                getSmtEx().mProcessFrozenNames.getMap();
+        for (int NA = 0; NA < names.size(); NA++) {
+            final SparseArray<WindowProcessController> procs = names.valueAt(NA);
+            for (int NP = 0; NP < procs.size(); NP++) {
+                procs.valueAt(NP).onConfigurationChanged(configCopy);
+            }
+        }
 
         final Message msg = PooledLambda.obtainMessage(
                 ActivityManagerInternal::broadcastGlobalConfigurationChanged,
@@ -5601,7 +5662,12 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         updateResumedAppTrace(r);
         mLastResumedActivity = r;
 
-        r.getDisplay().setFocusedApp(r, true);
+        // Smartisan (factory): a prefetched stack does not move the focus now.
+        boolean moveFocuseNow = true;
+        if (r.getActivityStack().getActivityStackSmtBase().isPrefetch) {
+            moveFocuseNow = false;
+        }
+        r.getDisplay().setFocusedApp(r, moveFocuseNow);
 
         applyUpdateLockStateLocked(r);
         applyUpdateVrModeLocked(r);
@@ -6532,12 +6598,24 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
 
         @Override
         public void enableScreenAfterBoot(boolean booted) {
+            // Smartisan (factory): the boot event and the window manager call are made before
+            // taking the lock; the uid CPU runner is started afterwards.
+            EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_ENABLE_SCREEN,
+                    SystemClock.uptimeMillis());
+            SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_enable_screen",
+                    SystemClock.elapsedRealtime());
+            mWindowManager.enableScreenAfterBoot();
             synchronized (mGlobalLock) {
-                EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_ENABLE_SCREEN,
-                        SystemClock.uptimeMillis());
-                mWindowManager.enableScreenAfterBoot();
                 updateEventDispatchingLocked(booted);
             }
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    SysOptBridge.getFactory().getActivityManager(
+                            ActivityTaskManagerService.this.getSmtEx().mAMS)
+                            .getmUidCpuRunner().start();
+                }
+            }, "mUidCpuRunner.start()").start();
         }
 
         @Override
@@ -7292,6 +7370,8 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         public WindowProcessController getTopApp() {
             synchronized (mGlobalLockWithoutBoost) {
                 final ActivityRecord top = mRootActivityContainer.getTopResumedActivity();
+                // Smartisan (factory): the top app learns the type of its display.
+                ActivityTaskManagerService.this.getSmtEx().updateTopDisplayType(top);
                 return top != null ? top.app : null;
             }
         }
@@ -7528,6 +7608,8 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             synchronized (mGlobalLock) {
                 ActivityTaskManagerService.this.setDeviceOwnerUid(uid);
             }
+            // Smartisan (factory): the process intercept learns the device owner.
+            SysOptBridge.getFactory().getProcessIntercept().setDeviceOwnerUid(uid);
         }
 
         @Override
