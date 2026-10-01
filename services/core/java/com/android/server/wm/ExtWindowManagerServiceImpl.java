@@ -42,7 +42,64 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
 
     private WindowManagerService mBase;
     private List<RemoteCallback> mVisibleAppChangedCallbackList = new ArrayList<>();
-    private ScenesStateListener mScenesStateListener = new VisibleAppListener();
+
+    /**
+     * Keeps the visible apps (the shown 3D app and the visible 2D apps), the seethrough state
+     * and the XR runtime display state, and sends them to the registered callbacks
+     * ("visible_app_list", "seethrough_status", "xr_runtime_display_state") on every change
+     * (factory anonymous ExtWindowManagerServiceImpl$1).
+     */
+    private ScenesStateListener mScenesStateListener = new ScenesStateListener() {
+        private int mSeethroughState;
+        private String mShowing3dApp;
+        private List<String> mVisible2dAppList = new ArrayList<>();
+        private int mXrRuntimeDisplayState;
+
+        @Override
+        public void onRunning2dAppChanged(List<RunningAppInfo> visible2dAppList) {
+            List<String> visible2dApps = new ArrayList<>();
+            for (RunningAppInfo info : visible2dAppList) {
+                if (info != null && info.visible && !TextUtils.isEmpty(info.packageName)) {
+                    visible2dApps.add(info.packageName);
+                }
+            }
+            mVisible2dAppList.clear();
+            mVisible2dAppList.addAll(visible2dApps);
+            dispatchVisibleAppChanged();
+        }
+
+        @Override
+        public void on3dAppDisplayStateChanged(String showing3dApp, int xrRuntimeDisplayState) {
+            mShowing3dApp = showing3dApp;
+            mXrRuntimeDisplayState = xrRuntimeDisplayState;
+            dispatchVisibleAppChanged();
+        }
+
+        @Override
+        public void onSeethroughStateChanged(int state) {
+            mSeethroughState = state;
+            dispatchVisibleAppChanged();
+        }
+
+        private void dispatchVisibleAppChanged() {
+            ArrayList<String> visibleAppList = new ArrayList<>();
+            if (!TextUtils.isEmpty(mShowing3dApp)) {
+                visibleAppList.add(mShowing3dApp);
+            }
+            visibleAppList.addAll(mVisible2dAppList);
+            final Bundle result = new Bundle();
+            result.putStringArrayList("visible_app_list", visibleAppList);
+            result.putInt("seethrough_status", mSeethroughState);
+            result.putInt("xr_runtime_display_state", mXrRuntimeDisplayState);
+            BackgroundThread.getHandler().post(() -> {
+                synchronized (mVisibleAppChangedCallbackList) {
+                    for (RemoteCallback callback : mVisibleAppChangedCallbackList) {
+                        callback.sendResult(result);
+                    }
+                }
+            });
+        }
+    };
 
     static {
         sAdjustGetDisplayFrameList.add("com.xwms.pplevel");
@@ -183,64 +240,6 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
         }
     }
 
-    /**
-     * Keeps the visible apps (the shown 3D app and the visible 2D apps), the seethrough state
-     * and the XR runtime display state, and sends them to the registered callbacks
-     * ("visible_app_list", "seethrough_status", "xr_runtime_display_state") on every change
-     * (factory anonymous ExtWindowManagerServiceImpl$1).
-     */
-    private class VisibleAppListener implements ScenesStateListener {
-        private int mSeethroughState;
-        private String mShowing3dApp;
-        private List<String> mVisible2dAppList = new ArrayList<>();
-        private int mXrRuntimeDisplayState;
-
-        @Override
-        public void onRunning2dAppChanged(List<RunningAppInfo> visible2dAppList) {
-            List<String> visible2dApps = new ArrayList<>();
-            for (RunningAppInfo info : visible2dAppList) {
-                if (info != null && info.visible && !TextUtils.isEmpty(info.packageName)) {
-                    visible2dApps.add(info.packageName);
-                }
-            }
-            mVisible2dAppList.clear();
-            mVisible2dAppList.addAll(visible2dApps);
-            dispatchVisibleAppChanged();
-        }
-
-        @Override
-        public void on3dAppDisplayStateChanged(String showing3dApp, int xrRuntimeDisplayState) {
-            mShowing3dApp = showing3dApp;
-            mXrRuntimeDisplayState = xrRuntimeDisplayState;
-            dispatchVisibleAppChanged();
-        }
-
-        @Override
-        public void onSeethroughStateChanged(int state) {
-            mSeethroughState = state;
-            dispatchVisibleAppChanged();
-        }
-
-        private void dispatchVisibleAppChanged() {
-            ArrayList<String> visibleAppList = new ArrayList<>();
-            if (!TextUtils.isEmpty(mShowing3dApp)) {
-                visibleAppList.add(mShowing3dApp);
-            }
-            visibleAppList.addAll(mVisible2dAppList);
-            final Bundle result = new Bundle();
-            result.putStringArrayList("visible_app_list", visibleAppList);
-            result.putInt("seethrough_status", mSeethroughState);
-            result.putInt("xr_runtime_display_state", mXrRuntimeDisplayState);
-            BackgroundThread.getHandler().post(() -> {
-                synchronized (mVisibleAppChangedCallbackList) {
-                    for (RemoteCallback callback : mVisibleAppChangedCallbackList) {
-                        callback.sendResult(result);
-                    }
-                }
-            });
-        }
-    }
-
     /** SystemExt (USER_UPDATE_DISPLAY_FOCUS) focuses the top task of a display. */
     @Override
     public void updateDisplayFocus(int displayId, String reason) {
@@ -252,9 +251,8 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
                     Slog.w(TAG, "updateDisplayFocus failed by dc is null");
                     return;
                 }
-                // The factory dereferences the top stack without a check.
-                final TaskStack stack = dc.getTopStack();
-                Task task = stack != null ? stack.getTopChild() : null;
+                // As on the factory, the top stack is dereferenced without a check.
+                Task task = dc.getTopStack().getTopChild();
                 if (task == null) {
                     Slog.w(TAG, "updateDisplayFocus failed by getTopRootTask is null");
                     return;
