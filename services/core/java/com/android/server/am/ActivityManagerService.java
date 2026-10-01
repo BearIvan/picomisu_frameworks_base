@@ -456,8 +456,6 @@ public class ActivityManagerService extends IActivityManager.Stub
     public static final int STOCK_PM_FLAGS = PackageManager.GET_SHARED_LIBRARY_FILES;
 
     static final String SYSTEM_DEBUGGABLE = "ro.debuggable";
-    // Smartisan (factory): read by the sys-services ApplicationFreezer.
-    static final boolean mDebuggable = "1".equals(SystemProperties.get(SYSTEM_DEBUGGABLE, "0"));
 
     public static final String ANR_TRACE_DIR = "/data/anr";
 
@@ -10019,9 +10017,10 @@ public class ActivityManagerService extends IActivityManager.Stub
             sb.append("UID: ").append(process.uid).append("\n");
             MemInfoReader memInfo = new MemInfoReader();
             memInfo.getSmtEx().readMemInfoFast();
-            // Smartisan (factory): extra dropbox headers.
+            // Smartisan (factory): extra dropbox headers. The factory reads the static Smartisan
+            // members through getSmtEx().
             sb.append("Tag: ").append(
-                    ((process.info.flags & ActivityManagerServiceSmtBase.sSystemMask) == 0
+                    ((process.info.flags & getSmtEx().sSystemMask) == 0
                             || process.getMonitorEx().isolatedOf3rdPartApp)
                             ? "data_app" : "system_app").append("\n");
             sb.append("is_background: ")
@@ -10034,7 +10033,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                     memInfo.getSmtEx().getCachedSizeFastKb()
                             + memInfo.getSmtEx().getFreeSizeFastKb())).append("\n");
             sb.append("rom_free_size: ").append(
-                    stringifyKBSize(ActivityManagerServiceSmtBase.getRomFreeMemoryKb()))
+                    stringifyKBSize(getSmtEx().getRomFreeMemoryKb()))
                     .append("\n");
             int flags = process.info.flags;
             IPackageManager pm = AppGlobals.getPackageManager();
@@ -12916,6 +12915,10 @@ public class ActivityManagerService extends IActivityManager.Stub
             "servicea", "home",
             "prev", "serviceb", "cached"
     };
+
+    // Smartisan (factory): read by the sys-services ApplicationFreezer; the last static
+    // initializer, as on the factory.
+    static final boolean mDebuggable = "1".equals(SystemProperties.get(SYSTEM_DEBUGGABLE, "0"));
 
     private final void dumpApplicationMemoryUsageHeader(PrintWriter pw, long uptime,
             long realtime, boolean isCheckinRequest, boolean isCompact) {
