@@ -58,6 +58,7 @@ import android.hardware.usb.gadget.V1_0.Status;
 import android.hidl.manager.V1_0.IServiceManager;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.os.BatteryManager;
+import android.os.Binder;
 import android.os.Environment;
 import android.os.FileUtils;
 import android.os.Handler;
@@ -94,6 +95,7 @@ import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -109,7 +111,7 @@ import java.util.Set;
 public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObserver {
 
     private static final String TAG = UsbDeviceManager.class.getSimpleName();
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
 
     /**
      * The name of the xml file in which screen unlocked functions are stored.
@@ -217,7 +219,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
     private final class UsbUEventObserver extends UEventObserver {
         @Override
         public void onUEvent(UEventObserver.UEvent event) {
-            if (DEBUG) Slog.v(TAG, "USB UEVENT: " + event.toString());
+            if (DEBUG) Slog.e(TAG, "USB UEVENT: " + event.toString());
 
             String state = event.get("USB_STATE");
             String accessory = event.get("ACCESSORY");
@@ -225,7 +227,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                 mHandler.updateState(state);
             } else if ("START".equals(accessory)) {
                 if (DEBUG) Slog.d(TAG, "got accessory start");
-                startAccessoryMode();
+                startAccessoryMode(true);
             }
         }
     }
@@ -371,6 +373,13 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
 
     String[] getAccessoryStrings() {
         synchronized (mLock) {
+            // PICO: fall back to the PicoStreaming accessory identity when the host did not
+            // send its strings.
+            if (mAccessoryStrings == null) {
+                mAccessoryStrings = new String[] {"PicoStreaming", "AccessoryChat",
+                        "Accessory Chat", "1.0", "http://www.android.com", "1234567890"};
+            }
+            Slog.i(TAG, "getAccessoryStrings : " + Arrays.toString(mAccessoryStrings));
             return mAccessoryStrings;
         }
     }
@@ -400,6 +409,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
     }
 
     void startAccessoryMode() {
+        startAccessoryMode(false);
+    }
+
+    private void startAccessoryMode(boolean isFromUsbEventAccessory) {
         if (!mHasUsbAccessory) return;
 
         mAccessoryStrings = nativeGetAccessoryStrings();
@@ -416,11 +429,13 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         if (enableAudio) {
             functions |= UsbManager.FUNCTION_AUDIO_SOURCE;
         }
+        Slog.i(TAG, "startAccessoryMode mAccessoryStrings: " + mAccessoryStrings
+                + " ,enableAccessory: " + enableAccessory + "  ,enableAudio:" + enableAudio);
 
         if (functions != UsbManager.FUNCTION_NONE) {
             mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_ACCESSORY_MODE_ENTER_TIMEOUT),
                     ACCESSORY_REQUEST_TIMEOUT);
-            setCurrentFunctions(functions);
+            setCurrentFunctions(functions, isFromUsbEventAccessory);
         }
     }
 
@@ -488,6 +503,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         protected SharedPreferences mSettings;
         protected int mCurrentUser;
         protected boolean mCurrentUsbFunctionsReceived;
+        protected long mUsbModeNext;
+        protected boolean mHasNextMode;
+        ExtUsbDeviceManagerImpl.UsbHandlerExt mExt;
 
         /**
          * The persistent property which stores whether adb is enabled or not.
@@ -506,6 +524,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
 
             mCurrentUser = ActivityManager.getCurrentUser();
             mScreenLocked = true;
+            mUsbModeNext = UsbManager.FUNCTION_NONE;
+            mHasNextMode = false;
 
             mSettings = getPinnedSharedPrefs(mContext);
             if (mSettings == null) {
@@ -526,6 +546,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             boolean massStorageSupported = primary != null && primary.allowMassStorage();
             mUseUsbNotification = !massStorageSupported && mContext.getResources().getBoolean(
                     com.android.internal.R.bool.config_usbChargingMessage);
+            initExt();
         }
 
         public void sendMessage(int what, boolean arg) {
@@ -608,11 +629,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         private void setAdbEnabled(boolean enable) {
             if (DEBUG) Slog.d(TAG, "setAdbEnabled: " + enable);
 
-            if (enable) {
-                setSystemProperty(USB_PERSISTENT_CONFIG_PROPERTY, UsbManager.USB_FUNCTION_ADB);
-            } else {
-                setSystemProperty(USB_PERSISTENT_CONFIG_PROPERTY, "");
-            }
+            mExt.setSystemProperties();
 
             setEnabledFunctions(mCurrentFunctions, true);
             updateAdbNotification(false);
@@ -627,6 +644,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             // We are entering accessory mode if we have received a request from the host
             // and the request has not timed out yet.
             boolean enteringAccessoryMode = hasMessages(MSG_ACCESSORY_MODE_ENTER_TIMEOUT);
+            Slog.w(TAG, "updateCurrentAccessory mConfigured: " + mConfigured
+                    + ", enteringAccessoryMode: " + enteringAccessoryMode);
 
             if (mConfigured && enteringAccessoryMode) {
                 // successfully entered accessory mode
@@ -645,10 +664,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
 
                     serialReader.setDevice(mCurrentAccessory);
 
-                    Slog.d(TAG, "entering USB accessory mode: " + mCurrentAccessory);
+                    Slog.w(TAG, "entering USB accessory mode: " + mCurrentAccessory);
                     // defer accessoryAttached if system is not ready
                     if (mBootCompleted) {
                         mUsbDeviceManager.getCurrentSettings().accessoryAttached(mCurrentAccessory);
+                        mExt.removeAccessoryEnterTimeout();
                     } // else handle in boot completed
                 } else {
                     Slog.e(TAG, "nativeGetAccessoryStrings failed");
@@ -662,7 +682,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             }
         }
 
-        private void notifyAccessoryModeExit() {
+        protected void notifyAccessoryModeExit() {
             // make sure accessory mode is off
             // and restore default functions
             Slog.d(TAG, "exited USB accessory mode");
@@ -806,13 +826,17 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                 case MSG_UPDATE_STATE:
                     mConnected = (msg.arg1 == 1);
                     mConfigured = (msg.arg2 == 1);
+                    Slog.w(TAG, "MSG_UPDATE_STATE mConnected:" + mConnected
+                            + " mConfigured:" + mConfigured);
 
                     updateUsbNotification(false);
                     updateAdbNotification(false);
                     if (mBootCompleted) {
                         updateUsbStateBroadcastIfNeeded(getAppliedFunctions(mCurrentFunctions));
                     }
-                    if ((mCurrentFunctions & UsbManager.FUNCTION_ACCESSORY) != 0) {
+                    if ((mCurrentFunctions & UsbManager.FUNCTION_ACCESSORY) != 0
+                            && !getSystemProperty("sys.usb.state", "")
+                                    .contains("picofactorytest")) {
                         updateCurrentAccessory();
                     }
                     if (mBootCompleted) {
@@ -826,6 +850,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                                 setEnabledFunctions(UsbManager.FUNCTION_NONE, false);
                             }
                         }
+                        mExt.updateEnabledFunctions(mConnected, mCurrentFunctions);
                         updateUsbFunctions();
                     } else {
                         mPendingBootBroadcast = true;
@@ -902,7 +927,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                     break;
                 case MSG_SET_CURRENT_FUNCTIONS:
                     long functions = (Long) msg.obj;
-                    setEnabledFunctions(functions, false);
+                    boolean isSettingsSetNone = msg.arg1 == 1;
+                    boolean isFromUsbEventAccessory = msg.arg2 == 1;
+                    setEnabledFunctions(functions, false, isSettingsSetNone,
+                            isFromUsbEventAccessory);
                     break;
                 case MSG_SET_SCREEN_UNLOCKED_FUNCTIONS:
                     mScreenUnlockedFunctions = (Long) msg.obj;
@@ -991,9 +1019,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                 }
                 case MSG_ACCESSORY_MODE_ENTER_TIMEOUT: {
                     if (DEBUG) {
-                        Slog.v(TAG, "Accessory mode enter timeout: " + mConnected);
+                        Slog.w(TAG, "Accessory mode enter timeout: " + mConnected);
                     }
-                    if (!mConnected || (mCurrentFunctions & UsbManager.FUNCTION_ACCESSORY) == 0) {
+                    // PICO: exit only when accessory mode was not applied, even if disconnected.
+                    boolean currentHasAccessory =
+                            (mCurrentFunctions & UsbManager.FUNCTION_ACCESSORY) == 0;
+                    if (currentHasAccessory) {
                         notifyAccessoryModeExit();
                     }
                     break;
@@ -1013,6 +1044,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                 } else {
                     setEnabledFunctions(UsbManager.FUNCTION_NONE, false);
                 }
+                IExtUsbDeviceManager.checkCitAdbClose(mContext);
+                mExt.updateEnabledFunctions(mConnected, mCurrentFunctions);
                 if (mCurrentAccessory != null) {
                     mUsbDeviceManager.getCurrentSettings().accessoryAttached(mCurrentAccessory);
                 }
@@ -1328,9 +1361,23 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
          * Evaluates USB function policies and applies the change accordingly.
          */
         protected abstract void setEnabledFunctions(long functions, boolean forceRestart);
+
+        protected void setEnabledFunctions(long functions, boolean forceRestart,
+                boolean isSettingsSetNone, boolean isFromUsbEventAccessory) {
+            setEnabledFunctions(functions, forceRestart);
+        }
+
+        private ExtUsbDeviceManagerImpl.UsbHandlerExt initExt() {
+            if (this instanceof UsbHandlerLegacy) {
+                mExt = new ExtUsbDeviceManagerImpl.UsbHandlerLegacyExt(this);
+            } else {
+                mExt = new ExtUsbDeviceManagerImpl.UsbHandlerExt(this);
+            }
+            return mExt;
+        }
     }
 
-    private static final class UsbHandlerLegacy extends UsbHandler {
+    static final class UsbHandlerLegacy extends UsbHandler {
         /**
          * The non-persistent property which stores the current USB settings.
          */
@@ -1457,7 +1504,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             // wait for the transition to complete.
             // give up after 1 second.
             String value = null;
-            for (int i = 0; i < 20; i++) {
+            for (int i = 0; i < 50; i++) {
                 // State transition is done when sys.usb.state is set to the new configuration
                 value = getSystemProperty(USB_STATE_PROPERTY, "");
                 if (state.equals(value)) return true;
@@ -1479,6 +1526,18 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
 
         @Override
         protected void setEnabledFunctions(long usbFunctions, boolean forceRestart) {
+            setEnabledFunctions(usbFunctions, forceRestart, false, false);
+        }
+
+        @Override
+        protected void setEnabledFunctions(long usbFunctions, boolean forceRestart,
+                boolean isSettingsSetNone, boolean isFromUsbEventAccessory) {
+            // PICO: while an accessory mode request is pending, remember the functions and
+            // apply them once the accessory is attached.
+            if (!isFromUsbEventAccessory && ((ExtUsbDeviceManagerImpl.UsbHandlerLegacyExt) mExt)
+                    .hasAccessoryEnterTimeOutMessage(usbFunctions)) {
+                return;
+            }
             boolean usbDataUnlocked = isUsbDataTransferActive(usbFunctions);
             if (DEBUG) {
                 Slog.d(TAG, "setEnabledFunctions functions=" + usbFunctions + ", "
@@ -1496,7 +1555,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              */
             final long oldFunctions = mCurrentFunctions;
             final boolean oldFunctionsApplied = mCurrentFunctionsApplied;
-            if (trySetEnabledFunctions(usbFunctions, forceRestart)) {
+            if (trySetEnabledFunctions(usbFunctions, forceRestart, isSettingsSetNone)) {
                 return;
             }
 
@@ -1556,11 +1615,15 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         }
 
         private boolean trySetEnabledFunctions(long usbFunctions, boolean forceRestart) {
+            return trySetEnabledFunctions(usbFunctions, forceRestart, false);
+        }
+
+        private boolean trySetEnabledFunctions(long usbFunctions, boolean forceRestart,
+                boolean isSettingsSetNone) {
             String functions = null;
             if (usbFunctions != UsbManager.FUNCTION_NONE) {
                 functions = UsbManager.usbFunctionsToString(usbFunctions);
             }
-            mCurrentFunctions = usbFunctions;
             if (functions == null || applyAdbFunction(functions)
                     .equals(UsbManager.USB_FUNCTION_NONE)) {
                 functions = getSystemProperty(getPersistProp(true),
@@ -1570,19 +1633,30 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                 functions = UsbManager.usbFunctionsToString(getChargingFunctions());
             }
             functions = applyAdbFunction(functions);
+            // PICO: the extension adds the accessory function when needed, sets
+            // mCurrentFunctions from the resulting list and orders it.
+            functions = ((ExtUsbDeviceManagerImpl.UsbHandlerLegacyExt) mExt).updateFunctions(
+                    functions, MSG_ACCESSORY_MODE_ENTER_TIMEOUT, ACCESSORY_REQUEST_TIMEOUT,
+                    isAdbEnabled(), isSettingsSetNone);
+            Slog.w(TAG, "trySetEnabledFunctions mCurrentFunctions:" + mCurrentFunctions
+                    + ", usbFunctions:" + usbFunctions + " ,functions: " + functions);
 
             String oemFunctions = applyOemOverrideFunction(functions);
 
             if (!isNormalBoot() && !mCurrentFunctionsStr.equals(functions)) {
                 setSystemProperty(getPersistProp(true), functions);
             }
+            Slog.w(TAG, "trySetEnabledFunctions mCurrentFunctionsStr:" + mCurrentFunctionsStr
+                    + ", oemFunctions:" + oemFunctions + " ,mCurrentOemFunctions: "
+                    + mCurrentOemFunctions + " ,mCurrentFunctionsApplied:"
+                    + mCurrentFunctionsApplied);
 
             if ((!functions.equals(oemFunctions)
                     && !mCurrentOemFunctions.equals(oemFunctions))
                     || !mCurrentFunctionsStr.equals(functions)
                     || !mCurrentFunctionsApplied
                     || forceRestart) {
-                Slog.i(TAG, "Setting USB config to " + functions);
+                Slog.w(TAG, "Setting USB config to " + functions);
                 mCurrentFunctionsStr = functions;
                 mCurrentOemFunctions = oemFunctions;
                 mCurrentFunctionsApplied = false;
@@ -1634,7 +1708,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             return persistProp;
         }
 
-        private static String addFunction(String functions, String function) {
+        static String addFunction(String functions, String function) {
             if (UsbManager.USB_FUNCTION_NONE.equals(functions)) {
                 return function;
             }
@@ -1647,7 +1721,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             return functions;
         }
 
-        private static String removeFunction(String functions, String function) {
+        static String removeFunction(String functions, String function) {
             String[] split = functions.split(",");
             for (int i = 0; i < split.length; i++) {
                 if (function.equals(split[i])) {
@@ -2030,11 +2104,21 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
      * @param functions The functions to set, or empty to set the charging function.
      */
     public void setCurrentFunctions(long functions) {
+        setCurrentFunctions(functions, false);
+    }
+
+    /**
+     * PICO: as {@link #setCurrentFunctions(long)}; also records whether the system (Settings)
+     * asked for charging only and whether the request comes from an accessory start uevent.
+     */
+    public void setCurrentFunctions(long functions, boolean isFromUsbEventAccessory) {
         if (DEBUG) {
             Slog.d(TAG, "setCurrentFunctions(" + UsbManager.usbFunctionsToString(functions) + ")");
         }
+        boolean isSettingsSetNone = false;
         if (functions == UsbManager.FUNCTION_NONE) {
             MetricsLogger.action(mContext, MetricsEvent.ACTION_USB_CONFIG_CHARGING);
+            isSettingsSetNone = mExt.isSettingsCaller(Binder.getCallingUid());
         } else if (functions == UsbManager.FUNCTION_MTP) {
             MetricsLogger.action(mContext, MetricsEvent.ACTION_USB_CONFIG_MTP);
         } else if (functions == UsbManager.FUNCTION_PTP) {
@@ -2046,7 +2130,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         } else if (functions == UsbManager.FUNCTION_ACCESSORY) {
             MetricsLogger.action(mContext, MetricsEvent.ACTION_USB_CONFIG_ACCESSORY);
         }
-        mHandler.sendMessage(MSG_SET_CURRENT_FUNCTIONS, functions);
+        Message m = Message.obtain();
+        m.what = MSG_SET_CURRENT_FUNCTIONS;
+        m.obj = functions;
+        m.arg1 = isSettingsSetNone ? 1 : 0;
+        m.arg2 = isFromUsbEventAccessory ? 1 : 0;
+        mHandler.sendMessage(m);
     }
 
     /**
