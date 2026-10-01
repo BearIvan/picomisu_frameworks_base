@@ -805,6 +805,9 @@ public class AlertController {
         if (!hasButtons) {
             buttonPanel.setVisibility(View.GONE);
         }
+        // PICO (factory PICO OS 5.13.7): a TYPE_SYSTEM_ALERT dialog with buttons hides the
+        // button bar spacer.
+        android.pico.utils.Features.disableSystemAlert(mWindow, hasButtons, buttonPanel);
     }
 
     private void centerButton(Button button) {
