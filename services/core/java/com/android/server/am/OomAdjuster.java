@@ -66,6 +66,7 @@ import android.content.Context;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.os.PowerManagerInternal;
 import android.os.Process;
 import android.os.RemoteException;
@@ -82,8 +83,10 @@ import android.util.proto.ProtoOutputStream;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.procstats.ProcessStats;
+import com.android.server.IActivityManagerOptEx;
 import com.android.server.LocalServices;
 import com.android.server.ServiceThread;
+import com.android.server.SysOptBridge;
 import com.android.server.wm.ActivityServiceConnectionsHolder;
 import com.android.server.wm.WindowProcessController;
 
@@ -165,6 +168,11 @@ public final class OomAdjuster {
     private final ActivityManagerService mService;
     private final ProcessList mProcessList;
 
+    // Smartisan extensions (factory PICO OS 5.13.7).
+    private final IOomAdjusterOptEx mOomAdjusterOptEx;
+    private final IActivityManagerOptEx mActivityManagerOptEx;
+    private final OomAdjusterSmtEx mOomAdjusterSmtEx = new OomAdjusterSmtEx();
+
     // Min aging threshold in milliseconds to consider a B-service
     int mMinBServiceAgingTime = 5000;
     // Threshold for B-services when in memory pressure
@@ -214,12 +222,15 @@ public final class OomAdjuster {
             Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "setProcessGroup");
             final int pid = msg.arg1;
             final int group = msg.arg2;
+            final ProcessRecord pr = (ProcessRecord) msg.obj;
             try {
                 if (mEnableProcessGroupCgroupFollow) {
-                    final int uid = ((Integer)msg.obj).intValue();
+                    final int uid = pr.info.uid;
                     setCgroupProcsProcessGroup(uid, pid, group, mProcessGroupCgroupFollowDex2oatOnly);
                 } else {
-                    setProcessGroup(pid, group);
+                    // Smartisan (factory): also handles the Smartisan process groups.
+                    SysOptBridge.getFactory().getActivityManager(mService)
+                            .asyncSetProcessGroupAll(pr, pid, group);
                 }
             } catch (Exception e) {
                 if (DEBUG_ALL) {
@@ -230,6 +241,8 @@ public final class OomAdjuster {
             }
             return true;
         });
+        mOomAdjusterOptEx = SysOptBridge.getFactory().getOomAdjusterOptEx(this, mService);
+        mActivityManagerOptEx = SysOptBridge.getFactory().getActivityManager(mService);
     }
 
     void initSettings() {
@@ -272,7 +285,7 @@ public final class OomAdjuster {
     @GuardedBy("mService")
     private final boolean updateOomAdjLocked(ProcessRecord app, int cachedAdj,
             ProcessRecord TOP_APP, boolean doingAll, long now) {
-        if (app.thread == null) {
+        if (app.thread == null && !app.getSmtEx().inFreezeStat()) {
             return false;
         }
 
@@ -359,6 +372,34 @@ public final class OomAdjuster {
 
         boolean retryCycles = false;
 
+        // Smartisan (factory): process counts by adj for the perf monitor and the memory based
+        // kill of visible / B service app sets.
+        int countForeground = 0;
+        int countVisible = 0;
+        int countPerceptible = 0;
+        int countService = 0;
+        int countBService = 0;
+        int countCached = 0;
+        int countPersistentService = 0;
+        int countPersistent = 0;
+        int cachedMemSize = 0;
+        long totalVisibleMem = 0;
+        long totalCachedMem = 0;
+        mOomAdjusterOptEx.setmNumCachedProcs(0);
+        final boolean isTimeToKill = now
+                - SysOptBridge.getFactory().getActivityManager(mService).getmLastKillAppSetTime()
+                > SysOptBridge.getFactory().getActivityManager(mService).getmKillAppSetMinTime();
+        final boolean enableMemkill =
+                SysOptBridge.getFactory().getActivityManager(mService).getmEnableMemAppSetKill()
+                && isTimeToKill;
+        if (enableMemkill) {
+            SysOptBridge.getFactory().getActivityManager(mService).getmVisebleAppsSet().clear();
+        }
+        if (isTimeToKill) {
+            SysOptBridge.getFactory().getActivityManager(mService).getmBServiceAppsSet().clear();
+        }
+        SysOptBridge.getFactory().getFreezeController().clearImportantUids();
+
         // need to reset cycle state before calling computeOomAdjLocked because of service conns
         for (int i = N - 1; i >= 0; i--) {
             ProcessRecord app = mProcessList.mLruProcesses.get(i);
@@ -397,9 +438,44 @@ public final class OomAdjuster {
                     "Identified app.processName = " + selectedAppRecord.processName
                     + " app.pid = " + selectedAppRecord.pid);
 
-            if (!app.killedByAm && app.thread != null) {
+            if (!app.killedByAm && (app.thread != null || app.getSmtEx().inFreezeStat())) {
                 app.procStateChanged = false;
                 computeOomAdjLocked(app, ProcessList.UNKNOWN_ADJ, TOP_APP, true, now, false);
+
+                // Smartisan (factory): count the processes by adj.
+                if (app.curAdj >= ProcessList.CACHED_APP_MIN_ADJ) {
+                    countCached++;
+                    cachedMemSize += app.lastPss;
+                    if (enableMemkill) {
+                        totalCachedMem += app.lastPss;
+                    }
+                } else if (app.curAdj >= ProcessList.SERVICE_B_ADJ) {
+                    countBService++;
+                    if (isTimeToKill && app.uid != Process.SYSTEM_UID) {
+                        SysOptBridge.getFactory().getActivityManager(mService)
+                                .getmBServiceAppsSet().add(app.uid);
+                    }
+                } else if (app.curAdj >= ProcessList.SERVICE_ADJ) {
+                    countService++;
+                } else if (app.curAdj >= ProcessList.PERCEPTIBLE_APP_ADJ) {
+                    countPerceptible++;
+                } else if (app.curAdj >= ProcessList.VISIBLE_APP_ADJ) {
+                    countVisible++;
+                    if (enableMemkill) {
+                        totalVisibleMem += app.lastPss;
+                        if (app.uid != Process.SYSTEM_UID) {
+                            // As on the factory: the B service app set.
+                            SysOptBridge.getFactory().getActivityManager(mService)
+                                    .getmBServiceAppsSet().add(app.uid);
+                        }
+                    }
+                } else if (app.curAdj >= ProcessList.FOREGROUND_APP_ADJ) {
+                    countForeground++;
+                } else if (app.curAdj >= ProcessList.PERSISTENT_SERVICE_ADJ) {
+                    countPersistentService++;
+                } else if (app.curAdj >= ProcessList.PERSISTENT_PROC_ADJ) {
+                    countPersistent++;
+                }
 
                 // if any app encountered a cycle, we need to perform an additional loop later
                 retryCycles |= app.containsCycle;
@@ -482,6 +558,10 @@ public final class OomAdjuster {
             }
         }
 
+        SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updateAdjProcessCount(
+                countForeground, countVisible, countPerceptible, countService, countBService,
+                countCached);
+
         // Cycle strategy:
         // - Retry computing any process that has encountered a cycle.
         // - Continue retrying until no process was promoted.
@@ -493,7 +573,8 @@ public final class OomAdjuster {
 
             for (int i = 0; i < N; i++) {
                 ProcessRecord app = mProcessList.mLruProcesses.get(i);
-                if (!app.killedByAm && app.thread != null && app.containsCycle == true) {
+                if (!app.killedByAm && (app.thread != null || app.getSmtEx().inFreezeStat())
+                        && app.containsCycle == true) {
                     app.adjSeq--;
                     app.completedAdjSeq--;
                 }
@@ -501,7 +582,8 @@ public final class OomAdjuster {
 
             for (int i = 0; i < N; i++) {
                 ProcessRecord app = mProcessList.mLruProcesses.get(i);
-                if (!app.killedByAm && app.thread != null && app.containsCycle == true) {
+                if (!app.killedByAm && (app.thread != null || app.getSmtEx().inFreezeStat())
+                        && app.containsCycle == true) {
                     if (computeOomAdjLocked(app, app.getCurRawAdj(), TOP_APP, true, now,
                             true)) {
                         retryCycles = true;
@@ -576,6 +658,17 @@ public final class OomAdjuster {
                         if (uidRec.getCurProcState() > app.getCurProcState()) {
                             uidRec.setCurProcState(app.getCurProcState());
                         }
+                        // Smartisan (factory): sched group and freezing state of the uid.
+                        if (uidRec.getSmtEx().curSchedGroup < app.getCurrentSchedulingGroup()) {
+                            uidRec.getSmtEx().curSchedGroup = app.getCurrentSchedulingGroup();
+                            uidRec.getSmtEx().not3rdReason = app.processName + "|"
+                                    + app.getSmtEx().not3rdReasonFlag;
+                        }
+                        if (uidRec.getSmtEx().curFrozenStat
+                                > app.getSmtEx().getCurrentFreezingStat()) {
+                            uidRec.getSmtEx().curFrozenStat =
+                                    app.getSmtEx().getCurrentFreezingStat();
+                        }
                         if (app.hasForegroundServices()) {
                             uidRec.foregroundServices = true;
                         }
@@ -626,7 +719,9 @@ public final class OomAdjuster {
             int uidChange = UidRecord.CHANGE_PROCSTATE;
             if (uidRec.getCurProcState() != PROCESS_STATE_NONEXISTENT
                     && (uidRec.setProcState != uidRec.getCurProcState()
-                    || uidRec.setWhitelist != uidRec.curWhitelist)) {
+                    || uidRec.setWhitelist != uidRec.curWhitelist
+                    || uidRec.getSmtEx().setSchedGroup != uidRec.getSmtEx().curSchedGroup
+                    || uidRec.getSmtEx().setFrozenStat != uidRec.getSmtEx().curFrozenStat)) {
                 if (DEBUG_UID_OBSERVERS) Slog.i(TAG_UID_OBSERVERS, "Changes in " + uidRec
                         + ": proc state from " + uidRec.setProcState + " to "
                         + uidRec.getCurProcState() + ", whitelist from " + uidRec.setWhitelist
@@ -669,9 +764,17 @@ public final class OomAdjuster {
                 if (wasCached != isCached || uidRec.setProcState == PROCESS_STATE_NONEXISTENT) {
                     uidChange |= isCached ? UidRecord.CHANGE_CACHED : UidRecord.CHANGE_UNCACHED;
                 }
+                if (uidRec.getSmtEx().setSchedGroup != uidRec.getSmtEx().curSchedGroup) {
+                    uidChange |= UidRecordSmtBase.CHANGE_SCHEDGROUP;
+                }
+                if (uidRec.getSmtEx().setFrozenStat != uidRec.getSmtEx().curFrozenStat) {
+                    uidChange |= UidRecordSmtBase.CHANGE_FROZEN;
+                }
                 uidRec.setProcState = uidRec.getCurProcState();
                 uidRec.setWhitelist = uidRec.curWhitelist;
                 uidRec.setIdle = uidRec.idle;
+                uidRec.getSmtEx().setSchedGroup = uidRec.getSmtEx().curSchedGroup;
+                uidRec.getSmtEx().setFrozenStat = uidRec.getSmtEx().curFrozenStat;
                 mService.mAtmInternal.onUidProcStateChanged(uidRec.uid, uidRec.setProcState);
                 mService.enqueueUidChangeLocked(uidRec, -1, uidChange);
                 mService.noteUidProcessState(uidRec.uid, uidRec.getCurProcState());
@@ -697,6 +800,11 @@ public final class OomAdjuster {
                     mService.mProcessStats));
         }
 
+        if (mOomAdjusterOptEx.isKernelCachedKillEnable()) {
+            mOomAdjusterOptEx.setmNumCachedProcs(countCached);
+            mOomAdjusterOptEx.kernelCachedLowMemState();
+        }
+
         // Run this after making sure all procstates are updated.
         mService.mProcessStats.updateTrackingAssociationsLocked(mAdjSeq, now);
 
@@ -709,6 +817,47 @@ public final class OomAdjuster {
                 Slog.d(TAG_OOM_ADJ, "Did OOM ADJ in " + duration + "ms");
             }
         }
+        // Smartisan (factory): kill visible apps when they use too much memory and too little
+        // is cached, and B service apps when there are too many of them.
+        if (enableMemkill) {
+            totalVisibleMem = totalVisibleMem / 1024;
+            totalCachedMem = totalCachedMem / 1024;
+            if (totalVisibleMem
+                    > SysOptBridge.getFactory().getActivityManager(mService)
+                            .getmMaxSizeVisibleMemory()
+                    && totalCachedMem
+                            < SysOptBridge.getFactory().getActivityManager(mService)
+                                    .getmMinSizeCachedMemory()) {
+                Slog.i(TAG, "clean visible app, totalVisibleMem =  " + totalVisibleMem
+                        + " totalCachedMem= " + totalCachedMem);
+                SysOptBridge.getFactory().getActivityManager(mService)
+                        .setmLastKillAppSetTime(now);
+                int killNum = 1;
+                if (totalVisibleMem > SysOptBridge.getFactory().getActivityManager(mService)
+                        .getmMaxSizeVisibleMemory() * 2) {
+                    killNum = 2;
+                }
+                Message msg = mService.mHandler.obtainMessage(2004);
+                msg.arg1 = killNum;
+                msg.arg2 = SysOptBridge.getFactory().getActivityManager(mService)
+                        .getKILL_VISIBLE_APP_SET();
+                mService.mHandler.sendMessage(msg);
+            }
+        }
+        if (isTimeToKill && countBService
+                > SysOptBridge.getFactory().getActivityManager(mService).getmMaxBServiceCount()) {
+            Slog.i(TAG, "clean B Service app, countBService: " + countBService);
+            SysOptBridge.getFactory().getActivityManager(mService).setmLastKillAppSetTime(now);
+            Message msg = mService.mHandler.obtainMessage(2004);
+            msg.arg1 = 1;
+            msg.arg2 = SysOptBridge.getFactory().getActivityManager(mService)
+                    .getKILL_B_SERVICE_APP_SET();
+            mService.mHandler.sendMessage(msg);
+        }
+        SysOptBridge.getFactory().getActivityManager(mService).getmUidCpuRunner()
+                .cleanBadBgApps(mService.mHandler);
+        SysOptBridge.getFactory().getFreezeController().updateLastImportantUidsIfNeeded();
+
         mService.mOomAdjProfiler.oomAdjEnded();
         Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
     }
@@ -852,7 +1001,7 @@ public final class OomAdjuster {
             }
         }
 
-        if (app.thread == null) {
+        if (app.thread == null && !app.getSmtEx().inFreezeStat()) {
             app.adjSeq = mAdjSeq;
             app.setCurrentSchedulingGroup(ProcessList.SCHED_GROUP_BACKGROUND);
             app.setCurProcState(PROCESS_STATE_CACHED_EMPTY);
@@ -934,6 +1083,9 @@ public final class OomAdjuster {
 
         boolean foregroundActivities = false;
         mTmpBroadcastQueue.clear();
+        // Smartisan (factory): bound to / provider of the top app or system_server.
+        boolean connectedWithTop = false;
+        boolean connectedWithSystemServer = false;
         if (PROCESS_STATE_CUR_TOP == PROCESS_STATE_TOP && app == TOP_APP) {
             // The last app on the list is the foreground app.
             adj = ProcessList.FOREGROUND_APP_ADJ;
@@ -1157,7 +1309,8 @@ public final class OomAdjuster {
             }
         }
 
-        if (wpc.isPreviousProcess() && app.hasActivities()) {
+        if ((wpc.isPreviousProcess() || wpc.getWPCSmtEx().isPreviousVrProcess())
+                && app.hasActivities()) {
             if (adj > ProcessList.PREVIOUS_APP_ADJ) {
                 // This was the previous process that showed UI to the user.
                 // We want to try to keep it around more aggressively, to give
@@ -1286,6 +1439,30 @@ public final class OomAdjuster {
                         // Binding to oneself is not interesting.
                         continue;
                     }
+
+                    // Smartisan (factory).
+                    if (cr.binding.client == TOP_APP) {
+                        connectedWithTop = true;
+                        UidRecord uidRec = mActiveUids.get(app.uid);
+                        if (uidRec != null) {
+                            uidRec.getSmtEx().SmtFlags |= 2;
+                        }
+                        if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                            Slog.i(TAG, app + " connected with top app with service:" + cr);
+                        }
+                    } else if (cr.binding.client.pid == ActivityManagerService.MY_PID
+                            && !cr.getSmtEx().connectWithJobService) {
+                        connectedWithSystemServer = true;
+                        UidRecord uidRec = mActiveUids.get(app.uid);
+                        if (uidRec != null) {
+                            uidRec.getSmtEx().SmtFlags |= 1;
+                        }
+                        if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                            Slog.i(TAG, app + " connected with system with service:" + cr
+                                    + ", client=" + cr.binding.client);
+                        }
+                    }
+                    SysOptBridge.getFactory().getFreezeController().updateImportantUids(cr, app);
 
                     boolean trackedProcState = false;
                     if ((cr.flags& Context.BIND_WAIVE_PRIORITY) == 0) {
@@ -1533,6 +1710,28 @@ public final class OomAdjuster {
                     // Being our own client is not interesting.
                     continue;
                 }
+                // Smartisan (factory).
+                if (client == TOP_APP) {
+                    connectedWithTop = true;
+                    UidRecord uidRec = mActiveUids.get(app.uid);
+                    if (uidRec != null) {
+                        uidRec.getSmtEx().SmtFlags |= 2;
+                    }
+                    if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                        Slog.i(TAG, app + " connected with top app with cpr" + cpr);
+                    }
+                } else if (client != null && client.pid == ActivityManagerService.MY_PID) {
+                    connectedWithSystemServer = true;
+                    UidRecord uidRec = mActiveUids.get(app.uid);
+                    if (uidRec != null) {
+                        uidRec.getSmtEx().SmtFlags |= 1;
+                    }
+                    if (ActivityManagerDebugConfigSmtEx.DEBUG_3RD_BG_APP) {
+                        Slog.i(TAG, app + " connected with system with cpr:" + cpr
+                                + ", client=" + client);
+                    }
+                }
+                SysOptBridge.getFactory().getFreezeController().updateImportantUids(client, app);
                 computeOomAdjLocked(client, cachedAdj, TOP_APP, doingAll, now, cycleReEval);
 
                 if (shouldSkipDueToCycle(app, client, procState, adj, cycleReEval)) {
@@ -1716,6 +1915,8 @@ public final class OomAdjuster {
         app.setCurRawProcState(procState);
         app.setHasForegroundActivities(foregroundActivities);
         app.completedAdjSeq = mAdjSeq;
+        mOomAdjusterOptEx.computeOomAdjLocked(this, app, DEBUG_OOM_ADJ_REASON || logUid == appUid,
+                TOP_APP, connectedWithTop, connectedWithSystemServer);
 
         // if curAdj or curProcState improved, then this process was promoted
         return app.curAdj < prevAppAdj || app.getCurProcState() < prevProcState;
@@ -1779,6 +1980,9 @@ public final class OomAdjuster {
         }
 
         int changes = 0;
+        // Smartisan (factory): a frozen process keeps its pid in ProcessRecordSmtBase.
+        final int _pid = app.pid > 0 ? app.pid : app.getSmtEx().pid;
+        mOomAdjusterOptEx.applyOomAdjLocked(app, now);
 
         // don't compact during bootup
         if (mAppCompact.useCompaction() && mService.mBooted) {
@@ -1839,18 +2043,28 @@ public final class OomAdjuster {
                     }
                 }
             }
-            ProcessList.setOomAdj(app.pid, app.uid, app.curAdj);
+            ProcessList.setOomAdj(_pid, app.uid, app.curAdj);
             if (DEBUG_SWITCH || DEBUG_OOM_ADJ || mService.mCurOomAdjUid == app.info.uid) {
-                String msg = "Set " + app.pid + " " + app.processName + " adj "
+                String msg = "Set " + _pid + " " + app.processName + " adj "
                         + app.curAdj + ": " + app.adjType;
                 reportOomAdjMessageLocked(TAG_OOM_ADJ, msg);
+            }
+            if (!app.mSmtEx.adjHasReachedZero && app.curAdj == ProcessList.FOREGROUND_APP_ADJ) {
+                app.mSmtEx.adjHasReachedZero = true;
             }
             app.setAdj = app.curAdj;
             app.verifiedAdj = ProcessList.INVALID_ADJ;
         }
 
+        // Smartisan (factory): a prefetched process runs in the prefetch group.
+        if (app.info.getSmtEx().isPrefetch) {
+            app.setCurrentSchedulingGroup(-15);
+        }
         final int curSchedGroup = app.getCurrentSchedulingGroup();
         if (app.setSchedGroup != curSchedGroup) {
+            if (!app.getSmtEx().setCgroup) {
+                app.getSmtEx().setCgroup = true;
+            }
             int oldSchedGroup = app.setSchedGroup;
             app.setSchedGroup = curSchedGroup;
             if (DEBUG_SWITCH || DEBUG_OOM_ADJ || mService.mCurOomAdjUid == app.uid) {
@@ -1865,6 +2079,19 @@ public final class OomAdjuster {
             } else {
                 int processGroup;
                 switch (curSchedGroup) {
+                    // Smartisan (factory) sched groups and their process groups.
+                    case -15:
+                        processGroup = -15;
+                        break;
+                    case -10:
+                        processGroup = -10;
+                        break;
+                    case 9:
+                        processGroup = 9;
+                        break;
+                    case 12:
+                        processGroup = 14;
+                        break;
                     case ProcessList.SCHED_GROUP_BACKGROUND:
                         processGroup = THREAD_GROUP_BG_NONINTERACTIVE;
                         break;
@@ -1880,7 +2107,7 @@ public final class OomAdjuster {
                         break;
                 }
                 mProcessGroupHandler.sendMessage(mProcessGroupHandler.obtainMessage(
-                        0 /* unused */, app.pid, processGroup, Integer.valueOf(app.info.uid)));
+                        0 /* unused */, _pid, processGroup, app));
                 try {
                     if (curSchedGroup == ProcessList.SCHED_GROUP_TOP_APP) {
                         // do nothing if we already switched to RT
@@ -1890,8 +2117,8 @@ public final class OomAdjuster {
                             if (mService.mUseFifoUiScheduling && (!app.info.getSmtEx().isVrApp
                                     || app.info.getSmtEx().vrAppEngine == 0)) {
                                 // Switch UI pipeline for app to SCHED_FIFO
-                                app.savedPriority = Process.getThreadPriority(app.pid);
-                                mService.scheduleAsFifoPriority(app.pid, /* suppressLogs */true);
+                                app.savedPriority = Process.getThreadPriority(_pid);
+                                mService.scheduleAsFifoPriority(_pid, /* suppressLogs */true);
                                 if (app.renderThreadTid != 0) {
                                     mService.scheduleAsFifoPriority(app.renderThreadTid,
                                             /* suppressLogs */true);
@@ -1906,7 +2133,7 @@ public final class OomAdjuster {
                                 }
                             } else {
                                 // Boost priority for top app UI and render threads
-                                setThreadPriority(app.pid, TOP_APP_PRIORITY_BOOST);
+                                setThreadPriority(_pid, TOP_APP_PRIORITY_BOOST);
                                 if (app.renderThreadTid != 0) {
                                     try {
                                         setThreadPriority(app.renderThreadTid,
@@ -1917,7 +2144,7 @@ public final class OomAdjuster {
                                 }
                             }
                             // PICO OS 5.13.7 (Smartisan UI first)
-                            Process.setUIFirstSched(app.pid, 4);
+                            Process.setUIFirstSched(_pid, 4);
                             if (app.renderThreadTid != 0) {
                                 Process.setUIFirstSched(app.renderThreadTid, 4);
                             }
@@ -1930,8 +2157,8 @@ public final class OomAdjuster {
                                 || app.info.getSmtEx().vrAppEngine == 0)) {
                             try {
                                 // Reset UI pipeline to SCHED_OTHER
-                                setThreadScheduler(app.pid, SCHED_OTHER, 0);
-                                setThreadPriority(app.pid, app.savedPriority);
+                                setThreadScheduler(_pid, SCHED_OTHER, 0);
+                                setThreadPriority(_pid, app.savedPriority);
                                 if (app.renderThreadTid != 0) {
                                     setThreadScheduler(app.renderThreadTid,
                                             SCHED_OTHER, 0);
@@ -1945,14 +2172,14 @@ public final class OomAdjuster {
                             }
                         } else {
                             // Reset priority for top app UI and render threads
-                            setThreadPriority(app.pid, 0);
+                            setThreadPriority(_pid, 0);
                         }
 
                         if (app.renderThreadTid != 0) {
                             setThreadPriority(app.renderThreadTid, THREAD_PRIORITY_DISPLAY);
                         }
                         // PICO OS 5.13.7 (Smartisan UI first)
-                        Process.setUIFirstSched(app.pid, -1);
+                        Process.setUIFirstSched(_pid, -1);
                         if (app.renderThreadTid != 0) {
                             Process.setUIFirstSched(app.renderThreadTid, -1);
                         }
@@ -2047,6 +2274,7 @@ public final class OomAdjuster {
             maybeUpdateLastTopTime(app, now);
 
             app.setProcState = app.getCurProcState();
+            mOomAdjusterOptEx.setAppProcState(app, app.setProcState);
             if (app.setProcState >= ActivityManager.PROCESS_STATE_HOME) {
                 app.notCachedSinceIdle = false;
             }
@@ -2245,5 +2473,15 @@ public final class OomAdjuster {
     @GuardedBy("mService")
     void dumpAppCompactorSettings(PrintWriter pw) {
         mAppCompact.dump(pw);
+    }
+
+    /** Smartisan oom adjuster extension (factory PICO OS 5.13.7). */
+    public IOomAdjusterOptEx getOptEx() {
+        return mOomAdjusterOptEx;
+    }
+
+    /** Smartisan oom adjuster state (factory PICO OS 5.13.7). */
+    public OomAdjusterSmtEx getSmtEx() {
+        return mOomAdjusterSmtEx;
     }
 }
