@@ -444,6 +444,11 @@ public final class ProcessStats implements Parcelable {
         data.sysMemZRamWeight = 0;
         data.sysMemKernelWeight = 0;
         data.sysMemNativeWeight = 0;
+        data.sysMemIONHeapOthereWeight = 0;
+        data.sysMemUsedRAMWeight = 0;
+        data.sysMemFreeRAMWeight = 0;
+        data.sysMemJavaTotalWeight = 0;
+        data.sysMemJavaCachedWeight = 0;
         data.sysMemSamples = 0;
         final long[] totalMemUsage = mSysMemUsage.getTotalMemUsage();
         for (int is=0; is<data.screenStates.length; is++) {
@@ -476,6 +481,16 @@ public final class ProcessStats implements Parcelable {
                 data.sysMemKernelWeight += longs[idx+SYS_MEM_USAGE_KERNEL_AVERAGE]
                         * (double)memTime;
                 data.sysMemNativeWeight += longs[idx+SYS_MEM_USAGE_NATIVE_AVERAGE]
+                        * (double)memTime;
+                data.sysMemIONHeapOthereWeight += longs[idx+SYS_MEM_USAGE_ION_HEAP_OTHER_AVERAGE]
+                        * (double)memTime;
+                data.sysMemUsedRAMWeight += longs[idx+SYS_MEM_USAGE_USED_RAM_AVERAGE]
+                        * (double)memTime;
+                data.sysMemFreeRAMWeight += longs[idx+SYS_MEM_USAGE_FREE_RAM_AVERAGE]
+                        * (double)memTime;
+                data.sysMemJavaTotalWeight += longs[idx+SYS_MEM_USAGE_JAVA_TOTAL_AVERAGE]
+                        * (double)memTime;
+                data.sysMemJavaCachedWeight += longs[idx+SYS_MEM_USAGE_JAVA_CACHED_AVERAGE]
                         * (double)memTime;
                 data.sysMemSamples += longs[idx+SYS_MEM_USAGE_SAMPLE_COUNT];
              }
@@ -2382,6 +2397,13 @@ public final class ProcessStats implements Parcelable {
         public double sysMemZRamWeight;
         public double sysMemKernelWeight;
         public double sysMemNativeWeight;
+        // Factory: weights of the ION heap other than EGL, used RAM, free RAM, Java total and
+        // Java cached samples (SYS_MEM_USAGE_ION_HEAP_OTHER .. JAVA_CACHED).
+        public double sysMemIONHeapOthereWeight;
+        public double sysMemUsedRAMWeight;
+        public double sysMemFreeRAMWeight;
+        public double sysMemJavaTotalWeight;
+        public double sysMemJavaCachedWeight;
         public int sysMemSamples;
         public boolean hasSwappedOutPss;
     }
