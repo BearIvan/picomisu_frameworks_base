@@ -23,6 +23,12 @@ import android.annotation.UserIdInt;
 import android.annotation.WorkerThread;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.IBinder;
+import android.os.Parcel;
+import android.os.RemoteException;
+import android.os.ServiceManager;
+import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.AtomicFile;
@@ -455,7 +461,33 @@ public class RoleUserState {
                 Slog.i(LOG_TAG, "Read roles.xml successfully");
             } catch (FileNotFoundException e) {
                 Slog.i(LOG_TAG, "roles.xml not found");
+                // PICO: report a roles.xml dropped after a parse failure to the stab service
+                int crashVal = SystemProperties.getInt("debug.crash.role.xml", 0);
+                if (crashVal != 0) {
+                    SystemProperties.set("debug.crash.role.xml", "0");
+                    try {
+                        IBinder stabProxy = ServiceManager.getService("stabservice");
+                        if (stabProxy != null) {
+                            Parcel data = Parcel.obtain();
+                            data.writeInterfaceToken("android.stab.IBStabService");
+                            data.writeString(SystemProperties.get("ro.build.fingerprint", ""));
+                            data.writeLong(System.currentTimeMillis());
+                            data.writeLong(SystemClock.uptimeMillis());
+                            data.writeString("roles.xml");
+                            data.writeInt(crashVal);
+                            stabProxy.transact(11, data, null, IBinder.FLAG_ONEWAY);
+                            data.recycle();
+                        }
+                    } catch (RemoteException re) {
+                    }
+                }
             } catch (XmlPullParserException | IOException e) {
+                if (e instanceof XmlPullParserException) {
+                    // PICO: drop the broken file so that it is written anew
+                    Slog.e(LOG_TAG, "parse roles.xml error, delete it");
+                    file.delete();
+                    SystemProperties.set("debug.crash.role.xml", "1");
+                }
                 throw new IllegalStateException("Failed to parse roles.xml: " + file, e);
             }
         }
