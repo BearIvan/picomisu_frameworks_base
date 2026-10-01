@@ -142,6 +142,11 @@ class WebViewZygoteInit {
     }
 
     public static void main(String argv[]) {
+        // PICO (factory): the WebView zygote is tailored out of the process set and never runs.
+        if (true) {
+            Log.i(TAG, "WebViewZygoteInit never Startup due to process tailorig");
+            return;
+        }
         Log.i(TAG, "Starting WebViewZygoteInit");
         WebViewZygoteServer server = new WebViewZygoteServer();
         ChildZygoteInit.runZygoteServer(server, argv);
