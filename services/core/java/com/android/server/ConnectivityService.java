@@ -5127,6 +5127,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
             synchronized (mUidToNetworkRequestCount) {
                 int networkRequests = mUidToNetworkRequestCount.get(mUid, 0) + 1;
                 if (networkRequests >= MAX_NETWORK_REQUESTS_PER_UID) {
+                    Slog.e(TAG, "uid " + mUid + " has too many requests:");
+                    int count = 0;
+                    for (NetworkRequestInfo nri : mNetworkRequests.values()) {
+                        if (nri.mUid == mUid) {
+                            count++;
+                            Slog.e(TAG, "pid " + nri.mPid + " requested count:" + count);
+                        }
+                    }
                     throw new ServiceSpecificException(
                             ConnectivityManager.Errors.TOO_MANY_REQUESTS);
                 }
