@@ -40,7 +40,7 @@ import com.android.server.wm.IExtActivityTaskManagerInternal;
 import com.android.server.wm.SettingsObserverExt;
 import com.android.server.wm.SystemExt;
 import com.pvr.IPvrManagerService;
-import com.pvr.pxrnotification.aidl.IPxrNotificationService;
+import com.pvr.pxrnotification.PxrNotificationService;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -62,8 +62,8 @@ import java.util.Properties;
  * keys. The device owner has not approved enabling USB/ADB debugging from key presses.
  * Also not ported: the Smartisan quick boot on power long press (PhoneWindowManager side).
  *
- * Difference of form, not of behaviour: pxr_notification is looked up through ServiceManager
- * instead of the statically linked factory PxrNotificationService.getInstance.
+ * pxr_notification is reached through the factory PxrNotificationService.getInstance (the
+ * binder is looked up once, when that class is initialized).
  *
  * @hide
  */
@@ -452,11 +452,6 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
                 null, null);
     }
 
-    private static IPxrNotificationService getPxrNotificationService() {
-        return IPxrNotificationService.Stub.asInterface(
-                ServiceManager.checkService("pxr_notification"));
-    }
-
     /**
      * HOME long press + confirm held: BACK opens Android settings, volume down disconnects the
      * controllers. The factory ADB password key sequence at the start of this method and its
@@ -477,12 +472,13 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
                         && event.getRepeatCount() == 0) {
                     Slog.w(TAG, "checkMulKeyAction do disconnect controller");
                     sendPvrBroadCast("android.intent.pvrcon.disconnect");
-                    IPxrNotificationService notification = getPxrNotificationService();
-                    if (notification != null) {
+                    Context context = mBase.mContext;
+                    if (PxrNotificationService.getInstance(context) != null) {
                         Log.w(TAG, "send pxr notification when multi key pressed");
                         try {
-                            notification.sendPxrMessage(PXR_NOTIFICATION_NAME_MULTI_KEY_PRESSED,
-                                    -1, "3;25;1001", -1, "");
+                            PxrNotificationService.getInstance(context).sendPxrMessage(
+                                    PXR_NOTIFICATION_NAME_MULTI_KEY_PRESSED, -1, "3;25;1001", -1,
+                                    "");
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -1587,11 +1583,11 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
         mRepeatHomeTime = now - downTime;
         if (downTime != -1 && mRepeatHomeTime > 5000) {
             try {
-                IPxrNotificationService notification = getPxrNotificationService();
-                if (notification != null) {
+                Context context = mBase.mContext;
+                if (PxrNotificationService.getInstance(context) != null) {
                     Log.w(TAG, "long tap home ,send notification msg");
-                    notification.sendPxrMessage(notification_msg_home_long_press, 1, "",
-                            (int) mRepeatHomeTime, "");
+                    PxrNotificationService.getInstance(context).sendPxrMessage(
+                            notification_msg_home_long_press, 1, "", (int) mRepeatHomeTime, "");
                 } else {
                     Log.w(TAG, "pxr_notification is null ,do nothing ...");
                 }
@@ -1645,11 +1641,10 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
         mRepeatBackTime = now - downTime;
         if (downTime != -1 && mRepeatBackTime > 8000) {
             try {
-                IPxrNotificationService notification = getPxrNotificationService();
-                if (notification != null) {
+                if (PxrNotificationService.getInstance(mBase.mContext) != null) {
                     Log.w(TAG, "long tap back ,send notification msg");
-                    notification.sendPxrMessage(notification_msg_back_long_press, 1, "",
-                            (int) mRepeatBackTime, "");
+                    PxrNotificationService.getInstance(mBase.mContext).sendPxrMessage(
+                            notification_msg_back_long_press, 1, "", (int) mRepeatBackTime, "");
                 } else {
                     Log.w(TAG, "pxr_notification is null ,do nothing ...");
                 }

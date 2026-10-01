@@ -6,14 +6,13 @@ import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.os.RemoteException;
-import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.util.Slog;
 
 import com.android.internal.os.BackgroundThread;
-import com.pvr.pxrnotification.aidl.IPxrNotificationService;
+import com.pvr.pxrnotification.PxrNotificationService;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -139,7 +138,7 @@ public class ExtDevicePolicyManagerServiceImpl implements IExtDevicePolicyManage
         BackgroundThread.getHandler().post(new Runnable() {
             @Override
             public void run() {
-                if (getPxrNotificationService() == null) {
+                if (PxrNotificationService.getInstance(mBase.mContext) == null) {
                     Slog.w(LOG_TAG, "senTrackerEvent PxrNotificationService is null!");
                     return;
                 }
@@ -150,22 +149,13 @@ public class ExtDevicePolicyManagerServiceImpl implements IExtDevicePolicyManage
                     jsonObject.put(EVENT_ENABLED_KEY,
                             SystemProperties.getBoolean(DPM_ENABLED_KEY, true) ? 0 : 1);
                     jsonObject.put(EVENT_TYPE_KEY, type);
-                    getPxrNotificationService().sendPxrMessage(TEA_TRACKER_ACTION, 0, EVENT_KEY,
-                            0, jsonObject.toString());
+                    PxrNotificationService.getInstance(mBase.mContext).sendPxrMessage(
+                            TEA_TRACKER_ACTION, 0, EVENT_KEY, 0, jsonObject.toString());
                 } catch (RemoteException | JSONException e) {
                     Slog.e(LOG_TAG, "Exception when check dmp feature:" + packageName, e);
                 }
             }
         });
-    }
-
-    /**
-     * The factory uses com.pvr.pxrnotification.PxrNotificationService.getInstance(mContext),
-     * which returns the "pxr_notification" binder; that wrapper class is not in this tree.
-     */
-    private static IPxrNotificationService getPxrNotificationService() {
-        return IPxrNotificationService.Stub.asInterface(
-                ServiceManager.getService("pxr_notification"));
     }
 
     private String getAppName(PackageInfo packageInfo) {
