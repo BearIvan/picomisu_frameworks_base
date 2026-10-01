@@ -5382,6 +5382,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
     @Override
     public NetworkRequest listenForNetwork(NetworkCapabilities networkCapabilities,
             Messenger messenger, IBinder binder) {
+        // Smartisan (factory): duplicate check, skipped for the network-info binder cache
+        // callback (ConnectivityManagerSmtEx); the AOSP check below still applies.
+        if (!hasWifiNetworkListenPermission(networkCapabilities)
+                && !networkCapabilities.getSmtEx().mCallbackForCache) {
+            enforceAccessPermission();
+        }
         if (!hasWifiNetworkListenPermission(networkCapabilities)) {
             enforceAccessPermission();
         }
@@ -7419,5 +7425,33 @@ public class ConnectivityService extends IConnectivityManager.Stub
         log("Setting mPreferredSubId to " + subId);
         mPreferredSubId = subId;
         rematchAllNetworksAndRequests(null, 0);
+    }
+
+    /**
+     * Smartisan (factory): tells the network-info binder cache callbacks
+     * (NetworkCapabilitiesSmtEx.mCallbackForCache, registered by ConnectivityManagerSmtEx)
+     * whether the cache is enabled (1) or disabled (2). Called in-process by the
+     * sys-services SmartService ("network_binder" push switch).
+     */
+    public void setNetworkBinderCacheEnabled(int enabled) {
+        synchronized (mNetworkRequests) {
+            for (NetworkRequestInfo nri : mNetworkRequests.values()) {
+                NetworkRequest nr = nri.request;
+                if (!nr.networkCapabilities.getSmtEx().mCallbackForCache) {
+                    continue;
+                }
+                try {
+                    Bundle bundle = new Bundle();
+                    bundle.putInt("bundle_network_binder_switch", enabled);
+                    putParcelable(bundle, new NetworkRequest(nri.request));
+                    Message msg = Message.obtain();
+                    msg.setData(bundle);
+                    nri.messenger.send(msg);
+                } catch (RemoteException e) {
+                    loge("RemoteException caught trying to send a callback msg for "
+                            + nri.request);
+                }
+            }
+        }
     }
 }

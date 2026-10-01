@@ -104,6 +104,7 @@ public final class NetworkCapabilities implements Parcelable {
         mEstablishingVpnAppUid = nc.mEstablishingVpnAppUid;
         mUnwantedNetworkCapabilities = nc.mUnwantedNetworkCapabilities;
         mSSID = nc.mSSID;
+        getSmtEx().set(nc.mSmtEx);
     }
 
     /**
@@ -1479,6 +1480,8 @@ public final class NetworkCapabilities implements Parcelable {
         dest.writeInt(mSignalStrength);
         dest.writeArraySet(mUids);
         dest.writeString(mSSID);
+        // Smartisan (factory): trailing boolean mCallbackForCache.
+        getSmtEx().writeToParcelSmtEx(dest);
     }
 
     public static final @android.annotation.NonNull Creator<NetworkCapabilities> CREATOR =
@@ -1498,6 +1501,7 @@ public final class NetworkCapabilities implements Parcelable {
                 netCap.mUids = (ArraySet<UidRange>) in.readArraySet(
                         null /* ClassLoader, null for default */);
                 netCap.mSSID = in.readString();
+                netCap.getSmtEx().createFromParcelSmtEx(in);
                 return netCap;
             }
             @Override
@@ -1705,5 +1709,13 @@ public final class NetworkCapabilities implements Parcelable {
      */
     public boolean isMetered() {
         return !hasCapability(NET_CAPABILITY_NOT_METERED);
+    }
+
+    // Smartisan (factory): network-info binder cache flag, parceled after mSSID.
+    private NetworkCapabilitiesSmtEx mSmtEx = new NetworkCapabilitiesSmtEx(this);
+
+    /** @hide */
+    public NetworkCapabilitiesSmtEx getSmtEx() {
+        return mSmtEx;
     }
 }
