@@ -23,12 +23,16 @@
 // depends on this library, with the boot class loader). register_android_view_ExtSurfaceImpl
 // exists in the factory library but nothing calls it; it is kept, not called, as there.
 //
-// The VR skip-draw path draws into a 1x1 opaque canvas without locking or queuing a producer
-// buffer, and keeps an extra Surface reference until ExtSurfaceImpl's finally block releases
-// it. Deviation: every canvas gets its own 4-byte pixel allocation. The factory points the
-// bitmap of every lock at one shared malloc(1) block (android::tempMemFor2DVrBits) that unlock
-// frees, which is too small for an RGBA pixel and is freed under any other canvas still
-// drawing into it.
+// The VR skip-draw path never locks or queues a producer buffer (factory 0x1c4ac8 / 0x1c4c60):
+// the lock checks the Surface and its producer, points a 1x1 opaque RGBA bitmap
+// (SkBitmap::setInfo with the row bytes of PIXEL_FORMAT_RGBX_8888, SkBitmap::setPixels) at a
+// scratch pixel and installs it on the Java canvas, then keeps an extra Surface reference until
+// ExtSurfaceImpl's finally block releases it; the unlock only detaches the bitmap. Whatever the
+// view hierarchy draws in that mode is discarded, on the factory as here.
+//
+// Deviation: the scratch pixel is a static 4-byte block that is never freed. The factory
+// allocates android::tempMemFor2DVrBits with malloc(1) on the first lock (too small for the
+// 4-byte pixel) and frees it on every unlock, while another canvas may still draw into it.
 
 #include "jni.h"
 #include <nativehelper/JNIHelp.h>
@@ -36,6 +40,7 @@
 #include "core_jni_helpers.h"
 
 #include <gui/Surface.h>
+#include <ui/PixelFormat.h>
 
 #include <SkBitmap.h>
 #include <SkImageInfo.h>
@@ -45,6 +50,9 @@ namespace android {
 int register_android_view_ExtSurfaceImpl(JNIEnv* env);
 
 static const void* sRefBaseOwner;
+
+// Scratch pixel of the 2D VR canvases (factory: android::tempMemFor2DVrBits = malloc(1)).
+static uint32_t tempMemFor2DVrBits;
 
 } // namespace android
 
@@ -59,12 +67,10 @@ Java_android_view_ExtSurfaceImpl_nativeLockCanvasFor2DVr(JNIEnv* env, jclass /* 
         return 0;
     }
 
+    SkImageInfo info = SkImageInfo::Make(1, 1, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
     SkBitmap bitmap;
-    if (!bitmap.tryAllocPixels(SkImageInfo::Make(1, 1, kRGBA_8888_SkColorType,
-                                                kOpaque_SkAlphaType))) {
-        jniThrowException(env, "android/view/Surface$OutOfResourcesException", nullptr);
-        return 0;
-    }
+    bitmap.setInfo(info, bytesPerPixel(PIXEL_FORMAT_RGBX_8888));
+    bitmap.setPixels(&tempMemFor2DVrBits);
     Canvas* nativeCanvas = GraphicsJNI::getNativeCanvas(env, canvasObj);
     nativeCanvas->setBitmap(bitmap);
 
