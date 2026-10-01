@@ -88,6 +88,7 @@ import com.android.internal.content.PackageMonitor;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto;
 import com.android.internal.widget.ResolverDrawerLayout;
+import com.pico.util.ExtImplFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -152,6 +153,10 @@ public class ResolverActivity extends Activity {
     private static final String OPEN_LINKS_COMPONENT_KEY = "app_link_state";
 
     private final PackageMonitor mPackageMonitor = createPackageMonitor();
+
+    // PICO OS 5.13.7: ResolverActivity extension (factory ExtResolverActivityImpl).
+    private final IExtResolverActivity mExt =
+            ExtImplFactory.getImpl(IExtResolverActivity.class, this);
 
     /**
      * Get the string resource to be used as a label for the link to the resolver activity for an
