@@ -332,6 +332,28 @@ public class AudioSystem
         }
     }
 
+    /**
+     * PICO OS 5.13.7 (Smartisan layer): track state callback. The factory framework.jar
+     * declares it (AudioManager.setTrackState); the factory libandroid_runtime does not
+     * register native_register_track_state_callback, and nothing calls back into it.
+     * @hide
+     */
+    public interface TrackStateCallback {
+        void onInactiveTrackStateChanged(String str);
+
+        void onTrackStateChanged(String str);
+    }
+
+    private static TrackStateCallback sTrackStateCallback;
+
+    /** @hide */
+    public static void setTrackStateCallback(TrackStateCallback cb) {
+        synchronized (AudioSystem.class) {
+            sTrackStateCallback = cb;
+            native_register_track_state_callback();
+        }
+    }
+
     @UnsupportedAppUsage
     private static void dynamicPolicyCallbackFromNative(int event, String regId, int val)
     {
@@ -1027,6 +1049,8 @@ public class AudioSystem
     private static native final void native_register_dynamic_policy_callback();
     // declare this instance as having a recording configuration update callback handler
     private static native final void native_register_recording_callback();
+    // PICO OS 5.13.7 (Smartisan layer): declared like the factory, which has no JNI for it
+    private static native final void native_register_track_state_callback();
 
     // must be kept in sync with value in include/system/audio.h
     public static final int AUDIO_HW_SYNC_INVALID = 0;
@@ -1165,18 +1189,19 @@ public class AudioSystem
         return DEFAULT_STREAM_VOLUME[streamType];
     }
 
+    // PICO OS 5.13.7: default volume 8 for every stream
     public static int[] DEFAULT_STREAM_VOLUME = new int[] {
-        4,  // STREAM_VOICE_CALL
-        7,  // STREAM_SYSTEM
-        5,  // STREAM_RING
-        5, // STREAM_MUSIC
-        6,  // STREAM_ALARM
-        5,  // STREAM_NOTIFICATION
-        7,  // STREAM_BLUETOOTH_SCO
-        7,  // STREAM_SYSTEM_ENFORCED
-        5, // STREAM_DTMF
-        5, // STREAM_TTS
-        5, // STREAM_ACCESSIBILITY
+        8,  // STREAM_VOICE_CALL
+        8,  // STREAM_SYSTEM
+        8,  // STREAM_RING
+        8, // STREAM_MUSIC
+        8,  // STREAM_ALARM
+        8,  // STREAM_NOTIFICATION
+        8,  // STREAM_BLUETOOTH_SCO
+        8,  // STREAM_SYSTEM_ENFORCED
+        8, // STREAM_DTMF
+        8, // STREAM_TTS
+        8, // STREAM_ACCESSIBILITY
     };
 
     public static String streamToString(int stream) {

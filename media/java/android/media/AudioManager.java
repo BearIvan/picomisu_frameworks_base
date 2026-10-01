@@ -5664,4 +5664,12 @@ public class AudioManager {
             return mHandler;
         }
     }
+
+    /**
+     * PICO OS 5.13.7 (Smartisan layer), as in the factory framework.jar.
+     * @hide
+     */
+    public void setTrackState(AudioSystem.TrackStateCallback trackStateCallback) {
+        AudioSystem.setTrackStateCallback(trackStateCallback);
+    }
 }
