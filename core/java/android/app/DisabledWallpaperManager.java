@@ -75,6 +75,11 @@ final class DisabledWallpaperManager extends WallpaperManager {
         return false;
     }
 
+    private static int unsupportedInt() {
+        if (DEBUG) Log.w(TAG, "unsupported method called; returning -1", new Exception());
+        return -1;
+    }
+
     @Override
     public Drawable getDrawable() {
         return unsupported();
@@ -190,12 +195,12 @@ final class DisabledWallpaperManager extends WallpaperManager {
 
     @Override
     public int getWallpaperId(int which) {
-        return unsupported();
+        return unsupportedInt();
     }
 
     @Override
     public int getWallpaperIdForUser(int which, int userId) {
-        return unsupported();
+        return unsupportedInt();
     }
 
     @Override
@@ -210,7 +215,8 @@ final class DisabledWallpaperManager extends WallpaperManager {
 
     @Override
     public int setResource(int resid, int which) throws IOException {
-        return unsupported();
+        unsupported();
+        return 0;
     }
 
     @Override
@@ -221,19 +227,22 @@ final class DisabledWallpaperManager extends WallpaperManager {
     @Override
     public int setBitmap(Bitmap fullImage, Rect visibleCropHint, boolean allowBackup)
             throws IOException {
-        return unsupported();
+        unsupported();
+        return 0;
     }
 
     @Override
     public int setBitmap(Bitmap fullImage, Rect visibleCropHint, boolean allowBackup, int which)
             throws IOException {
-        return unsupported();
+        unsupported();
+        return 0;
     }
 
     @Override
     public int setBitmap(Bitmap fullImage, Rect visibleCropHint, boolean allowBackup, int which,
             int userId) throws IOException {
-        return unsupported();
+        unsupported();
+        return 0;
     }
 
     @Override
@@ -244,13 +253,15 @@ final class DisabledWallpaperManager extends WallpaperManager {
     @Override
     public int setStream(InputStream bitmapData, Rect visibleCropHint, boolean allowBackup)
             throws IOException {
-        return unsupported();
+        unsupported();
+        return 0;
     }
 
     @Override
     public int setStream(InputStream bitmapData, Rect visibleCropHint, boolean allowBackup,
             int which) throws IOException {
-        return unsupported();
+        unsupported();
+        return 0;
     }
 
     @Override
@@ -260,12 +271,12 @@ final class DisabledWallpaperManager extends WallpaperManager {
 
     @Override
     public int getDesiredMinimumWidth() {
-        return unsupported();
+        return unsupportedInt();
     }
 
     @Override
     public int getDesiredMinimumHeight() {
-        return unsupported();
+        return unsupportedInt();
     }
 
     @Override
