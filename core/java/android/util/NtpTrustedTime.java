@@ -113,6 +113,10 @@ public class NtpTrustedTime implements TrustedTime {
 
     @Override
     public boolean forceSync() {
+        return forceSync(mServer);
+    }
+
+    public boolean forceSync(String server) {
         // We can't do this at initialization time: ConnectivityService might not be running yet.
         synchronized (this) {
             if (mCM == null) {
@@ -121,11 +125,15 @@ public class NtpTrustedTime implements TrustedTime {
         }
 
         final Network network = mCM == null ? null : mCM.getActiveNetwork();
-        return forceRefresh(network);
+        return forceRefresh(network, server);
     }
 
     public boolean forceRefresh(Network network) {
-        if (TextUtils.isEmpty(mServer)) {
+        return forceRefresh(network, mServer);
+    }
+
+    public boolean forceRefresh(Network network, String server) {
+        if (TextUtils.isEmpty(server)) {
             // missing server, so no trusted time available
             return false;
         }
@@ -147,7 +155,7 @@ public class NtpTrustedTime implements TrustedTime {
         if (LOGD) Log.d(TAG, "forceRefresh() from cache miss");
         final SntpClient client = new SntpClient();
 
-        String targetServer = mServer;
+        String targetServer = server;
         if (getBackupmode()) {
             setBackupmode(false);
             targetServer = mBackupServer;
