@@ -41,11 +41,15 @@ import android.system.StructRlimit;
 import android.util.EventLog;
 import android.util.Log;
 import android.util.Slog;
+import android.util.SparseArray;
 import android.util.StatsLog;
 
+import com.android.internal.os.ProcessCpuTracker;
 import com.android.internal.os.ZygoteConnectionConstants;
 import com.android.server.am.ActivityManagerService;
+import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.wm.SurfaceAnimationThread;
+import com.android.server.wm.SystemExt;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -104,7 +108,21 @@ public class Watchdog extends Thread {
         "media.swcodec", // /apex/com.android.media.swcodec/bin/mediaswcodec
         "com.android.bluetooth",  // Bluetooth service
         "/system/bin/statsd",  // Stats daemon
+        // PICO OS 5.13.7
+        "/system/bin/pvrtrackingservice",
+        "com.pico.xr.openxr_runtime",
+        "/system/bin/hw/android.system.suspend@1.0-service",
+        "/system/bin/netd",
+        "com.picovr.nativeshell",
+        SystemExt.sCurrentPkg,
+        "com.picoxr.xrshell",
+        "/vendor/bin/hw/android.hardware.health@2.0-service",
+        "/system/bin/pxrseethroughservice",
+        "/system/bin/pxrmrsystemservice",
     };
+
+    // PICO OS 5.13.7: also dumped with system_server in the watchdog traces
+    private static final String PICO_SCREEN_CAPTURE_PROCESS = "com.bytedance.pico.screencapture";
 
     public static final List<String> HAL_INTERFACES_OF_INTEREST = Arrays.asList(
             "android.hardware.audio@2.0::IDevicesFactory",
@@ -472,6 +490,18 @@ public class Watchdog extends Thread {
         return checkers;
     }
 
+    // PICO OS 5.13.7: checkers past half of their timeout (no caller on the factory either).
+    ArrayList<HandlerChecker> getBlockedHalfCheckersLocked() {
+        ArrayList<HandlerChecker> checkers = new ArrayList<HandlerChecker>();
+        for (int i=0; i<mHandlerCheckers.size(); i++) {
+            HandlerChecker hc = mHandlerCheckers.get(i);
+            if (!hc.mCompleted && SystemClock.uptimeMillis() > hc.mStartTime + hc.mWaitMax / 2) {
+                checkers.add(hc);
+            }
+        }
+        return checkers;
+    }
+
     private String describeCheckersLocked(List<HandlerChecker> checkers) {
         StringBuilder builder = new StringBuilder(128);
         for (int i=0; i<checkers.size(); i++) {
@@ -518,6 +548,44 @@ public class Watchdog extends Thread {
         }
 
         return pids;
+    }
+
+    /**
+     * PICO OS 5.13.7: the interesting native pids plus the Binder peers of system_server, and the
+     * Binder servers and clients of surfaceflinger and pvrtrackingservice (PICO Binder driver
+     * queries).
+     */
+    public static ArrayList<Integer> getInterestingNativePidsMore() {
+        ArrayList<Integer> nativePids = getInterestingNativePids();
+        int[] system_serverPids = Binder.getBinderServerPids(Process.myPid());
+        if (system_serverPids != null && system_serverPids.length > 0) {
+            for (int curPid : system_serverPids) {
+                Slog.i(TAG, "systemserver binder server pid is " + curPid);
+                nativePids.add(curPid);
+            }
+        }
+        int[] pids = Process.getPidsForCommands(
+                new String[] {"/system/bin/surfaceflinger", "/system/bin/pvrtrackingservice"});
+        if (pids == null || pids.length == 0) {
+            return nativePids;
+        }
+        for (int clientPid : pids) {
+            int[] serverPids = Binder.getBinderServerPids(clientPid);
+            if (serverPids != null && serverPids.length > 0) {
+                for (int curPid : serverPids) {
+                    Slog.i(TAG, "" + clientPid + " binder server pid is " + curPid);
+                    nativePids.add(curPid);
+                }
+            }
+            int[] clientPids = Binder.getBinderClientPids(clientPid);
+            if (clientPids != null && clientPids.length > 0) {
+                for (int curPid : clientPids) {
+                    Slog.i(TAG, "" + clientPid + " binder client pid is " + curPid);
+                    nativePids.add(curPid);
+                }
+            }
+        }
+        return nativePids;
     }
 
     @Override
@@ -584,8 +652,21 @@ public class Watchdog extends Thread {
                             // trace and wait another half.
                             ArrayList<Integer> pids = new ArrayList<Integer>();
                             pids.add(Process.myPid());
+                            // PICO OS 5.13.7
+                            int[] screenCapturePids = Process.getPidsForCommands(
+                                    new String[] {PICO_SCREEN_CAPTURE_PROCESS});
+                            if (screenCapturePids != null && screenCapturePids.length > 0) {
+                                for (int pid : screenCapturePids) {
+                                    pids.add(pid);
+                                }
+                            }
+                            SysMonitorSvcBridge.getFactory().getAnrMonitor().getCpuTopInfo();
+                            ArrayList<Integer> nativePids = getInterestingNativePidsMore();
+                            HashSet<Integer> tmpSet = new HashSet<>(nativePids);
+                            nativePids.clear();
+                            nativePids.addAll(tmpSet);
                             initialStack = ActivityManagerService.dumpStackTraces(pids,
-                                    null, null, getInterestingNativePids());
+                                    null, null, nativePids);
                             waitedHalf = true;
                         }
                         continue;
@@ -609,9 +690,22 @@ public class Watchdog extends Thread {
             ArrayList<Integer> pids = new ArrayList<>();
             pids.add(Process.myPid());
             if (mPhonePid > 0) pids.add(mPhonePid);
+            // PICO OS 5.13.7
+            int[] screenCapturePids = Process.getPidsForCommands(
+                    new String[] {PICO_SCREEN_CAPTURE_PROCESS});
+            if (screenCapturePids != null && screenCapturePids.length > 0) {
+                for (int pid : screenCapturePids) {
+                    pids.add(pid);
+                }
+            }
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().getCpuTopInfo();
 
+            // PICO OS 5.13.7: CPU usage report in the dropbox entry (Android 11 backport)
+            long anrTime = SystemClock.uptimeMillis();
+            ProcessCpuTracker processCpuTracker = new ProcessCpuTracker(false);
+            final StringBuilder report = new StringBuilder();
             final File finalStack = ActivityManagerService.dumpStackTraces(
-                    pids, null, null, getInterestingNativePids());
+                    pids, processCpuTracker, new SparseArray<>(), getInterestingNativePidsMore());
 
             //Collect Binder State logs to get status of all the transactions
             if (Build.IS_DEBUGGABLE) {
@@ -622,7 +716,10 @@ public class Watchdog extends Thread {
             // The system's been hanging for a minute, another second or two won't hurt much.
             SystemClock.sleep(5000);
 
-            File watchdogTraces;
+            processCpuTracker.update();
+            report.append(processCpuTracker.printCurrentState(anrTime));
+
+            final File watchdogTraces;
             String newTracesPath = "traces_SystemServer_WDT"
                     + mTraceDateFormat.format(new Date()) + "_pid"
                     + String.valueOf(Process.myPid());
@@ -674,21 +771,26 @@ public class Watchdog extends Thread {
             // Try to add the error to the dropbox, but assuming that the ActivityManager
             // itself may be deadlocked.  (which has happened, causing this statement to
             // deadlock and the watchdog as a whole to be ineffective)
+            // PICO OS 5.13.7: the combined watchdog traces and the CPU report go to dropbox.
             Thread dropboxThread = new Thread("watchdogWriteToDropbox") {
                     public void run() {
+                        Slog.i("addErrorToDropBox", "watchdogWriteToDropbox thread start");
                         // If a watched thread hangs before init() is called, we don't have a
                         // valid mActivity. So we can't log the error to dropbox.
                         if (mActivity != null) {
                             mActivity.addErrorToDropBox(
                                     "watchdog", null, "system_server", null, null, null,
-                                    subject, null, finalStack, null);
+                                    subject, report.toString(), watchdogTraces, null);
                         }
                         StatsLog.write(StatsLog.SYSTEM_SERVER_WATCHDOG_OCCURRED, subject);
+                        Slog.i("addErrorToDropBox", "watchdogWriteToDropbox thread end");
                     }
             };
             dropboxThread.start();
             try {
-                dropboxThread.join(2000);  // wait up to 2 seconds for it to return.
+                dropboxThread.join(6000);  // wait up to 6 seconds for it to return.
+                Slog.i("addErrorToDropBox",
+                        "The watchdog thread no longer waits for watchdogWriteToDropbox threads");
             } catch (InterruptedException ignored) {}
 
             // At times, when user space watchdog traces don't give an indication on

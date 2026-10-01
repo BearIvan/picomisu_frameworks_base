@@ -17,4 +17,8 @@ public interface IAnrMonitor {
     default void addClient(int pid, ISysClient client) {
         DebugSmtEx.printDefaultFunInfo(getClass());
     }
+
+    default void getCpuTopInfo() {
+        DebugSmtEx.printDefaultFunInfo(getClass());
+    }
 }
