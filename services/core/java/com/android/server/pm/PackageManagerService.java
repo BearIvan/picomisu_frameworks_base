@@ -4218,8 +4218,24 @@ public class PackageManagerService extends IPackageManager.Stub
             final int[] gids = (flags & PackageManager.GET_GIDS) == 0
                     ? EMPTY_INT_ARRAY : permissionsState.computeGids(userId);
             // Compute granted permissions only if package has requested permissions
-            final Set<String> permissions = ArrayUtils.isEmpty(p.requestedPermissions)
+            Set<String> permissions = ArrayUtils.isEmpty(p.requestedPermissions)
                     ? Collections.emptySet() : permissionsState.getPermissions(userId);
+            if (state.instantApp) {
+                permissions = new ArraySet<>(permissions);
+                permissions.removeIf(permissionName -> {
+                    BasePermission permission = mPermissionManager.getPermissionTEMP(
+                            permissionName);
+                    if (permission == null) {
+                        return true;
+                    }
+                    if (!permission.isInstant()) {
+                        EventLog.writeEvent(0x534e4554, "140256621", UserHandle.getUid(userId,
+                                ps.appId), permissionName);
+                        return true;
+                    }
+                    return false;
+                });
+            }
 
             PackageInfo packageInfo = PackageParser.generatePackageInfo(p, gids, flags,
                     ps.firstInstallTime, ps.lastUpdateTime, permissions, state, userId);
