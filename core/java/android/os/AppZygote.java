@@ -54,6 +54,13 @@ public class AppZygote {
 
     private final ApplicationInfo mAppInfo;
 
+    /**
+     * Smartisan (factory PICO OS 5.13.7): set by the activity manager when the uid of the app
+     * runs in the top app scheduling group; with the 0x200000 performance flag, the started
+     * zygote joins the top app process group.
+     */
+    public boolean mHostingTop;
+
     public AppZygote(ApplicationInfo appInfo, int zygoteUid, int uidGidMin, int uidGidMax) {
         mAppInfo = appInfo;
         mZygoteUid = zygoteUid;
@@ -117,6 +124,13 @@ public class AppZygote {
                     mZygoteUidGidMax);
 
             ZygoteProcess.waitForConnectionToZygote(mZygote.getPrimarySocketAddress());
+            if (mHostingTop && (mAppInfo.getSmtEx().peroptFlag & 0x200000) != 0) {
+                try {
+                    Process.setProcessGroup(mZygote.getPid(), Process.THREAD_GROUP_TOP_APP);
+                } catch (Exception e) {
+                    Log.w(LOG_TAG, "Failed setting process group of browser zygote");
+                }
+            }
             // preload application code in the zygote
             Log.i(LOG_TAG, "Starting application preload.");
             mZygote.preloadApp(mAppInfo, abi);

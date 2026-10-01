@@ -1865,6 +1865,15 @@ public final class ProcessList {
                         new String[] {PROC_START_SEQ_IDENT + app.startSeq});
             } else if (hostingRecord.usesAppZygote()) {
                 final AppZygote appZygote = createAppZygoteForProcessIfNeeded(app);
+                // Smartisan (factory): with the 0x200000 performance flag, a new app zygote
+                // of a uid in the top app scheduling group joins the top app process group.
+                if ((app.info.getSmtEx().peroptFlag & 0x200000) != 0) {
+                    final UidRecord record = mActiveUids.get(appZygote.getAppInfo().uid);
+                    if (record != null) {
+                        appZygote.mHostingTop =
+                                record.getSmtEx().curSchedGroup == SCHED_GROUP_TOP_APP;
+                    }
+                }
 
                 startResult = appZygote.getProcess().start(entryPoint,
                         app.processName, uid, uid, gids, runtimeFlags, mountExternal,
