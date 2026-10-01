@@ -236,6 +236,13 @@ public class UsbManager {
     public static final String USB_FUNCTION_PTP = "ptp";
 
     /**
+     * Name of the PICO factory test USB function (PICO OS 5.13.7).
+     *
+     * {@hide}
+     */
+    public static final String USB_FUNCTION_PICO_FACTORY_TEST = "picofactorytest";
+
+    /**
      * Name of the audio source USB function.
      * Used in extras for the {@link #ACTION_USB_STATE} broadcast
      *
