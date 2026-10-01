@@ -225,7 +225,7 @@ public final class PowerManagerService extends SystemService
 
     private final Context mContext;
     private final ServiceThread mHandlerThread;
-    private final PowerManagerHandler mHandler;
+    protected final PowerManagerHandler mHandler;
     private final AmbientDisplayConfiguration mAmbientDisplayConfiguration;
     private final BatterySaverPolicy mBatterySaverPolicy;
     private final BatterySaverController mBatterySaverController;
@@ -238,7 +238,7 @@ public final class PowerManagerService extends SystemService
     private final Injector mInjector;
 
     private LightsManager mLightsManager;
-    private BatteryManagerInternal mBatteryManagerInternal;
+    protected BatteryManagerInternal mBatteryManagerInternal;
     private DisplayManagerInternal mDisplayManagerInternal;
     private IBatteryStats mBatteryStats;
     private IAppOpsService mAppOps;
@@ -249,7 +249,7 @@ public final class PowerManagerService extends SystemService
     private DreamManagerInternal mDreamManager;
     private Light mAttentionLight;
 
-    private final Object mLock = LockGuard.installNewLock(LockGuard.INDEX_POWER);
+    protected final Object mLock = LockGuard.installNewLock(LockGuard.INDEX_POWER);
 
     // A bitfield that indicates what parts of the power state have
     // changed and need to be recalculated.
@@ -336,7 +336,7 @@ public final class PowerManagerService extends SystemService
     private boolean mHoldingDisplaySuspendBlocker;
 
     // True if systemReady() has been called.
-    private boolean mSystemReady;
+    protected boolean mSystemReady;
 
     // True if boot completed occurred.  We keep the screen on until this happens.
     private boolean mBootCompleted;
@@ -964,12 +964,12 @@ public final class PowerManagerService extends SystemService
                 com.android.internal.R.bool.config_unplugTurnsOnScreen);
         mWakeUpWhenPluggedOrUnpluggedInTheaterModeConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_allowTheaterModeWakeFromUnplug);
-        if (android.pico.utils.Features.FEAT_HOLD_SCREEN_STATUS_WHEN_PLUG_STATE_CHANGE) {
-            // PICO (factory ExtPowerManagerServiceImpl): plugging or unplugging the charger
-            // never turns the headset screen on.
-            mWakeUpWhenPluggedOrUnpluggedConfig = false;
-            mWakeUpWhenPluggedOrUnpluggedInTheaterModeConfig = false;
-        }
+        // PICO (factory): plugging or unplugging the charger never turns the headset screen on.
+        mWakeUpWhenPluggedOrUnpluggedConfig = mExt.unplugTurnsOnScreenConfig(
+                mWakeUpWhenPluggedOrUnpluggedConfig);
+        mWakeUpWhenPluggedOrUnpluggedInTheaterModeConfig =
+                mExt.allowTheaterModeWakeFromUnplugConfig(
+                        mWakeUpWhenPluggedOrUnpluggedInTheaterModeConfig);
         mSuspendWhenScreenOffDueToProximityConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_suspendWhenScreenOffDueToProximity);
         mDreamsSupportedConfig = resources.getBoolean(
@@ -1347,9 +1347,10 @@ public final class PowerManagerService extends SystemService
                     return true;
 
                 case PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK:
-                    // PICO (factory ExtPowerManagerServiceImpl.proximityScreenOffWakeLock): the
-                    // headset proximity sensor is the wear sensor, not a phone call sensor.
-                    if (android.pico.utils.Features.FEAT_DISABLE_PROXIMITY_SCREEN_OFF_WAKE_LOCK) {
+                    // PICO (factory proximityScreenOffWakeLock): the headset proximity sensor is
+                    // the wear sensor, not a phone call sensor.
+                    boolean result = mExt.proximityScreenOffWakeLock();
+                    if (result) {
                         return false;
                     }
                     return mSystemReady && mDisplayManagerInternal.isProximitySensorAvailable();
@@ -1454,17 +1455,18 @@ public final class PowerManagerService extends SystemService
 
     private void wakeUpInternal(long eventTime, @WakeReason int reason, String details, int uid,
             String opPackageName, int opUid) {
+        // PICO (factory): power LED, API layer power state and pvr_manager power_status.
+        if (mExt.proxyWakeUpInternal(eventTime, reason, details, uid, opPackageName, opUid)) {
+            return;
+        }
         synchronized (mLock) {
             if (wakeUpNoUpdateLocked(eventTime, reason, details, uid, opPackageName, opUid)) {
                 updatePowerStateLocked();
-                com.android.server.api.ApiLayerService.getInstance().updatePowerState(
-                        com.android.server.api.ApiLayerService.POWER_STATE_WAKE_UP);
-                sendPicoPowerStatus("wakeUp");
             }
         }
     }
 
-    private boolean wakeUpNoUpdateLocked(long eventTime, @WakeReason int reason, String details,
+    protected boolean wakeUpNoUpdateLocked(long eventTime, @WakeReason int reason, String details,
             int reasonUid, String opPackageName, int opUid) {
         if (DEBUG_SPEW) {
             Slog.d(TAG, "wakeUpNoUpdateLocked: eventTime=" + eventTime + ", uid=" + reasonUid);
@@ -1500,36 +1502,15 @@ public final class PowerManagerService extends SystemService
     }
 
     private void goToSleepInternal(long eventTime, int reason, int flags, int uid) {
+        // PICO (factory): power LED, API layer power state and pvr_manager power_status. The
+        // factory extension always returns true, so the (by then no-op) normal path still runs.
+        if (!mExt.proxyGoToSleepInternal(eventTime, reason, flags, uid, mNativeWrapper)) {
+            return;
+        }
         synchronized (mLock) {
             if (goToSleepNoUpdateLocked(eventTime, reason, flags, uid)) {
                 updatePowerStateLocked();
-                com.android.server.api.ApiLayerService.getInstance().updatePowerState(
-                        com.android.server.api.ApiLayerService.POWER_STATE_GO_TO_SLEEP);
-                sendPicoPowerStatus("goToSleep");
             }
-        }
-    }
-
-    /** pvr_manager (PICO system service), looked up again when it died. */
-    private com.pvr.IPvrManagerService mPicoPvrManagerService;
-
-    /**
-     * PICO (factory ExtPowerManagerServiceImpl.proxyWakeUpInternal / proxyGoToSleepInternal):
-     * reports "power_status" = "wakeUp" / "goToSleep" to pvr_manager.
-     */
-    private void sendPicoPowerStatus(String status) {
-        if (mPicoPvrManagerService == null || !mPicoPvrManagerService.asBinder().isBinderAlive()) {
-            final IBinder binder = android.os.ServiceManager.checkService("pvr_manager");
-            if (binder == null) {
-                Slog.w(TAG, "pvr_manager has not been added to ServiceManager,do nothing.");
-                return;
-            }
-            mPicoPvrManagerService = com.pvr.IPvrManagerService.Stub.asInterface(binder);
-        }
-        try {
-            mPicoPvrManagerService.sendPvrMessages("power_status", status);
-        } catch (Exception e) {
-            Slog.e(TAG, "mPvrManagerService sendPvrMessages error");
         }
     }
 
@@ -1541,7 +1522,7 @@ public final class PowerManagerService extends SystemService
      * {@link PowerManager.GO_TO_SLEEP_FLAG_NO_DOZE}.
      */
     @SuppressWarnings("deprecation")
-    private boolean goToSleepNoUpdateLocked(long eventTime, int reason, int flags, int uid) {
+    protected boolean goToSleepNoUpdateLocked(long eventTime, int reason, int flags, int uid) {
         if (DEBUG_SPEW) {
             Slog.d(TAG, "goToSleepNoUpdateLocked: eventTime=" + eventTime
                     + ", reason=" + reason + ", flags=" + flags + ", uid=" + uid);
@@ -1713,7 +1694,7 @@ public final class PowerManagerService extends SystemService
      * each time something important changes, and ensure that we do it the same
      * way each time.  The point is to gather all of the transition logic here.
      */
-    private void updatePowerStateLocked() {
+    protected void updatePowerStateLocked() {
         if (!mSystemReady || mDirty == 0) {
             return;
         }
@@ -1722,6 +1703,8 @@ public final class PowerManagerService extends SystemService
         }
 
         Trace.traceBegin(Trace.TRACE_TAG_POWER, "updatePowerState");
+        // PICO (factory): applies a pending power LED change.
+        mExt.notifyLedStatus();
         try {
             // Phase 0: Basic state updates.
             updateIsPoweredLocked(mDirty);
@@ -2621,9 +2604,9 @@ public final class PowerManagerService extends SystemService
                 || (mUserActivitySummary & USER_ACTIVITY_SCREEN_BRIGHT) != 0
                 || !mBootCompleted
                 || mScreenBrightnessBoostInProgress
-                // PICO (factory ExtPowerManagerServiceImpl.disableDimPowerState): the headset
-                // display never dims before the screen timeout.
-                || android.pico.utils.Features.FEAT_DISABLE_DIM_POWER_STATE) {
+                // PICO (factory disableDimPowerState): the headset display never dims before the
+                // screen timeout.
+                || mExt.disableDimPowerState()) {
             return DisplayPowerRequest.POLICY_BRIGHT;
         }
 
@@ -2845,7 +2828,7 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    private boolean isInteractiveInternal() {
+    protected boolean isInteractiveInternal() {
         synchronized (mLock) {
             return PowerManagerInternal.isInteractive(mWakefulness);
         }
@@ -2878,7 +2861,7 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    private void handleBatteryStateChangedLocked() {
+    protected void handleBatteryStateChangedLocked() {
         mDirty |= DIRTY_BATTERY_STATE;
         updatePowerStateLocked();
     }
@@ -4038,7 +4021,7 @@ public final class PowerManagerService extends SystemService
     /**
      * Handler for asynchronous operations performed by the power manager.
      */
-    private final class PowerManagerHandler extends Handler {
+    final class PowerManagerHandler extends Handler {
         public PowerManagerHandler(Looper looper) {
             super(looper, null, true /*async*/);
         }
