@@ -22,6 +22,7 @@
 #include "EglManager.h"
 #include "Frame.h"
 #include "LayerUpdateQueue.h"
+#include "PicoSysMtpClient.h"
 #include "Properties.h"
 #include "RenderMonitor.h"
 #include "RenderThread.h"
@@ -523,6 +524,7 @@ void CanvasContext::draw() {
 
     mJankTracker.finishFrame(*mCurrentFrameInfo);
     mRenderThread.renderMonitor()->addFrame(*mCurrentFrameInfo, mName);
+    pico::SysMtpClient::addRenderFrame(*mCurrentFrameInfo, mName);
     if (CC_UNLIKELY(mFrameMetricsReporter.get() != nullptr)) {
         mFrameMetricsReporter->reportFrameMetrics(mCurrentFrameInfo->data());
     }
