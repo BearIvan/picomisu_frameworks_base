@@ -17,6 +17,7 @@ import java.util.List;
  */
 public class PrefetchRegister {
     private static final String TAG = "PrefetchRegister";
+    private static final String PREFETCH_SERVICE = "prefetch";
     private static PrefetchRegister sInstance;
     private static Object mLock = new Object();
     private List<PrefetchCallbackLocal> callbacks = new ArrayList<>();
