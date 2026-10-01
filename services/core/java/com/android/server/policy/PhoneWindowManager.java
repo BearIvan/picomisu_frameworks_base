@@ -2172,6 +2172,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 case TYPE_VOICE_INTERACTION:
                 case TYPE_ACCESSIBILITY_OVERLAY:
                 case TYPE_QS_DIALOG:
+                // PICO (factory): native shell floating windows (the VR keyboard's panels and
+                // popups, e.g. the iFlytek IME symbols panel) are added by ordinary apps.
+                case android.view.IExtWindowManager.TYPE_NS_FLOATING_WINDOW:
                     // The window manager will check these.
                     return ADD_OKAY;
             }
