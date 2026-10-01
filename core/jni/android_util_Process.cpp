@@ -318,6 +318,109 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
     closedir(d);
 }
 
+// Smartisan cgroup freezer (factory PICO OS 5.13.7 libandroid_runtime.so): Process.useCGroupFreeze()
+// selects between the freezer cgroup (set_freeze_policy on every thread of the process) and
+// SIGSTOP/SIGCONT.
+static int gUseCGroupFreeze = 0;
+
+static void __setProcessFreezeGroup(JNIEnv* env, int pid, SchedPolicy sp)
+{
+    if (gUseCGroupFreeze) {
+        ALOGI("__setProcessFreezeCGroup pid: %d, sp: %d", pid, sp);
+
+        char proc_path[255];
+        sprintf(proc_path, "/proc/%d/task", pid);
+        DIR* d = opendir(proc_path);
+        if (!d) {
+            // If the process exited on us, don't generate an exception
+            if (errno != ENOENT)
+                signalExceptionForGroupError(env, errno, pid);
+            return;
+        }
+
+        struct dirent* de;
+        while ((de = readdir(d))) {
+            if (de->d_name[0] == '.')
+                continue;
+            int t_pid = atoi(de->d_name);
+            if (!t_pid) {
+                ALOGE("Error getting pid for '%s'\n", de->d_name);
+                continue;
+            }
+            int err = set_freeze_policy(t_pid, sp);
+            if (err != 0) {
+                ALOGW("errno: %d, %s, set freeze for pid: %d, tid: %s", err, strerror(err), pid,
+                        de->d_name);
+            }
+        }
+        closedir(d);
+    } else {
+        int sigNum = (sp == SP_FREEZE) ? SIGSTOP : SIGCONT;
+        ALOGI("__setProcessFreezeSignal pid: %d, sp: %d, sigNum:%d ", pid, sp, sigNum);
+        if (pid > 0) {
+            kill(pid, sigNum);
+        }
+    }
+}
+
+// Freezes (SP_FREEZE) or unfreezes (SP_DEFAULT) pid and the other processes of its
+// /acct/uid_<uid>/pid_<pid> process group; returns an ArrayList of the other pids (Integer).
+jobject android_os_Process_setProcessFreezeGroup(JNIEnv* env, jobject clazz, int uid, int pid,
+        jboolean freeze)
+{
+    SchedPolicy sp = freeze ? SP_FREEZE : SP_DEFAULT;
+
+    jclass arrayListClass = env->FindClass("java/util/ArrayList");
+    if (arrayListClass == NULL) {
+        return NULL;
+    }
+    jmethodID arrayListCtor = env->GetMethodID(arrayListClass, "<init>", "()V");
+    jobject pidList = env->NewObject(arrayListClass, arrayListCtor);
+    jmethodID arrayListAdd = env->GetMethodID(arrayListClass, "add", "(Ljava/lang/Object;)Z");
+
+    __setProcessFreezeGroup(env, pid, sp);
+
+    char path[255];
+    snprintf(path, sizeof(path), "/acct/uid_%d/pid_%d/cgroup.procs", uid, pid);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        return pidList;
+    }
+
+    char buffer[256];
+    char ch;
+    size_t len = 0;
+    while (len < sizeof(buffer) - 2) {
+        if (read(fd, &ch, 1) <= 0)
+            break;
+        if (ch == '\n') {
+            buffer[len] = '\0';
+            int temp_pid = atoi(buffer);
+            len = 0;
+            if (temp_pid == pid)
+                continue;
+            ALOGI("set freeze for forked pid: %d, forked pid: %d", pid, temp_pid);
+            jclass integerClass = env->FindClass("java/lang/Integer");
+            jmethodID integerCtor = env->GetMethodID(integerClass, "<init>", "(I)V");
+            jobject integer = env->NewObject(integerClass, integerCtor, temp_pid);
+            env->CallBooleanMethod(pidList, arrayListAdd, integer);
+            __setProcessFreezeGroup(env, temp_pid, sp);
+        } else if (ch >= '0' && ch <= '9') {
+            buffer[len++] = ch;
+        } else {
+            ALOGW("read error number in %s, ch:%c", path, ch);
+            break;
+        }
+    }
+    close(fd);
+    return pidList;
+}
+
+void android_os_Process_useCGroupFreeze(JNIEnv* env, jobject clazz, jboolean use)
+{
+    gUseCGroupFreeze = use;
+}
+
 void android_os_Process_setCgroupProcsProcessGroup(JNIEnv* env, jobject clazz, int uid, int pid, jint grp, jboolean dex2oat_only)
 {
     int fd;
@@ -377,6 +480,31 @@ void android_os_Process_setCgroupProcsProcessGroup(JNIEnv* env, jobject clazz, i
         }
         close(fd);
     }
+}
+
+// Smartisan cgroup freezer: pids of the uid/pid process group other than pid (null if none).
+jintArray android_os_Process_getChildProcessViaGroup(JNIEnv* env, jobject clazz, jint uid, jint pid)
+{
+    int* pids = NULL;
+    int count = getChildProcessViaGroup(uid, pid, &pids);
+    if (count <= 0) {
+        return NULL;
+    }
+
+    jintArray pidArray = env->NewIntArray(count);
+    if (pidArray == NULL) {
+        jniThrowException(env, "java/lang/OutOfMemoryError", NULL);
+        free(pids);
+        return NULL;
+    }
+
+    Vector<int> pidVector;
+    for (int i = 0; i < count; i++) {
+        pidVector.add(pids[i]);
+    }
+    free(pids);
+    env->SetIntArrayRegion(pidArray, 0, pidVector.size(), pidVector.array());
+    return pidArray;
 }
 
 jint android_os_Process_getProcessGroup(JNIEnv* env, jobject clazz, jint pid)
@@ -1357,6 +1485,9 @@ static const JNINativeMethod methods[] = {
     {"killProcessGroup", "(II)I", (void*)android_os_Process_killProcessGroup},
     {"removeAllProcessGroups", "()V", (void*)android_os_Process_removeAllProcessGroups},
     {"setUIThreadScheduler", "(II)V", (void*)android_os_Process_setUIThreadScheduler},
+    {"setProcessFreezeGroup", "(IIZ)Ljava/util/ArrayList;", (void*)android_os_Process_setProcessFreezeGroup},
+    {"useCGroupFreeze", "(Z)V", (void*)android_os_Process_useCGroupFreeze},
+    {"getChildProcessViaGroup", "(II)[I", (void*)android_os_Process_getChildProcessViaGroup},
 };
 
 int register_android_os_Process(JNIEnv* env)
