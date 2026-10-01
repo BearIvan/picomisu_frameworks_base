@@ -148,6 +148,10 @@ public final class Choreographer {
     private static final int SKIPPED_FRAME_WARNING_LIMIT = SystemProperties.getInt(
             "debug.choreographer.skipwarning", 30);
 
+    // Factory PICO OS 5.13.7: trace scheduleVsyncLocked for the system monitor.
+    private static final boolean USE_MONITOR_TRACE = SystemProperties.getBoolean(
+            "debug.sysmonitor.trace", false);
+
     private static final int MSG_DO_FRAME = 0;
     private static final int MSG_DO_SCHEDULE_VSYNC = 1;
     private static final int MSG_DO_SCHEDULE_CALLBACK = 2;
@@ -897,8 +901,14 @@ public final class Choreographer {
 
     @UnsupportedAppUsage
     private void scheduleVsyncLocked() {
+        if (USE_MONITOR_TRACE) {
+            Trace.traceBegin(Trace.TRACE_TAG_VIEW, "scheduleVsyncLocked");
+        }
         mDisplayEventReceiver.scheduleVsync();
         mIsVsyncScheduled = true;
+        if (USE_MONITOR_TRACE) {
+            Trace.traceEnd(Trace.TRACE_TAG_VIEW);
+        }
     }
 
     private boolean isRunningOnLooperThreadLocked() {
