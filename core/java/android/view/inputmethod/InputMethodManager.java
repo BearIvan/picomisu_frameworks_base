@@ -538,8 +538,7 @@ public final class InputMethodManager {
         Log.w(TAG, "b/117267690: Display ID mismatch found."
                 + " ViewRootImpl displayId=" + viewRootDisplayId
                 + " InputMethodManager displayId=" + mDisplayId
-                + ". Use the right InputMethodManager instance to avoid performance overhead.",
-                new Throwable());
+                + ". Use the right InputMethodManager instance to avoid performance overhead.");
         return fallbackImm;
     }
 
