@@ -80,6 +80,7 @@ import com.android.internal.util.ConcurrentUtils;
 import com.android.internal.util.EmergencyAffordanceManager;
 import com.android.internal.widget.ILockSettings;
 import com.android.server.am.ActivityManagerService;
+import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.appbinding.AppBindingService;
 import com.android.server.attention.AttentionManagerService;
 import com.android.server.audio.AudioService;
@@ -435,6 +436,9 @@ public final class SystemServer {
             Slog.i(TAG, "Entered the Android system server!");
             int uptimeMillis = (int) SystemClock.elapsedRealtime();
             EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_SYSTEM_RUN, uptimeMillis);
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_sys_run",
+                    uptimeMillis);
             if (!mRuntimeRestart) {
                 MetricsLogger.histogram(null, "boot_system_server_init", uptimeMillis);
             }
@@ -510,6 +514,18 @@ public final class SystemServer {
             traceEnd();  // InitBeforeStartServices
         }
 
+        // Smartisan (factory): sysmonitor-services
+        try {
+            traceBeginAndSlog("InitSysMonitorService.");
+            SysOptBridge.getFactory().getSysMonitorService().initContext(mSystemContext);
+        } catch (Throwable ex) {
+            Slog.e("System", "******************************************");
+            Slog.e("System", "************ Failure init SysMonitorService", ex);
+            throw ex;
+        } finally {
+            traceEnd();
+        }
+
         // Start services.
         try {
             traceBeginAndSlog("StartServices");
@@ -541,6 +557,13 @@ public final class SystemServer {
         // non-zygote process.
         if (!VMRuntime.hasBootImageSpaces()) {
             Slog.wtf(TAG, "Runtime is not running with a boot image!");
+        }
+
+        // Smartisan (factory)
+        SysOptBridge.getFactory().getBootEventStat().writeEvent("boot_event_sys_ready",
+                SystemClock.elapsedRealtime());
+        if (mRuntimeRestart) {
+            SysOptBridge.getFactory().getBootEventStat().setBootType(3);
         }
 
         // Loop forever.
@@ -669,6 +692,9 @@ public final class SystemServer {
         mActivityManagerService.setInstaller(installer);
         mWindowManagerGlobalLock = atm.getGlobalLock();
         traceEnd();
+        // Smartisan (factory)
+        SysMonitorSvcBridge.getFactory().getSysMonitorService()
+                .initActivityManagerService(mActivityManagerService);
 
         // Power manager needs to be started early because other services need it.
         // Native daemons may be watching for it to be registered so it must be ready
@@ -677,6 +703,9 @@ public final class SystemServer {
         traceBeginAndSlog("StartPowerManager");
         mPowerManagerService = mSystemServiceManager.startService(PowerManagerService.class);
         traceEnd();
+        // Smartisan (factory)
+        SysMonitorSvcBridge.getFactory().getSysMonitorService()
+                .initPowerManagerService(mPowerManagerService);
 
         // Smartisan: publish PowerAdvisorInternal (used by usage stats and the sys services).
         traceBeginAndSlog("StartSmartisanPowerAdvisor");
@@ -749,6 +778,9 @@ public final class SystemServer {
         } finally {
             Watchdog.getInstance().resumeWatchingCurrentThread("packagemanagermain");
         }
+        // Smartisan (factory)
+        SysMonitorSvcBridge.getFactory().getSysMonitorService()
+                .initPackageManagerService(mPackageManagerService);
         mFirstBoot = mPackageManagerService.isFirstBoot();
         mPackageManager = mSystemContext.getPackageManager();
         traceEnd();
@@ -958,14 +990,6 @@ public final class SystemServer {
             traceBeginAndSlog("StartKeyAttestationApplicationIdProviderService");
             ServiceManager.addService("sec_key_att_app_id_provider",
                     new KeyAttestationApplicationIdProviderService(context));
-            traceEnd();
-
-            traceBeginAndSlog("StartPicoTransferServer");
-            com.android.server.pico.TransferServer.publish();
-            traceEnd();
-
-            traceBeginAndSlog("StartPicoSysTransServer");
-            com.android.server.pico.SysTransServer.publish();
             traceEnd();
 
             traceBeginAndSlog("StartKeyChainSystemService");
@@ -1871,6 +1895,15 @@ public final class SystemServer {
                 traceEnd();
             }
 
+            // Smartisan (factory)
+            traceBeginAndSlog("StartSmartPerformanceService");
+            try {
+                SysOptBridge.getFactory().getSmartService().schedulePerformanceJobService(context);
+            } catch (Throwable e) {
+                reportWtf("starting SmartPerformanceService", e);
+            }
+            traceEnd();
+
             // LauncherAppsService uses ShortcutService.
             traceBeginAndSlog("StartShortcutServiceLifecycle");
             mSystemServiceManager.startService(ShortcutService.Lifecycle.class);
@@ -2331,6 +2364,39 @@ public final class SystemServer {
             }
             traceEnd();
         }, BOOT_TIMINGS_TRACE_LOG);
+
+        // Smartisan (factory)
+        Trace.traceBegin(Trace.TRACE_TAG_SYSTEM_SERVER, "MakeSmartServiceReady");
+        try {
+            SysOptBridge.getFactory().getSmartService().systemReady(mSystemContext);
+        } catch (Throwable e) {
+            reportWtf("making Smart Service ready", e);
+        }
+        Trace.traceEnd(Trace.TRACE_TAG_SYSTEM_SERVER);
+
+        traceBeginAndSlog("MakeSmartisanPowerAdvisorReady");
+        try {
+            SysOptBridge.getFactory().getSmartisanPowerAdvisorInstance().systemReady();
+        } catch (Throwable e) {
+            reportWtf("making Smartisan Power Advisor ready", e);
+        }
+        traceEnd();
+
+        traceBeginAndSlog("MakeSmartPowerDataReady");
+        try {
+            SysOptBridge.getFactory().getSmartPowerDataInstance().systemReady(mSystemContext);
+        } catch (Throwable e) {
+            reportWtf("making Smart Power Data ready", e);
+        }
+        traceEnd();
+
+        traceBeginAndSlog("MakeSysMonitorServiceReady");
+        try {
+            SysOptBridge.getFactory().getSysMonitorService().systemReady();
+        } catch (Throwable e) {
+            reportWtf("making SysMonitor Service ready", e);
+        }
+        traceEnd();
     }
 
     private boolean deviceHasConfigString(@NonNull Context context, @StringRes int resId) {
