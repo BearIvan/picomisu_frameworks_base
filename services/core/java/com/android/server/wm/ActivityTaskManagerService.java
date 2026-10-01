@@ -2497,7 +2497,7 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                 return;
             }
             if (android.pico.utils.Features.isPvr2DEnabled()
-                    && getActivityStartController().getExt().interceptStart(appThread,
+                    && mActivityStartController.getExt().interceptStart(appThread,
                             task.getTopActivity(), null, null, 0, true, null)) {
                 return;
             }

@@ -2090,11 +2090,8 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
         // PICO (factory): 2D app processes on this display get a configuration sized for the
         // display's new orientation.
-        final ActivityStartController startController =
-                mWmService.mAtmService.getActivityStartController();
-        if (startController != null) {
-            startController.getExt().onDisplayConfigurationChanged(this);
-        }
+        mWmService.mAtmService.getActivityStartController().getExt()
+                .onDisplayConfigurationChanged(this);
     }
 
     /**
