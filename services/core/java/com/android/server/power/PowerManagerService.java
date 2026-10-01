@@ -3146,7 +3146,7 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    private void updateWakeLockDisabledStatesLocked() {
+    protected void updateWakeLockDisabledStatesLocked() {
         boolean changed = false;
         final int numWakeLocks = mWakeLocks.size();
         for (int i = 0; i < numWakeLocks; i++) {
@@ -4092,6 +4092,13 @@ public final class PowerManagerService extends SystemService
                     break;
                 case MSG_CHECK_FOR_LONG_WAKELOCKS:
                     checkForLongWakeLocks();
+                    break;
+                // Smartisan (factory): posted by the Smartisan power extension after a
+                // display change.
+                case IPowerManagerOptEx.MSG_DISPLAY_CHANGE_UPDATE_WAKELOCKS:
+                    synchronized (mLock) {
+                        updateWakeLockDisabledStatesLocked();
+                    }
                     break;
             }
         }
