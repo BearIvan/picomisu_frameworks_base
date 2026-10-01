@@ -44,6 +44,7 @@ import android.os.HandlerThread;
 import android.os.IBatteryPropertiesRegistrar;
 import android.os.IBinder;
 import android.os.OsProtoEnums;
+import android.os.Parcel;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.ResultReceiver;
@@ -233,6 +234,8 @@ public final class BatteryService extends SystemService {
             invalidChargerObserver.startObserving(
                     "DEVPATH=/devices/virtual/switch/invalid_charger");
         }
+        // Smartisan (factory)
+        SysOptBridge.getFactory().getBatteryServiceOptEx().init(mContext, this);
         mExt = new ExtBatteryServiceImpl(this, mContext, mActivityManagerInternal, mHandler);
     }
 
@@ -1171,6 +1174,21 @@ public final class BatteryService extends SystemService {
     }
 
     private final class BinderService extends Binder {
+        // Smartisan (factory)
+        @Override
+        public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+                throws RemoteException {
+            try {
+                final int pid = getCallingPid();
+                final int uid = getCallingUid();
+                return SysOptBridge.getFactory().getBatteryServiceOptEx()
+                        .onTransactOptEx(code, data, reply, pid, uid)
+                        || super.onTransact(code, data, reply, flags);
+            } catch (RuntimeException e) {
+                throw e;
+            }
+        }
+
         @Override protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
             if (!DumpUtils.checkDumpPermission(mContext, TAG, pw)) return;
 

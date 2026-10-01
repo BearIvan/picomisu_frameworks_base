@@ -18,6 +18,7 @@ import android.provider.Settings;
 import android.util.Log;
 import android.util.Slog;
 
+import com.android.server.SysOptBridge;
 import com.android.server.api.ApiLayerService;
 import com.android.server.lights.Light;
 import com.android.server.lights.LightsManager;
@@ -183,6 +184,11 @@ public class ExtPowerManagerServiceImpl implements IExtPowerManagerService {
     private void notifyLedStatus(int status) {
         int ledType;
         if (!mRealBootCompleted || mLedStatus == -1) {
+            return;
+        }
+        // Smartisan (factory)
+        if (SysOptBridge.getFactory().getQBStateMachine().isInQBLightOn()) {
+            Slog.d(TAG, "battery light is setting by quick boot. return!");
             return;
         }
         if (mBase.mBatteryManagerInternal.isPowered(BatteryManager.BATTERY_PLUGGED_ANY)

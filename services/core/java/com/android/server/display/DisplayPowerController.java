@@ -55,6 +55,7 @@ import com.android.internal.app.IBatteryStats;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.am.BatteryStatsService;
 import com.android.server.display.whitebalance.DisplayWhiteBalanceController;
 import com.android.server.display.whitebalance.DisplayWhiteBalanceFactory;
@@ -1253,6 +1254,8 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             setReportedScreenState(REPORTED_TO_POLICY_SCREEN_OFF);
             unblockScreenOn();
             mWindowManagerPolicy.screenTurnedOff();
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getSmartService().screenTurnOff();
         } else if (!isOff
                 && mReportedScreenStateToPolicy == REPORTED_TO_POLICY_SCREEN_TURNING_OFF) {
 
@@ -1261,6 +1264,8 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             unblockScreenOff();
             mWindowManagerPolicy.screenTurnedOff();
             setReportedScreenState(REPORTED_TO_POLICY_SCREEN_OFF);
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getSmartService().screenTurnOff();
         }
         if (!isOff && mReportedScreenStateToPolicy == REPORTED_TO_POLICY_SCREEN_OFF) {
             setReportedScreenState(REPORTED_TO_POLICY_SCREEN_TURNING_ON);
@@ -1270,6 +1275,8 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                 unblockScreenOn();
             }
             mWindowManagerPolicy.screenTurningOn(mPendingScreenOnUnblocker);
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getSmartService().screenTurnOn();
         }
 
         // Return true if the screen isn't blocked.

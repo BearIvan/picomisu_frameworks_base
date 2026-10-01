@@ -89,10 +89,12 @@ import com.android.server.EventLogTags;
 import com.android.server.LockGuard;
 import com.android.server.RescueParty;
 import com.android.server.ServiceThread;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.UiThread;
 import com.android.server.Watchdog;
 import com.android.server.am.BatteryStatsService;
+import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.lights.Light;
 import com.android.server.lights.LightsManager;
 import com.android.server.policy.WindowManagerPolicy;
@@ -108,6 +110,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
+
+import smartisanos.util.FeatLog;
 
 /**
  * The power manager service is responsible for coordinating power management
@@ -775,6 +779,9 @@ public final class PowerManagerService extends SystemService
         mBatterySaverStateMachine = new BatterySaverStateMachine(
                 mLock, mContext, mBatterySaverController);
 
+        // Smartisan (factory)
+        SysOptBridge.getFactory().getPowerManager().init(mContext, this);
+
         synchronized (mLock) {
             mWakeLockSuspendBlocker =
                     mInjector.createSuspendBlocker(this, "PowerManagerService.WakeLocks");
@@ -868,6 +875,9 @@ public final class PowerManagerService extends SystemService
             } catch (RemoteException e) {
                 // Shouldn't happen since in-process.
             }
+
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getPowerManager().systemReady();
 
             // Go.
             readConfigurationLocked();
@@ -1074,6 +1084,9 @@ public final class PowerManagerService extends SystemService
                     notifyWakeLockChangingLocked(wakeLock, flags, tag, packageName,
                             uid, pid, ws, historyTag);
                     wakeLock.updateProperties(flags, tag, packageName, ws, historyTag, uid, pid);
+                    // Smartisan (factory)
+                    SysOptBridge.getFactory().getPowerManager()
+                            .updateWakeLockAcquireStateLocked(wakeLock);
                 }
                 notifyAcquire = false;
             } else {
@@ -1253,6 +1266,9 @@ public final class PowerManagerService extends SystemService
                         ws, historyTag);
                 wakeLock.mHistoryTag = historyTag;
                 wakeLock.updateWorkSource(ws);
+                // Smartisan (factory)
+                SysOptBridge.getFactory().getPowerManager()
+                        .updateWakeLockAcquireStateLocked(wakeLock);
             }
         }
     }
@@ -2669,6 +2685,8 @@ public final class PowerManagerService extends SystemService
                             setHalInteractiveModeLocked(true);
                         }
                     }
+                    // Smartisan (factory)
+                    SysOptBridge.getFactory().getPowerManager().updateWakelockDisabledStateDelay();
                 }
             }
         }
@@ -2889,6 +2907,11 @@ public final class PowerManagerService extends SystemService
                         ShutdownThread.reboot(getUiContext(), reason, confirm);
                     } else {
                         ShutdownThread.shutdown(getUiContext(), reason, confirm);
+                        // Smartisan (factory): wake the waiter on a QuickBoot shutdown
+                        if (SysOptBridge.getFactory().getQBStateMachine()
+                                .isInQBShutdownState()) {
+                            notifyAll();
+                        }
                     }
                 }
             }
@@ -2900,11 +2923,18 @@ public final class PowerManagerService extends SystemService
         UiThread.getHandler().sendMessage(msg);
 
         // PowerManager.reboot() is documented not to return so just wait for the inevitable.
+        // Smartisan (factory): except a QuickBoot shutdown, which returns.
         if (wait) {
             synchronized (runnable) {
                 while (true) {
                     try {
+                        if (SysOptBridge.getFactory().getQBStateMachine().isInQBShutdownState()) {
+                            break;
+                        }
                         runnable.wait();
+                        if (SysOptBridge.getFactory().getQBStateMachine().isInQBShutdownState()) {
+                            break;
+                        }
                     } catch (InterruptedException e) {
                     }
                 }
@@ -2973,6 +3003,11 @@ public final class PowerManagerService extends SystemService
             }
             mDeviceIdleMode = enabled;
             updateWakeLockDisabledStatesLocked();
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getPowerManager().updateDeviceIdleModeTimeLocked(enabled);
+            if (enabled) {
+                SysMonitorSvcBridge.getFactory().getMemoryStrategy().enterIdleStateInform(enabled);
+            }
         }
         if (enabled) {
             EventLogTags.writeDeviceIdleOnPhase("power");
@@ -2986,6 +3021,9 @@ public final class PowerManagerService extends SystemService
         synchronized (mLock) {
             if (mLightDeviceIdleMode != enabled) {
                 mLightDeviceIdleMode = enabled;
+                // Smartisan (factory)
+                SysOptBridge.getFactory().getPowerManager()
+                        .updateLightDeviceIdleModeTimeLocked(enabled);
                 return true;
             }
             return false;
@@ -3148,6 +3186,11 @@ public final class PowerManagerService extends SystemService
                         disabled = true;
                     }
                 }
+            }
+            // Smartisan (factory)
+            if (!disabled) {
+                disabled = SysOptBridge.getFactory().getPowerManager()
+                        .controlPartialWakeLock(wakeLock);
             }
             if (wakeLock.mDisabled != disabled) {
                 wakeLock.mDisabled = disabled;
@@ -4247,12 +4290,16 @@ public final class PowerManagerService extends SystemService
                     Trace.asyncTraceBegin(Trace.TRACE_TAG_POWER, mTraceName, 0);
                     mNativeWrapper.nativeAcquireSuspendBlocker(mName);
                 }
+                // Smartisan (factory)
+                SysOptBridge.getFactory().getPowerManager().updateAcquireWakeLockTimeLocked(mName);
             }
         }
 
         @Override
         public void release() {
             synchronized (this) {
+                // Smartisan (factory)
+                SysOptBridge.getFactory().getPowerManager().updateReleaseWakeLockTimeLocked(mName);
                 mReferenceCount -= 1;
                 if (mReferenceCount == 0) {
                     if (DEBUG_SPEW) {
@@ -4469,6 +4516,13 @@ public final class PowerManagerService extends SystemService
             mContext.enforceCallingOrSelfPermission(
                     android.Manifest.permission.DEVICE_POWER, null);
 
+            // Smartisan (factory): QuickBoot
+            if (SysOptBridge.getFactory().getQBStateMachine().isInQBShutdownState()
+                    && !IQuickBootStateMachine.WAKE_DETAIL_ANIM.equals(details)) {
+                FeatLog.i(TAG, "FEAT_QUICK_BOOT", 0, "wakeUp in qbShutdown, return");
+                return;
+            }
+
             final int uid = Binder.getCallingUid();
             final long ident = Binder.clearCallingIdentity();
             try {
@@ -4486,6 +4540,13 @@ public final class PowerManagerService extends SystemService
 
             mContext.enforceCallingOrSelfPermission(
                     android.Manifest.permission.DEVICE_POWER, null);
+
+            // Smartisan (factory): QuickBoot
+            if (SysOptBridge.getFactory().getQBStateMachine().isInQBShutdownState()
+                    && !SysOptBridge.getFactory().getQBStateMachine().goToSleepByQB()) {
+                FeatLog.i(TAG, "FEAT_QUICK_BOOT", 0, "goToSleep in qbShutdown, return");
+                return;
+            }
 
             final int uid = Binder.getCallingUid();
             final long ident = Binder.clearCallingIdentity();
@@ -4846,6 +4907,14 @@ public final class PowerManagerService extends SystemService
         public boolean forceSuspend() {
             mContext.enforceCallingOrSelfPermission(
                     android.Manifest.permission.DEVICE_POWER, null);
+
+            // Smartisan (factory): QuickBoot
+            if (SysOptBridge.getFactory().getQBStateMachine().isInQBShutdownState()
+                    && SysOptBridge.getFactory().getQBStateMachine().isInQBChargingAnim()) {
+                FeatLog.i(TAG, "FEAT_QUICK_BOOT", 0,
+                        "forceSuspend in playing charging anim, return");
+                return false;
+            }
 
             final int uid = Binder.getCallingUid();
             final long ident = Binder.clearCallingIdentity();

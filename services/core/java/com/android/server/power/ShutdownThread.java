@@ -49,6 +49,7 @@ import android.view.WindowManager;
 import com.android.internal.telephony.ITelephony;
 import com.android.server.RescueParty;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.pm.PackageManagerService;
 import com.android.server.statusbar.StatusBarManagerInternal;
 
@@ -387,9 +388,13 @@ public final class ShutdownThread extends Thread {
 
         Log.i(TAG, "beginShutdownSequence mReboot: " + mReboot + ", mRebootSafeMode: "
                 + mRebootSafeMode);
-        // The factory turns a shutdown into a Smartisan quick boot "fake shutdown" here when
-        // persist.pvr.quick_boot_enable is set (QuickBootStateMachine.goToQuickBootShutdown in
-        // sys-services.jar). Quick boot is not in Source.
+        // Smartisan (factory): a shutdown becomes a quick boot "fake shutdown" when
+        // persist.pvr.quick_boot_enable is set (QuickBootStateMachine in sys-services.jar).
+        if (!mReboot && !mRebootSafeMode
+                && SysOptBridge.getFactory().getQBStateMachine().goToQuickBootShutdown(mReason)) {
+            sIsStarted = false;
+            return;
+        }
 
         sInstance.mProgressDialog = showShutdownDialog(context);
         // PICO (factory): black system dialog + bootanim shutdown animation.

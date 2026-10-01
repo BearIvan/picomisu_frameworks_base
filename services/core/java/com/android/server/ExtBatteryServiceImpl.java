@@ -278,6 +278,11 @@ public class ExtBatteryServiceImpl implements IExtBatteryService {
         } else if (mRealBootCompleted && !isCit && !isShutdowning
                 && (status == BatteryManager.BATTERY_STATUS_CHARGING
                         || status == BatteryManager.BATTERY_STATUS_FULL)) {
+            // Smartisan (factory)
+            if (SysOptBridge.getFactory().getQBStateMachine().isInQBLightOn()) {
+                Slog.d(TAG, "battery light is setting by quick boot. return!");
+                return true;
+            }
             if (isDP5VPlug()) {
                 return true;
             }

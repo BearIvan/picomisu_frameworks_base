@@ -57,6 +57,7 @@ import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.server.EventLogTags;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.inputmethod.InputMethodManagerInternal;
 import com.android.server.policy.WindowManagerPolicy;
 import com.android.server.statusbar.StatusBarManagerInternal;
@@ -450,9 +451,14 @@ public class Notifier {
                 });
 
                 // Send interactive broadcast.
-                mPendingInteractiveState = INTERACTIVE_STATE_AWAKE;
-                mPendingWakeUpBroadcast = true;
-                updatePendingBroadcastLocked();
+                // Smartisan (factory): not while QuickBoot plays the charging animation.
+                if (SysOptBridge.getFactory().getQBStateMachine().isInQBChargingAnim()) {
+                    Slog.i(TAG, "in qb charging animation, intercept wakeUp broadcast.");
+                } else {
+                    mPendingInteractiveState = INTERACTIVE_STATE_AWAKE;
+                    mPendingWakeUpBroadcast = true;
+                    updatePendingBroadcastLocked();
+                }
             } else {
                 // Going to sleep...
                 // Tell the policy that we started going to sleep.
@@ -524,9 +530,14 @@ public class Notifier {
                 });
 
                 // Send non-interactive broadcast.
-                mPendingInteractiveState = INTERACTIVE_STATE_ASLEEP;
-                mPendingGoToSleepBroadcast = true;
-                updatePendingBroadcastLocked();
+                // Smartisan (factory): not while QuickBoot plays the charging animation.
+                if (SysOptBridge.getFactory().getQBStateMachine().isInQBChargingAnim()) {
+                    Slog.i(TAG, "in qb charging animation, intercept sleep broadcast.");
+                } else {
+                    mPendingInteractiveState = INTERACTIVE_STATE_ASLEEP;
+                    mPendingGoToSleepBroadcast = true;
+                    updatePendingBroadcastLocked();
+                }
             }
         }
     }

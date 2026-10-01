@@ -30,6 +30,7 @@ import android.util.Slog;
 import android.view.SurfaceControl;
 
 import com.android.internal.app.IBatteryStatsOptEx;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.am.BatteryStatsService;
 
@@ -231,6 +232,8 @@ public class LightsService extends SystemService {
                 } finally {
                     Trace.traceEnd(Trace.TRACE_TAG_POWER);
                 }
+                // Smartisan (factory)
+                SysOptBridge.getFactory().getSmartPowerDataInstance().setLightsState(mId, mColor);
             }
         }
 
