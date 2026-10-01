@@ -21,10 +21,12 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.MemoryFile;
 import android.os.MessageQueue;
+import android.os.Process;
 import android.util.Log;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
@@ -78,6 +80,9 @@ public class SystemSensorManager extends SensorManager {
     private static InjectEventQueue sInjectEventQueue = null;
 
     private final ArrayList<Sensor> mFullSensorsList = new ArrayList<>();
+    // PICO (factory): the sensor list handed to callers with a uid above SYSTEM_UID, without the
+    // raw IMU sensors (accelerometer, magnetic field, gyroscope and their variants).
+    private final ArrayList<Sensor> mLimitSensorsList = new ArrayList<>();
     private List<Sensor> mFullDynamicSensorsList = new ArrayList<>();
     private boolean mDynamicSensorListDirty = true;
 
@@ -119,6 +124,15 @@ public class SystemSensorManager extends SensorManager {
             Sensor sensor = new Sensor();
             if (!nativeGetSensorAtIndex(mNativeInstance, sensor, index)) break;
             mFullSensorsList.add(sensor);
+            if (sensor.getType() != Sensor.TYPE_GYROSCOPE
+                    && sensor.getType() != Sensor.TYPE_ACCELEROMETER
+                    && sensor.getType() != Sensor.TYPE_MAGNETIC_FIELD
+                    && sensor.getType() != Sensor.TYPE_LINEAR_ACCELERATION
+                    && sensor.getType() != Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED
+                    && sensor.getType() != Sensor.TYPE_GYROSCOPE_UNCALIBRATED
+                    && sensor.getType() != Sensor.TYPE_ACCELEROMETER_UNCALIBRATED) {
+                mLimitSensorsList.add(sensor);
+            }
             mHandleToSensor.put(sensor.getHandle(), sensor);
         }
     }
@@ -127,6 +141,10 @@ public class SystemSensorManager extends SensorManager {
     /** @hide */
     @Override
     protected List<Sensor> getFullSensorList() {
+        Log.e("SensorManager", "getFullSensorList check calling is " + Binder.getCallingUid());
+        if (Binder.getCallingUid() > Process.SYSTEM_UID) {
+            return mLimitSensorsList;
+        }
         return mFullSensorsList;
     }
 
