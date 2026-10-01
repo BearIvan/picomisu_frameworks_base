@@ -262,6 +262,9 @@ class UserController implements Handler.Callback {
     @GuardedBy("mLock")
     private final ArrayList<Integer> mLastActiveUsers = new ArrayList<>();
 
+    // PICO extension (factory PICO OS 5.13.7).
+    private final IExtUserController mExt = new ExtUserControllerImpl(this);
+
     UserController(ActivityManagerService service) {
         this(new Injector(service));
     }
@@ -478,6 +481,8 @@ class UserController implements Handler.Callback {
         // in already-running apps that are partially aware
         if (userId == UserHandle.USER_SYSTEM) {
             mInjector.startPersistentApps(PackageManager.MATCH_DIRECT_BOOT_UNAWARE);
+            // PICO (factory): bind the PICO persistent services.
+            mExt.finishUserUnlocked(mInjector.mService);
         }
         mInjector.installEncryptionUnawareProviders(userId);
 
@@ -636,6 +641,8 @@ class UserController implements Handler.Callback {
                     AppOpsManager.OP_NONE, null, true, false, MY_PID, SYSTEM_UID,
                     callingUid, callingPid, userId);
         });
+        // PICO (factory): factory test mode.
+        mExt.startPicoFactoryTestService(mInjector.mService);
     }
 
     int restartUser(final int userId, final boolean foreground) {
