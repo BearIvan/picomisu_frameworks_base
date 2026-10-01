@@ -506,7 +506,8 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             }
         }
 
-        mColorFadeEnabled = !ActivityManager.isLowRamDeviceStatic();
+        // Factory PICO OS 5.13.7: no color fade.
+        mColorFadeEnabled = false;
         mColorFadeFadesConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_animateScreenLights);
 
