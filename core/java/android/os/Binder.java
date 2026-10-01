@@ -80,7 +80,7 @@ public class Binder implements IBinder {
      */
     private static final boolean FIND_POTENTIAL_LEAKS = false;
     /** @hide */
-    public static final boolean CHECK_PARCEL_SIZE = false;
+    public static final boolean CHECK_PARCEL_SIZE = true;
     static final String TAG = "Binder";
 
     /** @hide */
@@ -1013,8 +1013,8 @@ public class Binder implements IBinder {
     }
 
     static void checkParcel(IBinder obj, int code, Parcel parcel, String msg) {
-        if (CHECK_PARCEL_SIZE && parcel.dataSize() >= 800*1024) {
-            // Trying to send > 800k, this is way too much
+        if (CHECK_PARCEL_SIZE && parcel.dataSize() >= 512*1024) {
+            // Trying to send > 512k, this is way too much
             StringBuilder sb = new StringBuilder();
             sb.append(msg);
             sb.append(": on ");
