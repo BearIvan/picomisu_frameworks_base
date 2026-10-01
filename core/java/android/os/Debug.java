@@ -1869,6 +1869,13 @@ public final class Debug
      */
     public static native long getTimeByQtimer();
 
+    /**
+     * Factory PICO OS 5.13.7 declaration. The factory libandroid_runtime registers no
+     * implementation for it and nothing calls it.
+     * @hide
+     */
+    public static native long getSysJiffes();
+
     /** @hide */
     public static final int MEMINFO_TOTAL = 0;
     /** @hide */

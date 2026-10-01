@@ -707,6 +707,10 @@ public final class ThreadedRenderer extends HardwareRenderer {
     public void notifyMonitorStatsChanged(boolean enable) {
     }
 
+    // Factory PICO OS 5.13.7 declaration: unused, and the factory libandroid_runtime registers
+    // no android/view/ThreadedRenderer natives (the live path is HardwareRenderer's native).
+    private static native void nNotifyMonitorStatsChanged(long nativeProxy, boolean enable);
+
     /**
      * Basic synchronous renderer. Currently only used to render the Magnifier, so use with care.
      * TODO: deduplicate against ThreadedRenderer.
