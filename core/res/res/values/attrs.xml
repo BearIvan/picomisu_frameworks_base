@@ -6636,6 +6636,12 @@
         <attr name="factor" />
     </declare-styleable>
 
+    <!-- Smartisan (factory PICO OS 5.13.7) {@link android.view.animation.SpringInterpolator}. -->
+    <declare-styleable name="SpringInterpolator">
+        <!-- Spring period factor of the oscillation. -->
+        <attr name="factor" />
+    </declare-styleable>
+
     <declare-styleable name="CycleInterpolator">
         <attr name="cycles" format="float" />
     </declare-styleable>
