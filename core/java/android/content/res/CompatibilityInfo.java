@@ -62,7 +62,10 @@ public class CompatibilityInfo implements Parcelable {
      *  A compatibility flags
      */
     private final int mCompatibilityFlags;
-    
+
+    // Smartisan extension; the factory declares it but never assigns it.
+    private CompatibilityInfoSmtEx mSmtEx;
+
     /**
      * A flag mask to tell if the application needs scaling (when mApplicationScale != 1.0f)
      * {@see compatibilityFlag}
@@ -651,5 +654,10 @@ public class CompatibilityInfo implements Parcelable {
         applicationDensity = source.readInt();
         applicationScale = source.readFloat();
         applicationInvertedScale = source.readFloat();
+    }
+
+    /** @hide */
+    public CompatibilityInfoSmtEx getSmtEx() {
+        return mSmtEx;
     }
 }
