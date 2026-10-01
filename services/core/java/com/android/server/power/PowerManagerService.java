@@ -1906,6 +1906,10 @@ public final class PowerManagerService extends SystemService
             } else {
                 mStayOn = false;
             }
+            // PICO (factory): a screen off timeout of -1 ("never") keeps the screen on.
+            if (mScreenOffTimeoutSetting == -1) {
+                mStayOn = true;
+            }
 
             if (mStayOn != wasStayOn) {
                 mDirty |= DIRTY_STAY_ON;
