@@ -81,7 +81,6 @@ cc_library_shared {
         "android_view_RenderNodeAnimator.cpp",
         "android_view_Surface.cpp",
         "android_view_ExtSurfaceImpl.cpp",
-        ":picomisu_surface_freeze_sources",
         "android_view_SurfaceControl.cpp",
         "android_view_SurfaceSession.cpp",
         "android_view_TextureView.cpp",
@@ -336,11 +335,6 @@ cc_library_shared {
     ],
 }
 
-filegroup {
-    name: "picomisu_surface_freeze_sources",
-    srcs: ["PicoSurfaceFreeze.cpp"],
-}
-
 cc_test {
     name: "picomisu_surface_freeze_probe",
     gtest: false,
@@ -348,6 +342,6 @@ cc_test {
     ldflags: ["-Wl,--export-dynamic"],
     cflags: ["-Wall", "-Werror"],
     header_libs: ["jni_headers"],
-    srcs: ["PicoSurfaceFreeze_probe.cpp", ":picomisu_surface_freeze_sources"],
+    srcs: ["PicoSurfaceFreeze_probe.cpp"],
     shared_libs: ["libgui", "libbinder", "libui", "libutils", "liblog", "libdl"],
 }

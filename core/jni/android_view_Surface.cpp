@@ -567,7 +567,7 @@ static const JNINativeMethod gSurfaceMethods[] = {
     {"nativeGetHeight", "(J)I", (void*)nativeGetHeight },
     {"nativeGetNextFrameNumber", "(J)J", (void*)nativeGetNextFrameNumber },
     {"nativeSetPvrStatus", "(JI)V", (void*)nativeSetPvrStatus },
-    {"nativeFreezeSelfListening", "(J)V", (void*)picomisu::surfaceFreezeSelfListening },
+    {"nativeFreezeSelfListening", "(J)V", (void*)nativeFreezeSelfListening },
     {"nativeSetScalingMode", "(JI)I", (void*)nativeSetScalingMode },
     {"nativeForceScopedDisconnect", "(J)I", (void*)nativeForceScopedDisconnect},
     {"nativeAttachAndQueueBufferWithColorSpace", "(JLandroid/graphics/GraphicBuffer;I)I",

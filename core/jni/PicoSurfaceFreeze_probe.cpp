@@ -51,7 +51,7 @@ bool check(bool ok, const char* label) {
 }
 }
 int main(int argc, char** argv) {
-    Entry call = picomisu::surfaceFreezeSelfListening;
+    Entry call = android::nativeFreezeSelfListening;
     void* library = nullptr;
     if (argc == 2 && std::strcmp(argv[1], "--factory") == 0) {
         library = dlopen("libandroid_runtime.so", RTLD_NOW | RTLD_LOCAL);
