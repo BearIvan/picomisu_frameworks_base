@@ -24,15 +24,18 @@
 // exists in the factory library but nothing calls it; it is kept, not called, as there.
 //
 // The VR skip-draw path never locks or queues a producer buffer (factory 0x1c4ac8 / 0x1c4c60):
-// the lock checks the Surface and its producer, allocates the scratch pixel
-// android::tempMemFor2DVrBits (malloc(1)) if there is none, points a 1x1 opaque RGBA bitmap
+// the lock checks the Surface and its producer, sets the scratch pixel
+// android::tempMemFor2DVrBits if there is none, points a 1x1 opaque RGBA bitmap
 // (SkBitmap::setInfo with the row bytes of PIXEL_FORMAT_RGBX_8888, SkBitmap::setPixels) at it
 // and installs the bitmap on the Java canvas, then keeps an extra Surface reference until
-// ExtSurfaceImpl's finally block releases it; the unlock detaches the bitmap and frees the
-// scratch pixel. Whatever the view hierarchy draws in that mode is discarded, on the factory as
-// here. As on the factory the 4-byte pixel lives in a malloc(1) block (the allocator rounds it
-// up to its smallest size class) and the block is shared by all 2D VR canvases of the process,
-// which lock, draw and unlock in turn on their UI thread.
+// ExtSurfaceImpl's finally block releases it; the unlock detaches the bitmap. Whatever the view
+// hierarchy draws in that mode is discarded, on the factory as here.
+//
+// Deliberate safety deviation: the factory sets tempMemFor2DVrBits = malloc(1) on the lock (a
+// 1-byte block for a 4-byte RGBA pixel, a 3-byte heap overflow when the canvas draws) and frees
+// it on every unlock (a use-after-free for another canvas still drawing into it). Here the
+// global points to a static 4-byte block that is never freed; the call sequence (set if null on
+// the lock, setPixels(tempMemFor2DVrBits)) and the exported symbol are kept.
 
 #include "jni.h"
 #include <nativehelper/JNIHelp.h>
@@ -45,15 +48,15 @@
 #include <SkBitmap.h>
 #include <SkImageInfo.h>
 
-#include <stdlib.h>
-
 namespace android {
 
 int register_android_view_ExtSurfaceImpl(JNIEnv* env);
 
 static const void* sRefBaseOwner;
 
-// Scratch pixel of the 2D VR canvases (factory global android::tempMemFor2DVrBits).
+// Scratch pixel of the 2D VR canvases (factory global android::tempMemFor2DVrBits; see the
+// safety deviation above: a static RGBA pixel instead of malloc(1)/free).
+static uint32_t sTempMemFor2DVrPixel;
 void* tempMemFor2DVrBits = nullptr;
 
 } // namespace android
@@ -70,7 +73,7 @@ Java_android_view_ExtSurfaceImpl_nativeLockCanvasFor2DVr(JNIEnv* env, jclass /* 
     }
 
     if (tempMemFor2DVrBits == nullptr) {
-        tempMemFor2DVrBits = malloc(1);
+        tempMemFor2DVrBits = &sTempMemFor2DVrPixel;
     }
     SkImageInfo info = SkImageInfo::Make(1, 1, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
     SkBitmap bitmap;
@@ -95,10 +98,6 @@ Java_android_view_ExtSurfaceImpl_nativeUnlockCanvasAndPostFor2DVr(JNIEnv* env,
     // detach the canvas from the bitmap; nothing is queued to the producer
     Canvas* nativeCanvas = GraphicsJNI::getNativeCanvas(env, canvasObj);
     nativeCanvas->setBitmap(SkBitmap());
-    if (tempMemFor2DVrBits != nullptr) {
-        free(tempMemFor2DVrBits);
-        tempMemFor2DVrBits = nullptr;
-    }
 }
 
 extern "C" JNIEXPORT void JNICALL
