@@ -3,11 +3,16 @@
 package com.android.server.wm;
 
 import android.graphics.Rect;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteCallback;
+import android.text.TextUtils;
 import android.util.Slog;
 
+import com.android.internal.app.RunningAppInfo;
+import com.android.internal.app.ScenesStateListener;
+import com.android.internal.os.BackgroundThread;
 import com.android.server.api.ApiLayerService;
 
 import java.util.ArrayList;
@@ -17,12 +22,11 @@ import java.util.List;
  * PICO window manager service extension (factory PICO OS 5.13.7
  * com.android.server.wm.ExtWindowManagerServiceImpl): the PICO IWindowManager transactions, the
  * IME target/visibility relay from InputMethodManagerService, the display frame of the IME
- * target of selected apps, the disabled strict-mode border and SystemExt display focus.
+ * target of selected apps, the disabled strict-mode border, SystemExt display focus and the
+ * visible app callbacks (fed by a scenes state listener on the API layer).
  *
- * Not ported: the factory ScenesStateListener registered on ApiLayerService (it fills the
- * visible app list sent to the {@link #CODE_REGISTER_VISIBLE_APP_CHANGED_CALLBACK} callbacks;
- * the Source API layer has no scenes listener yet) and {@link #CODE_ENABLE_DEBUG}, which needs
- * the runtime-switchable WM/AM/ATM debug configuration of the factory.
+ * Not ported: {@link #CODE_ENABLE_DEBUG}, which needs the runtime-switchable WM/AM/ATM debug
+ * configuration of the factory.
  */
 public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
     public static final int CODE_ENABLE_DEBUG = 10001;
@@ -34,6 +38,7 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
 
     private WindowManagerService mBase;
     private List<RemoteCallback> mVisibleAppChangedCallbackList = new ArrayList<>();
+    private ScenesStateListener mScenesStateListener = new VisibleAppListener();
 
     static {
         sAdjustGetDisplayFrameList.add("com.xwms.pplevel");
@@ -41,6 +46,7 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
 
     public ExtWindowManagerServiceImpl(WindowManagerService base) {
         mBase = base;
+        ApiLayerService.getInstance().registerScenesStateListener(mScenesStateListener);
     }
 
     /** Called by WindowManagerService.onTransact for codes IWindowManager does not know. */
@@ -110,6 +116,64 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
     private void registerVisibleAppChangedCallback(RemoteCallback callback) {
         synchronized (mVisibleAppChangedCallbackList) {
             mVisibleAppChangedCallbackList.add(callback);
+        }
+    }
+
+    /**
+     * Keeps the visible apps (the shown 3D app and the visible 2D apps), the seethrough state
+     * and the XR runtime display state, and sends them to the registered callbacks
+     * ("visible_app_list", "seethrough_status", "xr_runtime_display_state") on every change
+     * (factory anonymous ExtWindowManagerServiceImpl$1).
+     */
+    private class VisibleAppListener implements ScenesStateListener {
+        private int mSeethroughState;
+        private String mShowing3dApp;
+        private List<String> mVisible2dAppList = new ArrayList<>();
+        private int mXrRuntimeDisplayState;
+
+        @Override
+        public void onRunning2dAppChanged(List<RunningAppInfo> visible2dAppList) {
+            List<String> visible2dApps = new ArrayList<>();
+            for (RunningAppInfo info : visible2dAppList) {
+                if (info != null && info.visible && !TextUtils.isEmpty(info.packageName)) {
+                    visible2dApps.add(info.packageName);
+                }
+            }
+            mVisible2dAppList.clear();
+            mVisible2dAppList.addAll(visible2dApps);
+            dispatchVisibleAppChanged();
+        }
+
+        @Override
+        public void on3dAppDisplayStateChanged(String showing3dApp, int xrRuntimeDisplayState) {
+            mShowing3dApp = showing3dApp;
+            mXrRuntimeDisplayState = xrRuntimeDisplayState;
+            dispatchVisibleAppChanged();
+        }
+
+        @Override
+        public void onSeethroughStateChanged(int state) {
+            mSeethroughState = state;
+            dispatchVisibleAppChanged();
+        }
+
+        private void dispatchVisibleAppChanged() {
+            ArrayList<String> visibleAppList = new ArrayList<>();
+            if (!TextUtils.isEmpty(mShowing3dApp)) {
+                visibleAppList.add(mShowing3dApp);
+            }
+            visibleAppList.addAll(mVisible2dAppList);
+            final Bundle result = new Bundle();
+            result.putStringArrayList("visible_app_list", visibleAppList);
+            result.putInt("seethrough_status", mSeethroughState);
+            result.putInt("xr_runtime_display_state", mXrRuntimeDisplayState);
+            BackgroundThread.getHandler().post(() -> {
+                synchronized (mVisibleAppChangedCallbackList) {
+                    for (RemoteCallback callback : mVisibleAppChangedCallbackList) {
+                        callback.sendResult(result);
+                    }
+                }
+            });
         }
     }
 
