@@ -21,6 +21,7 @@
 #include "Properties.h"
 #include "Readback.h"
 #include "Rect.h"
+#include "RenderMonitor.h"
 #include "WebViewFunctorManager.h"
 #include "pipeline/skia/SkiaOpenGLPipeline.h"
 #include "pipeline/skia/VectorDrawableAtlas.h"
@@ -324,6 +325,22 @@ int RenderProxy::copySurfaceInto(sp<Surface>& surface, int left, int top, int ri
     return static_cast<int>(thread.queue().runSync([&]() -> auto {
         return thread.readback().copySurfaceInto(*surface, Rect(left, top, right, bottom), bitmap);
     }));
+}
+
+void RenderProxy::notifyMonitorStatsChanged(bool enabled) {
+    if (!RenderThread::hasInstance()) return;
+    RenderThread& thread = RenderThread::getInstance();
+    thread.queue().post([&thread, enabled]() {
+        thread.renderMonitor()->notifyMonitorStatsChanged(enabled);
+    });
+}
+
+void RenderProxy::doAnimation(long durationMs) {
+    if (!RenderThread::hasInstance()) return;
+    RenderThread& thread = RenderThread::getInstance();
+    thread.queue().post([&thread, durationMs]() {
+        thread.renderMonitor()->doAnimation(durationMs);
+    });
 }
 
 void RenderProxy::prepareToDraw(Bitmap& bitmap) {

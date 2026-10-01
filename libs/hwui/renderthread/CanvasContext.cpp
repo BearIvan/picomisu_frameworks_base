@@ -23,6 +23,7 @@
 #include "Frame.h"
 #include "LayerUpdateQueue.h"
 #include "Properties.h"
+#include "RenderMonitor.h"
 #include "RenderThread.h"
 #include "hwui/Canvas.h"
 #include "pipeline/skia/SkiaOpenGLPipeline.h"
@@ -521,6 +522,7 @@ void CanvasContext::draw() {
     }
 
     mJankTracker.finishFrame(*mCurrentFrameInfo);
+    mRenderThread.renderMonitor()->addFrame(*mCurrentFrameInfo, mName);
     if (CC_UNLIKELY(mFrameMetricsReporter.get() != nullptr)) {
         mFrameMetricsReporter->reportFrameMetrics(mCurrentFrameInfo->data());
     }
@@ -642,6 +644,9 @@ void CanvasContext::resetFrameStats() {
 
 void CanvasContext::setName(const std::string&& name) {
     mJankTracker.setDescription(JankTrackerType::Window, std::move(name));
+    // PICO: the window name also goes to RenderMonitor and the pipeline.
+    mName = name;
+    mRenderPipeline->setName(mName);
 }
 
 void CanvasContext::waitOnFences() {

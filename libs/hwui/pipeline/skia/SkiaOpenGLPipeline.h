@@ -48,6 +48,7 @@ public:
     void onStop() override;
     bool isSurfaceReady() override;
     bool isContextReady() override;
+    void setName(const std::string& name) override;
 
     static void invokeFunctor(const renderthread::RenderThread& thread, Functor* functor);
 
@@ -58,6 +59,8 @@ private:
     renderthread::EglManager& mEglManager;
     EGLSurface mEglSurface = EGL_NO_SURFACE;
     bool mBufferPreserved = false;
+    // PICO: the window name (CanvasContext::setName), for the no-surface diagnostic.
+    std::string mName;
 };
 
 } /* namespace skiapipeline */

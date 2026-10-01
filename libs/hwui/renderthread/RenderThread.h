@@ -57,6 +57,7 @@ namespace renderthread {
 
 class CanvasContext;
 class EglManager;
+class RenderMonitor;
 class RenderProxy;
 class VulkanManager;
 
@@ -88,6 +89,9 @@ public:
     static JVMAttachHook getOnStartHook();
 
     WorkQueue& queue() { return ThreadBase::queue(); }
+
+    // PICO: the frame monitor of this render thread.
+    RenderMonitor* renderMonitor() { return mRenderMonitor; }
 
     // Mimics android.view.Choreographer
     void postFrameCallback(IFrameCallback* callback);
@@ -132,6 +136,7 @@ protected:
 
 private:
     friend class DispatchFrameCallbacks;
+    friend class RenderMonitor;
     friend class RenderProxy;
     friend class DummyVsyncSource;
     friend class android::AutoBackendTextureRelease;
@@ -175,6 +180,8 @@ private:
     sk_sp<GrContext> mGrContext;
     CacheManager* mCacheManager;
     VulkanManager* mVkManager;
+
+    RenderMonitor* mRenderMonitor = nullptr;
 };
 
 } /* namespace renderthread */

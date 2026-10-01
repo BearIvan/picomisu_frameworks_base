@@ -51,6 +51,9 @@ enum class FrameInfoIndex {
     DequeueBufferDuration,
     QueueBufferDuration,
 
+    // PICO: wall clock (SYSTEM_TIME_REALTIME) time of the frame, set by RenderMonitor.
+    FrameCompletedWallTime,
+
     // Must be the last value!
     // Also must be kept in sync with FrameMetrics.java#FRAME_STATS_COUNT
     NumIndexes

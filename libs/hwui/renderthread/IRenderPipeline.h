@@ -26,6 +26,8 @@
 #include <SkRect.h>
 #include <utils/RefBase.h>
 
+#include <string>
+
 class GrContext;
 
 struct ANativeWindow;
@@ -88,6 +90,8 @@ public:
             const std::function<void(sk_sp<SkPicture>&&)>& callback) = 0;
 
     virtual ~IRenderPipeline() {}
+    // PICO: the window name, for the pipeline's diagnostics.
+    virtual void setName(const std::string& name) {}
 };
 
 } /* namespace renderthread */

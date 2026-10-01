@@ -144,6 +144,10 @@ public:
                                            int bottom, SkBitmap* bitmap);
     ANDROID_API static void prepareToDraw(Bitmap& bitmap);
 
+    // PICO: RenderMonitor controls (ThreadedRenderer nNotifyMonitorStatsChanged / nDoAnimation).
+    ANDROID_API void notifyMonitorStatsChanged(bool enabled);
+    ANDROID_API void doAnimation(long durationMs);
+
     static int copyHWBitmapInto(Bitmap* hwBitmap, SkBitmap* bitmap);
 
     ANDROID_API static void disableVsync();

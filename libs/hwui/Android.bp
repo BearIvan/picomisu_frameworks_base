@@ -186,6 +186,7 @@ cc_defaults {
         "renderthread/VulkanSurface.cpp",
         "renderthread/RenderProxy.cpp",
         "renderthread/RenderTask.cpp",
+        "renderthread/RenderMonitor.cpp",
         "renderthread/RenderThread.cpp",
         "renderthread/TimeLord.cpp",
         "renderthread/Frame.cpp",

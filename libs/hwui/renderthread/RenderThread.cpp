@@ -21,6 +21,7 @@
 #include "DeviceInfo.h"
 #include "EglManager.h"
 #include "Readback.h"
+#include "RenderMonitor.h"
 #include "RenderProxy.h"
 #include "VulkanManager.h"
 #include "hwui/Bitmap.h"
@@ -191,6 +192,7 @@ void RenderThread::setupFrameInterval() {
     nsecs_t frameIntervalNanos = static_cast<nsecs_t>(1000000000 / displayInfo.fps);
     mTimeLord.setFrameInterval(frameIntervalNanos);
     mDispatchFrameDelay = static_cast<nsecs_t>(frameIntervalNanos * .25f);
+    mRenderMonitor->setFrameInterval(frameIntervalNanos);
 }
 
 void RenderThread::requireGlContext() {
@@ -363,6 +365,7 @@ bool RenderThread::threadLoop() {
     if (gOnStartHook) {
         gOnStartHook("RenderThread");
     }
+    mRenderMonitor = new RenderMonitor();
     initThreadLocals();
 
     while (true) {

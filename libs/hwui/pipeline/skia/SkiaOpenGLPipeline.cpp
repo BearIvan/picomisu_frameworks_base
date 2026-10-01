@@ -64,8 +64,12 @@ MakeCurrentResult SkiaOpenGLPipeline::makeCurrent() {
 
 Frame SkiaOpenGLPipeline::getFrame() {
     LOG_ALWAYS_FATAL_IF(mEglSurface == EGL_NO_SURFACE,
-                        "drawRenderNode called on a context with no surface!");
+                        "drawRenderNode called on a context with no surface! %s", mName.c_str());
     return mEglManager.beginFrame(mEglSurface);
+}
+
+void SkiaOpenGLPipeline::setName(const std::string& name) {
+    mName = name;
 }
 
 bool SkiaOpenGLPipeline::draw(const Frame& frame, const SkRect& screenDirty, const SkRect& dirty,
