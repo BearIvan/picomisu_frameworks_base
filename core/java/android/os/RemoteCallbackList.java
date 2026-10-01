@@ -59,16 +59,33 @@ public class RemoteCallbackList<E extends IInterface> {
             = new ArrayMap<IBinder, Callback>();
     private Object[] mActiveBroadcast;
     private int mBroadcastCount = -1;
-    private boolean mKilled = false;
+    /**
+     * Protected (factory PICO OS 5.13.7) so that {@link RemoteCallbackListSmtEx} can read it.
+     * @hide
+     */
+    protected boolean mKilled = false;
     private StringBuilder mRecentCallers;
 
-    private final class Callback implements IBinder.DeathRecipient {
+    /**
+     * Protected (factory PICO OS 5.13.7): returned by {@link #getBroadcastCallback}.
+     * @hide
+     */
+    protected final class Callback implements IBinder.DeathRecipient {
+        // Smartisan (factory): pid/uid of the registering process.
+        final RemoteCallbackListSmtEx.CallbackSmtEx callbackSmtEx =
+                new RemoteCallbackListSmtEx.CallbackSmtEx();
         final E mCallback;
         final Object mCookie;
 
         Callback(E callback, Object cookie) {
+            this(callback, cookie, 0, 0);
+        }
+
+        Callback(E callback, Object cookie, int pid, int uid) {
             mCallback = callback;
             mCookie = cookie;
+            callbackSmtEx.setPid(pid);
+            callbackSmtEx.setUid(uid);
         }
 
         public void binderDied() {
@@ -76,6 +93,10 @@ public class RemoteCallbackList<E extends IInterface> {
                 mCallbacks.remove(mCallback.asBinder());
             }
             onCallbackDied(mCallback, mCookie);
+        }
+
+        RemoteCallbackListSmtEx.CallbackSmtEx getSmtEx() {
+            return callbackSmtEx;
         }
     }
 
@@ -114,6 +135,15 @@ public class RemoteCallbackList<E extends IInterface> {
      * @see #onCallbackDied
      */
     public boolean register(E callback, Object cookie) {
+        return register(callback, cookie, 0, 0);
+    }
+
+    /**
+     * Factory PICO OS 5.13.7 (Smartisan): {@link #register(E, Object)} that also records the
+     * pid and uid of the registering process (see {@link RemoteCallbackListSmtEx}).
+     * @hide
+     */
+    public boolean register(E callback, Object cookie, int pid, int uid) {
         synchronized (mCallbacks) {
             if (mKilled) {
                 return false;
@@ -122,7 +152,8 @@ public class RemoteCallbackList<E extends IInterface> {
             logExcessiveCallbacks();
             IBinder binder = callback.asBinder();
             try {
-                Callback cb = new Callback(callback, cookie);
+                Callback cb = new Callback(callback, cookie, pid, uid);
+                unregister(callback);
                 binder.linkToDeath(cb, 0);
                 mCallbacks.put(binder, cb);
                 return true;
@@ -447,5 +478,18 @@ public class RemoteCallbackList<E extends IInterface> {
                 }
             }
         }
+    }
+
+    /**
+     * Factory PICO OS 5.13.7 (Smartisan): the record of the item at {@code index} of the
+     * current broadcast, or null.
+     * @hide
+     */
+    public Callback getBroadcastCallback(int index) {
+        Object[] active = mActiveBroadcast;
+        if (active == null || active.length <= index) {
+            return null;
+        }
+        return (Callback) active[index];
     }
 }

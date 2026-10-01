@@ -46,12 +46,14 @@ import android.content.pm.UserInfo;
 import android.database.ContentObserver;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Process;
 import android.os.RemoteCallbackList;
+import android.os.RemoteCallbackListSmtEx;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.SystemProperties;
@@ -59,6 +61,7 @@ import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.UserManagerInternal;
 import android.os.UserManagerInternal.UserRestrictionsListener;
+import android.pico.utils.Features;
 import android.provider.Settings;
 import android.provider.Settings.SettingNotFoundException;
 import android.text.TextUtils;
@@ -87,7 +90,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 class BluetoothManagerService extends IBluetoothManager.Stub {
     private static final String TAG = "BluetoothManagerService";
-    private static final boolean DBG = true;
+    // Package access (factory): read by BluetoothManagerServiceSmtEx.
+    static final boolean DBG = true;
 
     private static final String BLUETOOTH_ADMIN_PERM = android.Manifest.permission.BLUETOOTH_ADMIN;
     private static final String BLUETOOTH_PERM = android.Manifest.permission.BLUETOOTH;
@@ -155,12 +159,12 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
     private String mAddress;
     private String mName;
     private final ContentResolver mContentResolver;
-    private final RemoteCallbackList<IBluetoothManagerCallback> mCallbacks;
+    final RemoteCallbackList<IBluetoothManagerCallback> mCallbacks;
     private final RemoteCallbackList<IBluetoothStateChangeCallback> mStateChangeCallbacks;
     private IBinder mBluetoothBinder;
-    private IBluetooth mBluetooth;
-    private IBluetoothGatt mBluetoothGatt;
-    private final ReentrantReadWriteLock mBluetoothLock = new ReentrantReadWriteLock();
+    IBluetooth mBluetooth;
+    IBluetoothGatt mBluetoothGatt;
+    final ReentrantReadWriteLock mBluetoothLock = new ReentrantReadWriteLock();
     private boolean mBinding;
     private boolean mUnbinding;
     private boolean mTryBindOnBindTimeout = false;
@@ -211,8 +215,10 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
     private Map<IBinder, ClientDeathRecipient> mBleApps =
             new ConcurrentHashMap<IBinder, ClientDeathRecipient>();
 
-    private int mState;
+    int mState;
     private final BluetoothHandler mHandler;
+    // Smartisan (factory): app freezer support, see BluetoothManagerServiceSmtEx.
+    private BluetoothManagerServiceSmtEx mSmtEx;
     private int mErrorRecoveryRetryCounter;
     private final int mSystemUiUid;
 
@@ -497,20 +503,24 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
         }
 
         int systemUiUid = -1;
-        try {
-            // Check if device is configured with no home screen, which implies no SystemUI.
-            boolean noHome = mContext.getResources().getBoolean(R.bool.config_noHomeScreen);
-            if (!noHome) {
-                systemUiUid = mContext.getPackageManager()
-                        .getPackageUidAsUser("com.android.systemui", PackageManager.MATCH_SYSTEM_ONLY,
-                                UserHandle.USER_SYSTEM);
+        // PICO (factory): no SystemUI uid lookup when SystemUI is disabled.
+        if (!Features.disableSystemUI()) {
+            try {
+                // Check if device is configured with no home screen, which implies no SystemUI.
+                boolean noHome = mContext.getResources().getBoolean(R.bool.config_noHomeScreen);
+                if (!noHome) {
+                    systemUiUid = mContext.getPackageManager()
+                            .getPackageUidAsUser("com.android.systemui",
+                                    PackageManager.MATCH_SYSTEM_ONLY, UserHandle.USER_SYSTEM);
+                }
+                Slog.d(TAG, "Detected SystemUiUid: " + Integer.toString(systemUiUid));
+            } catch (PackageManager.NameNotFoundException e) {
+                // Some platforms, such as wearables do not have a system ui.
+                Slog.w(TAG, "Unable to resolve SystemUI's UID.", e);
             }
-            Slog.d(TAG, "Detected SystemUiUid: " + Integer.toString(systemUiUid));
-        } catch (PackageManager.NameNotFoundException e) {
-            // Some platforms, such as wearables do not have a system ui.
-            Slog.w(TAG, "Unable to resolve SystemUI's UID.", e);
         }
         mSystemUiUid = systemUiUid;
+        mSmtEx = new BluetoothManagerServiceSmtEx(this, mHandler);
     }
 
     /**
@@ -633,8 +643,13 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
             Slog.w(TAG, "Callback is null in registerAdapter");
             return null;
         }
+        // Smartisan (factory): remember the caller for the app freezer.
+        int pid = Binder.getCallingPid();
+        int uid = Binder.getCallingUid();
         Message msg = mHandler.obtainMessage(MESSAGE_REGISTER_ADAPTER);
         msg.obj = callback;
+        msg.arg1 = pid;
+        msg.arg2 = uid;
         mHandler.sendMessage(msg);
 
         return mBluetooth;
@@ -1236,6 +1251,7 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
             } else {
                 mUnbinding = false;
             }
+            mSmtEx.unregisterBleCallback();
             mBluetoothGatt = null;
         } finally {
             mBluetoothLock.writeLock().unlock();
@@ -1612,6 +1628,11 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
             for (int i = 0; i < n; i++) {
                 try {
                     mCallbacks.getBroadcastItem(i).onBluetoothServiceUp(mBluetooth);
+                } catch (FrozenObjectException e) {
+                    // Smartisan (factory): deliver the state when the app is unfrozen.
+                    getSmtEx().pendingBluetoothState(
+                            RemoteCallbackListSmtEx.getRegisteredCallbackPid(mCallbacks, i),
+                            RemoteCallbackListSmtEx.getRegisteredCallbackUid(mCallbacks, i));
                 } catch (RemoteException e) {
                     Slog.e(TAG, "Unable to call onBluetoothServiceUp() on callback #" + i, e);
                 }
@@ -1632,6 +1653,11 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
             for (int i = 0; i < n; i++) {
                 try {
                     mCallbacks.getBroadcastItem(i).onBluetoothServiceDown();
+                } catch (FrozenObjectException e) {
+                    // Smartisan (factory): deliver the state when the app is unfrozen.
+                    getSmtEx().pendingBluetoothState(
+                            RemoteCallbackListSmtEx.getRegisteredCallbackPid(mCallbacks, i),
+                            RemoteCallbackListSmtEx.getRegisteredCallbackUid(mCallbacks, i));
                 } catch (RemoteException e) {
                     Slog.e(TAG, "Unable to call onBluetoothServiceDown() on callback #" + i, e);
                 }
@@ -1967,7 +1993,8 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                 case MESSAGE_REGISTER_ADAPTER: {
                     if (DBG) Slog.d(TAG,"MESSAGE_REGISTER_ADAPTER");
                     IBluetoothManagerCallback callback = (IBluetoothManagerCallback) msg.obj;
-                    mCallbacks.register(callback);
+                    // Smartisan (factory): arg1/arg2 = caller pid/uid (registerAdapter).
+                    mCallbacks.register(callback, null, msg.arg1, msg.arg2);
                     break;
                 }
                 case MESSAGE_UNREGISTER_ADAPTER: {
@@ -2026,6 +2053,7 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                         if (msg.arg1 == SERVICE_IBLUETOOTHGATT) {
                             mBluetoothGatt =
                                     IBluetoothGatt.Stub.asInterface(Binder.allowBlocking(service));
+                            mSmtEx.registerBleCallback();
                             continueFromBleOnState();
                             break;
                         } // else must be SERVICE_IBLUETOOTH
@@ -2237,6 +2265,7 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                             if (mBluetooth != null) {
                                 mBluetooth.unregisterCallback(mBluetoothCallback);
                             }
+                            mSmtEx.unregisterBleCallback();
                         } catch (RemoteException re) {
                             Slog.e(TAG, "Unable to unregister", re);
                         } finally {
@@ -2340,7 +2369,11 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                         }
                         handleEnable(mQuietEnable);
                     }
+                    // No break: falls through to the Smartisan handler, as in the factory.
                 }
+                default:
+                    // Smartisan (factory): MESSAGE_APP_UNFREEZE_CALLBACK.
+                    getSmtEx().handleMessage(msg);
             }
         }
     }
@@ -2611,6 +2644,7 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                 //Unregister callback object
                 mBluetooth.unregisterCallback(mBluetoothCallback);
             }
+            mSmtEx.unregisterBleCallback();
         } catch (RemoteException re) {
             Slog.e(TAG, "Unable to unregister", re);
         } finally {
@@ -2772,5 +2806,10 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
             case BluetoothProtoEnums.ENABLE_DISABLE_REASON_UNSPECIFIED:
             default: return "UNKNOWN[" + reason + "]";
         }
+    }
+
+    // Smartisan (factory).
+    public BluetoothManagerServiceSmtEx getSmtEx() {
+        return mSmtEx;
     }
 }
