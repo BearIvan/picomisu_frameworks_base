@@ -123,11 +123,11 @@ public class PermissionManagerService {
     private static final String TAG = "PackageManager";
 
     /** Permission grant: not grant the permission. */
-    private static final int GRANT_DENIED = 1;
+    static final int GRANT_DENIED = 1;
     /** Permission grant: grant the permission as an install permission. */
-    private static final int GRANT_INSTALL = 2;
+    static final int GRANT_INSTALL = 2;
     /** Permission grant: grant the permission as a runtime one. */
-    private static final int GRANT_RUNTIME = 3;
+    static final int GRANT_RUNTIME = 3;
     /** Permission grant: grant as runtime a permission that was granted as an install time one. */
     private static final int GRANT_UPGRADE = 4;
 
@@ -223,6 +223,9 @@ public class PermissionManagerService {
     @GuardedBy("mLock")
     final private ArrayList<OnRuntimePermissionStateChangedListener>
             mRuntimePermissionStateChangedListeners = new ArrayList<>();
+
+    // PICO: factory PICO OS 5.13.7 SYSTEM_ALERT_WINDOW policy for VR / 2D floating apps.
+    private final IExtPermissionManagerService mExt = new ExtPermissionManagerServiceImpl(this);
 
     PermissionManagerService(Context context,
             @NonNull Object externalLock) {
@@ -1042,6 +1045,8 @@ public class PermissionManagerService {
                             + pkg.packageName);
                 }
 
+                grant = mExt.allowAlertWindowAndRevokeInstallPermission(grant, pkg, ps, perm, bp,
+                        origPermissions);
                 if (grant != GRANT_DENIED) {
                     if (!ps.isSystem() && ps.areInstallPermissionsFixed() && !bp.isRuntime()) {
                         // If this is an existing, non-system package, then
@@ -2152,6 +2157,9 @@ public class PermissionManagerService {
         if (bp.isDevelopment()) {
             // Development permissions must be handled specially, since they are not
             // normal runtime permissions.  For now they apply to all users.
+            if (mExt.verifyAlertPermission(pkg, ps, permName, packageName)) {
+                return;
+            }
             if (permissionsState.grantInstallPermission(bp) !=
                     PERMISSION_OPERATION_FAILURE) {
                 if (callback != null) {
