@@ -2051,7 +2051,7 @@ public class NotificationManagerService extends SystemService {
         }
     }
 
-    private void createNotificationChannelGroup(String pkg, int uid, NotificationChannelGroup group,
+    void createNotificationChannelGroup(String pkg, int uid, NotificationChannelGroup group,
             boolean fromApp, boolean fromListener) {
         Preconditions.checkNotNull(group);
         Preconditions.checkNotNull(pkg);
