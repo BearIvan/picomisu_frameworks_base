@@ -21,6 +21,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.UnsupportedAppUsage;
 import android.os.DeadSystemException;
+import android.os.ProcessSmtEx;
 
 import com.android.internal.os.RuntimeInit;
 import com.android.internal.util.FastPrintWriter;
@@ -131,6 +132,9 @@ public final class Log {
      * @param msg The message you would like logged.
      */
     public static int v(@Nullable String tag, @NonNull String msg) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return println_native(LOG_ID_MAIN, VERBOSE, tag, msg);
     }
 
@@ -142,6 +146,9 @@ public final class Log {
      * @param tr An exception to log
      */
     public static int v(@Nullable String tag, @Nullable String msg, @Nullable Throwable tr) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return printlns(LOG_ID_MAIN, VERBOSE, tag, msg, tr);
     }
 
@@ -152,6 +159,9 @@ public final class Log {
      * @param msg The message you would like logged.
      */
     public static int d(@Nullable String tag, @NonNull String msg) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return println_native(LOG_ID_MAIN, DEBUG, tag, msg);
     }
 
@@ -163,6 +173,9 @@ public final class Log {
      * @param tr An exception to log
      */
     public static int d(@Nullable String tag, @Nullable String msg, @Nullable Throwable tr) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return printlns(LOG_ID_MAIN, DEBUG, tag, msg, tr);
     }
 

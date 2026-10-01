@@ -18,6 +18,7 @@ package android.util;
 
 import android.annotation.UnsupportedAppUsage;
 import android.os.Build;
+import android.os.ProcessSmtEx;
 
 /**
  * @hide
@@ -29,31 +30,49 @@ public final class Slog {
 
     @UnsupportedAppUsage
     public static int v(String tag, String msg) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return Log.println_native(Log.LOG_ID_SYSTEM, Log.VERBOSE, tag, msg);
     }
 
     public static int v(String tag, String msg, Throwable tr) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return Log.println_native(Log.LOG_ID_SYSTEM, Log.VERBOSE, tag,
                 msg + '\n' + Log.getStackTraceString(tr));
     }
 
     @UnsupportedAppUsage
     public static int d(String tag, String msg) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return Log.println_native(Log.LOG_ID_SYSTEM, Log.DEBUG, tag, msg);
     }
 
     @UnsupportedAppUsage
     public static int d(String tag, String msg, Throwable tr) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return Log.println_native(Log.LOG_ID_SYSTEM, Log.DEBUG, tag,
                 msg + '\n' + Log.getStackTraceString(tr));
     }
 
     @UnsupportedAppUsage
     public static int i(String tag, String msg) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return Log.println_native(Log.LOG_ID_SYSTEM, Log.INFO, tag, msg);
     }
 
     public static int i(String tag, String msg, Throwable tr) {
+        if (!ProcessSmtEx.isDebugApp) {
+            return 0;
+        }
         return Log.println_native(Log.LOG_ID_SYSTEM, Log.INFO, tag,
                 msg + '\n' + Log.getStackTraceString(tr));
     }
