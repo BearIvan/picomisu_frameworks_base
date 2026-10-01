@@ -311,6 +311,9 @@ public class Camera {
                 }
             }
         }
+        if (exposeAuxCamera == false && !ActivityThread.isSystem()) {
+            return 0;
+        }
         int numberOfCameras = _getNumberOfCameras();
         if (exposeAuxCamera == false && (numberOfCameras > 2)) {
             numberOfCameras = 2;
