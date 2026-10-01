@@ -223,8 +223,10 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
         return;
     }
 
+    // PICO OS 5.13.7: only SP_DEFAULT selects the foreground default; the negative PICO
+    // policies (SP_BG_3RD_APP, SP_PREFETCH_VR_APP) are applied as they are.
     bool isDefault = false;
-    if (grp < 0) {
+    if (grp == SP_DEFAULT) {
         grp = SP_FOREGROUND;
         isDefault = true;
     }
@@ -276,7 +278,8 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
 
         if (t_pri <= ANDROID_PRIORITY_AUDIO) {
             int scheduler = sched_getscheduler(t_pid) & ~SCHED_RESET_ON_FORK;
-            if ((scheduler == SCHED_FIFO) || (scheduler == SCHED_RR)) {
+            // PICO OS 5.13.7: SP_BG_3RD_APP also moves the real-time threads.
+            if (((scheduler == SCHED_FIFO) || (scheduler == SCHED_RR)) && sp != SP_BG_3RD_APP) {
                 // This task wants to stay in its current audio group so it can keep its budget
                 // don't update its cpuset or cgroup
                 continue;
