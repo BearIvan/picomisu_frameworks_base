@@ -85,6 +85,8 @@ java_defaults {
         "core/java/android/dvr/IVirtualInputService.aidl",
         "core/java/android/os/IDeviceIdleControllerSmtEx.aidl",
         "core/java/android/os/IPowerAdvisor.aidl",
+        "core/java/android/os/IPowerManagerMonitorEx.aidl",
+        "core/java/android/os/IPowerManagerSmtEx.aidl",
         "core/java/android/pc/ISmtPCManager.aidl",
         "core/java/android/view/IWindowSessionSmtEx.aidl",
         "core/java/com/android/internal/app/IBatteryStatsOptEx.aidl",
