@@ -249,6 +249,9 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     // TODO: Remove once unification is complete.
     ActivityDisplay mAcitvityDisplay;
 
+    /** PICO display extension (factory IExtDisplayContent). */
+    private IExtDisplayContent mExt;
+
     /** The containers below are the only child containers the display can have. */
     // Contains all window containers that are related to apps (Activities)
     private final TaskStackContainers mTaskStackContainers = new TaskStackContainers(mWmService);
@@ -894,6 +897,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     DisplayContent(Display display, WindowManagerService service,
             ActivityDisplay activityDisplay) {
         super(service);
+        mExt = new ExtDisplayContentImpl(this);
         mAcitvityDisplay = activityDisplay;
         if (service.mRoot.getDisplayContent(display.getDisplayId()) != null) {
             throw new IllegalArgumentException("Display with ID=" + display.getDisplayId()
@@ -2605,16 +2609,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         }
 
         mWmService.mWindowPlacerLocked.requestTraversal();
-        // PICO (factory ExtDisplayContentImpl.removeImmediately): the input method client of a
-        // removed 2D app display is removed from InputMethodManagerService.
-        if (android.pico.utils.Features.isPvr2DEnabled()) {
-            final android.os.IBinder imms = android.os.ServiceManager.checkService(
-                    android.content.Context.INPUT_METHOD_SERVICE);
-            if (imms instanceof com.android.server.inputmethod.InputMethodManagerService) {
-                ((com.android.server.inputmethod.InputMethodManagerService) imms)
-                        .onPicoDisplayContentDestroy(mDisplayId);
-            }
-        }
+        // PICO (factory): the input method client of the removed display is cleaned up.
+        getExt().removeImmediately();
+    }
+
+    public IExtDisplayContent getExt() {
+        return mExt;
     }
 
     /** Returns true if a removal action is still being deferred. */
