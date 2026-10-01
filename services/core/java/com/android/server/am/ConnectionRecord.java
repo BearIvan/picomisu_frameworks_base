@@ -47,6 +47,8 @@ final class ConnectionRecord {
     public AssociationState.SourceState association; // Association tracking
     String stringName;              // Caching of toString.
     boolean serviceDead;            // Well is it?
+    // Smartisan connection extension (factory PICO OS 5.13.7).
+    private final ConnectionRecordSmtEx mConnectionRecordSmtEx = new ConnectionRecordSmtEx();
 
     // Please keep the following two enum list synced.
     private static final int[] BIND_ORIG_ENUMS = new int[] {
@@ -249,5 +251,10 @@ final class ConnectionRecord {
             proto.write(ConnectionRecordProto.SERVICE_NAME, binding.service.shortInstanceName);
         }
         proto.end(token);
+    }
+
+    /** Smartisan connection extension (factory PICO OS 5.13.7). */
+    public ConnectionRecordSmtEx getSmtEx() {
+        return mConnectionRecordSmtEx;
     }
 }

@@ -59,6 +59,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.DeadObjectException;
+import android.os.FrozenObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -93,6 +94,7 @@ import com.android.internal.util.DumpUtils;
 import com.android.internal.util.FastPrintWriter;
 import com.android.server.AppStateTracker;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.am.ActivityManagerService.ItemMatcher;
 import com.android.server.uri.NeededUriGrants;
@@ -449,13 +451,17 @@ public final class ActiveServices {
                 + " type=" + resolvedType + " args=" + service.getExtras());
 
         final boolean callerFg;
+        // Smartisan (factory): also find a frozen caller.
+        final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller, true);
         if (caller != null) {
-            final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller);
             if (callerApp == null) {
                 throw new SecurityException(
                         "Unable to find app for caller " + caller
                         + " (pid=" + callingPid
                         + ") when starting service " + service);
+            }
+            if (callerApp.getSmtEx().inFreezeStat()) {
+                return null;
             }
             callerFg = callerApp.setSchedGroup != ProcessList.SCHED_GROUP_BACKGROUND;
         } else {
@@ -555,6 +561,14 @@ public final class ActiveServices {
                 UidRecord uidRec = mAm.mProcessList.getUidRecordLocked(r.appInfo.uid);
                 return new ComponentName("?", "app is in background uid " + uidRec);
             }
+        }
+
+        // Smartisan (factory): the process intercept decides whether a service may start its
+        // (not running) process.
+        ProcessRecord targetApp = mAm.getProcessRecordLocked(r.processName, r.appInfo.uid, false);
+        if (targetApp == null && !SysOptBridge.getFactory().getProcessIntercept()
+                .isServiceAllowStart(callerApp, r, callingUid)) {
+            return null;
         }
 
         // At this point we've applied allowed-to-start policy based on whether this was
@@ -790,12 +804,16 @@ public final class ActiveServices {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "stopService: " + service
                 + " type=" + resolvedType);
 
-        final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller);
+        final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller, true);
         if (caller != null && callerApp == null) {
             throw new SecurityException(
                     "Unable to find app for caller " + caller
                     + " (pid=" + Binder.getCallingPid()
                     + ") when stopping service " + service);
+        }
+        // Smartisan (factory): a frozen caller does not stop services.
+        if (caller != null && callerApp.getSmtEx().inFreezeStat()) {
+            return 0;
         }
 
         // If this service is active, make sure it is stopped.
@@ -1597,12 +1615,17 @@ public final class ActiveServices {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "bindService: " + service
                 + " type=" + resolvedType + " conn=" + connection.asBinder()
                 + " flags=0x" + Integer.toHexString(flags));
-        final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller);
+        final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller, true);
         if (callerApp == null) {
             throw new SecurityException(
                     "Unable to find app for caller " + caller
                     + " (pid=" + Binder.getCallingPid()
                     + ") when binding service " + service);
+        }
+        // Smartisan (factory): a frozen caller does not bind services.
+        if (callerApp.getSmtEx().inFreezeStat()) {
+            Slog.w(TAG, "abandon bind service by freeze");
+            return 0;
         }
 
         ActivityServiceConnectionsHolder<ConnectionRecord> activity = null;
@@ -1678,6 +1701,13 @@ public final class ActiveServices {
             return -1;
         }
         ServiceRecord s = res.record;
+        // Smartisan (factory): the process intercept decides whether a binding may start the
+        // (not running) service process.
+        if (mAm.getProcessRecordLocked(s.processName, s.appInfo.uid, false) == null
+                && !SysOptBridge.getFactory().getProcessIntercept().isServiceAllowStart(callerApp,
+                        s, Binder.getCallingUid())) {
+            return 0;
+        }
 
         boolean permissionsReviewRequired = false;
 
@@ -1791,6 +1821,9 @@ public final class ActiveServices {
             ConnectionRecord c = new ConnectionRecord(b, activity,
                     connection, flags, clientLabel, clientIntent,
                     callerApp.uid, callerApp.processName, callingPackage);
+            if ("android.intent.action.JOB_SERVICE".equals(service.getAction())) {
+                c.getSmtEx().connectWithJobService = true;
+            }
 
             IBinder binder = connection.asBinder();
             s.addConnection(binder, c);
@@ -1930,6 +1963,14 @@ public final class ActiveServices {
                                 continue;
                             }
                             if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "Publishing to: " + c);
+                            // Smartisan (factory): thaw a frozen client before the callback.
+                            if (c.binding.client != null
+                                    && c.binding.client.getSmtEx().inFreezeStat()) {
+                                SysOptBridge.getFactory().getApplicationFreezer()
+                                        .unfreezeAppIfNeededLocked(c.binding.client,
+                                                IApplicationFreezer.UnfreezeReason.NEED_SERVICE,
+                                                null, null);
+                            }
                             try {
                                 c.conn.connected(r.name, service, false);
                             } catch (Exception e) {
@@ -2266,6 +2307,9 @@ public final class ActiveServices {
                     res.setService(r);
                     smap.mServicesByInstanceName.put(name, r);
                     smap.mServicesByIntent.put(filter, r);
+                    if (r.app != null && r.app.getSmtEx().firstErrSer != null) {
+                        r.app.getSmtEx().recordName(name, comp, className);
+                    }
 
                     // Make sure this component isn't in the pending list.
                     for (int i=mPendingServices.size()-1; i>=0; i--) {
@@ -2357,6 +2401,8 @@ public final class ActiveServices {
                 stracker.setExecuting(true, mAm.mProcessStats.getMemFactorLocked(), now);
             }
             if (r.app != null) {
+                SysOptBridge.getFactory().getFreezeController().bumpServiceEvent(r.app.uid,
+                        r.app.pid, false, "bumpServiceExecutingLocked = " + r.shortInstanceName);
                 r.app.executingServices.add(r);
                 r.app.execServicesFg |= fg;
                 if (timeoutNeeded && r.app.executingServices.size() == 1) {
@@ -2372,6 +2418,9 @@ public final class ActiveServices {
         r.executeFg |= fg;
         r.executeNesting++;
         r.executingStart = now;
+        if (timeoutNeeded) {
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().monitorService(r);
+        }
     }
 
     private final boolean requestServiceBindingLocked(ServiceRecord r, IntentBindRecord i,
@@ -2652,6 +2701,11 @@ public final class ActiveServices {
     private String bringUpServiceLocked(ServiceRecord r, int intentFlags, boolean execInFg,
             boolean whileRestarting, boolean permissionsReviewRequired)
             throws TransactionTooLargeException {
+        // Smartisan (factory): thaw a frozen service process.
+        if (r.app != null) {
+            SysOptBridge.getFactory().getApplicationFreezer().unfreezeAppIfNeededLocked(r.app,
+                    IApplicationFreezer.UnfreezeReason.NEED_SERVICE, null, null);
+        }
         if (r.app != null && r.app.thread != null) {
             sendServiceArgsLocked(r, execInFg, false);
             return null;
@@ -2708,6 +2762,12 @@ public final class ActiveServices {
 
         if (!isolated) {
             app = mAm.getProcessRecordLocked(procName, r.appInfo.uid, false);
+            if (app == null) {
+                // Smartisan (factory): take a frozen process of this name back.
+                app = SysOptBridge.getFactory().getApplicationFreezer().unfreezeAppIfNeededLocked(
+                        null, procName, r.appInfo.uid,
+                        IApplicationFreezer.UnfreezeReason.NEED_SERVICE, null, null);
+            }
             if (DEBUG_MU) Slog.v(TAG_MU, "bringUpServiceLocked: appInfo.uid=" + r.appInfo.uid
                         + " app=" + app);
             if (app != null && app.thread != null) {
@@ -2839,6 +2899,7 @@ public final class ActiveServices {
             app.thread.scheduleCreateService(r, r.serviceInfo,
                     mAm.compatibilityInfoForPackage(r.serviceInfo.applicationInfo),
                     app.getReportedProcState());
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().notesServiceTrack(r, 0);
             r.postNotification();
             created = true;
 
@@ -2988,6 +3049,7 @@ public final class ActiveServices {
         Exception caughtException = null;
         try {
             r.app.thread.scheduleServiceArgs(r, slice);
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().notesServiceTrack(r, 4);
         } catch (TransactionTooLargeException e) {
             if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "Transaction too large for " + args.size()
                     + " args, first: " + args.get(0).args);
@@ -3050,9 +3112,15 @@ public final class ActiveServices {
         bringDownServiceLocked(r);
     }
 
-    private final void bringDownServiceLocked(ServiceRecord r) {
+    private final boolean bringDownServiceLocked(ServiceRecord r) {
         //Slog.i(TAG, "Bring down service:");
         //r.dump("  ");
+        // Smartisan (factory): while the application freezer freezes the service process, the
+        // service record stays (with the connections and bindings of its own uid).
+        final boolean freezing = r.app != null && r.app.getSmtEx().isFreezing();
+        if (freezing) {
+            r.app.getSmtEx().setFreezing(r);
+        }
         ServiceData sData = new ServiceData();
         sData.packageName = r.packageName;
         sData.processName = r.shortInstanceName;
@@ -3077,19 +3145,34 @@ public final class ActiveServices {
         ArrayMap<IBinder, ArrayList<ConnectionRecord>> connections = r.getConnections();
         for (int conni = connections.size() - 1; conni >= 0; conni--) {
             ArrayList<ConnectionRecord> c = connections.valueAt(conni);
-            for (int i=0; i<c.size(); i++) {
+            for (int i = c.size() - 1; i >= 0; i--) {
                 ConnectionRecord cr = c.get(i);
+                if (freezing && cr.binding.client.info.uid == r.app.info.uid) {
+                    if (ActivityManagerDebugConfigSmtEx.DEBUG_FREEZE) {
+                        Slog.i(TAG, "freeze: service: " + r.name + " has self connection bind="
+                                + cr.binding.client + ", info.uid="
+                                + cr.binding.client.info.uid + " r.app=" + r.app
+                                + ", so keep it");
+                    }
+                    continue;
+                }
                 // There is still a connection to the service that is
                 // being brought down.  Mark it as dead.
                 cr.serviceDead = true;
                 cr.stopAssociation();
                 try {
+                    c.remove(i);
                     cr.conn.connected(r.name, null, true);
+                } catch (FrozenObjectException e) {
                 } catch (Exception e) {
                     Slog.w(TAG, "Failure disconnecting service " + r.shortInstanceName
-                          + " to connection " + c.get(i).conn.asBinder()
-                          + " (in " + c.get(i).binding.client.processName + ")", e);
+                          + " to connection " + cr.conn.asBinder()
+                          + " (in " + cr.binding.client.processName + ")", e);
                 }
+            }
+            if (c.size() == 0) {
+                // As on the factory: removes by an Integer key, so the binder entry stays.
+                connections.remove(Integer.valueOf(conni));
             }
         }
 
@@ -3101,6 +3184,22 @@ public final class ActiveServices {
                 if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "Bringing down binding " + ibr
                         + ": hasBound=" + ibr.hasBound);
                 if (ibr.hasBound) {
+                    // Smartisan (factory): a freezing service keeps the bindings of its own uid.
+                    boolean keepBinding = false;
+                    if (freezing) {
+                        for (int j = ibr.apps.size() - 1; j >= 0; j--) {
+                            ProcessRecord app = ibr.apps.keyAt(j);
+                            if (app.info.uid == r.app.info.uid) {
+                                keepBinding = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (keepBinding) {
+                        continue;
+                    }
+                    // As on the factory: removes by an Integer key, so the binding entry stays.
+                    r.bindings.remove(Integer.valueOf(i));
                     try {
                         bumpServiceExecutingLocked(r, false, "bring down unbind");
                         needOomAdj = true;
@@ -3108,6 +3207,7 @@ public final class ActiveServices {
                         ibr.requested = false;
                         r.app.thread.scheduleUnbindService(r,
                                 ibr.intent.getIntent());
+                        SysMonitorSvcBridge.getFactory().getAnrMonitor().notesServiceTrack(r, 3);
                     } catch (Exception e) {
                         Slog.w(TAG, "Exception when unbinding service "
                                 + r.shortInstanceName, e);
@@ -3149,31 +3249,36 @@ public final class ActiveServices {
             }
         }
 
-        if (DEBUG_SERVICE) {
-            RuntimeException here = new RuntimeException();
-            here.fillInStackTrace();
-            Slog.v(TAG_SERVICE, "Bringing down " + r + " " + r.intent, here);
-        }
-        r.destroyTime = SystemClock.uptimeMillis();
-        if (LOG_SERVICE_START_STOP) {
-            EventLogTags.writeAmDestroyService(
-                    r.userId, System.identityHashCode(r), (r.app != null) ? r.app.pid : -1);
-        }
-
         final ServiceMap smap = getServiceMapLocked(r.userId);
-        ServiceRecord found = smap.mServicesByInstanceName.remove(r.instanceName);
+        if (!freezing) {
+            if (DEBUG_SERVICE) {
+                RuntimeException here = new RuntimeException();
+                here.fillInStackTrace();
+                Slog.v(TAG_SERVICE, "Bringing down " + r + " " + r.intent, here);
+            }
+            r.destroyTime = SystemClock.uptimeMillis();
+            if (LOG_SERVICE_START_STOP) {
+                EventLogTags.writeAmDestroyService(
+                        r.userId, System.identityHashCode(r), (r.app != null) ? r.app.pid : -1);
+            }
 
-        // Note when this method is called by bringUpServiceLocked(), the service is not found
-        // in mServicesByInstanceName and found will be null.
-        if (found != null && found != r) {
-            // This is not actually the service we think is running...  this should not happen,
-            // but if it does, fail hard.
-            smap.mServicesByInstanceName.put(r.instanceName, found);
-            throw new IllegalStateException("Bringing down " + r + " but actually running "
-                    + found);
+            ServiceRecord found = smap.mServicesByInstanceName.remove(r.instanceName);
+
+            // Note when this method is called by bringUpServiceLocked(), the service is not found
+            // in mServicesByInstanceName and found will be null.
+            if (found != null && found != r) {
+                // This is not actually the service we think is running...  this should not
+                // happen, but if it does, fail hard.
+                if (found.app != null) {
+                    found.app.getSmtEx().recordFirstErr(r);
+                }
+                smap.mServicesByInstanceName.put(r.instanceName, found);
+                throw new IllegalStateException("Bringing down " + r + " but actually running "
+                        + found);
+            }
+            smap.mServicesByIntent.remove(r.intent);
+            r.totalRestartCount = 0;
         }
-        smap.mServicesByIntent.remove(r.intent);
-        r.totalRestartCount = 0;
         unscheduleServiceRestartLocked(r, 0, true);
 
         // Also make sure it is not on the pending list.
@@ -3184,83 +3289,88 @@ public final class ActiveServices {
             }
         }
 
-        cancelForegroundNotificationLocked(r);
-        if (r.isForeground) {
-            decActiveForegroundAppLocked(smap, r);
-            ServiceState stracker = r.getTracker();
-            if (stracker != null) {
-                stracker.setForeground(false, mAm.mProcessStats.getMemFactorLocked(),
-                        r.lastActivity);
+        if (!freezing) {
+            cancelForegroundNotificationLocked(r);
+            if (r.isForeground) {
+                decActiveForegroundAppLocked(smap, r);
+                ServiceState stracker = r.getTracker();
+                if (stracker != null) {
+                    stracker.setForeground(false, mAm.mProcessStats.getMemFactorLocked(),
+                            r.lastActivity);
+                }
+                mAm.mAppOpsService.finishOperation(
+                        AppOpsManager.getToken(mAm.mAppOpsService),
+                        AppOpsManager.OP_START_FOREGROUND, r.appInfo.uid, r.packageName);
+                StatsLog.write(StatsLog.FOREGROUND_SERVICE_STATE_CHANGED, r.appInfo.uid,
+                        r.shortInstanceName,
+                        StatsLog.FOREGROUND_SERVICE_STATE_CHANGED__STATE__EXIT);
+                mAm.updateForegroundServiceUsageStats(r.name, r.userId, false);
             }
-            mAm.mAppOpsService.finishOperation(
-                    AppOpsManager.getToken(mAm.mAppOpsService),
-                    AppOpsManager.OP_START_FOREGROUND, r.appInfo.uid, r.packageName);
-            StatsLog.write(StatsLog.FOREGROUND_SERVICE_STATE_CHANGED, r.appInfo.uid,
-                    r.shortInstanceName, StatsLog.FOREGROUND_SERVICE_STATE_CHANGED__STATE__EXIT);
-            mAm.updateForegroundServiceUsageStats(r.name, r.userId, false);
-        }
 
-        r.isForeground = false;
-        r.foregroundId = 0;
-        r.foregroundNoti = null;
+            r.isForeground = false;
+            r.foregroundId = 0;
+            r.foregroundNoti = null;
 
-        // Clear start entries.
-        r.clearDeliveredStartsLocked();
-        r.pendingStarts.clear();
-        smap.mDelayedStartList.remove(r);
+            // Clear start entries.
+            r.clearDeliveredStartsLocked();
+            r.pendingStarts.clear();
+            smap.mDelayedStartList.remove(r);
 
-        if (r.app != null) {
-            synchronized (r.stats.getBatteryStats()) {
-                r.stats.stopLaunchedLocked();
-            }
-            r.app.services.remove(r);
-            r.app.updateBoundClientUids();
-            if (r.whitelistManager) {
-                updateWhitelistManagerLocked(r.app);
-            }
-            if (r.app.thread != null) {
-                updateServiceForegroundLocked(r.app, false);
-                try {
-                    bumpServiceExecutingLocked(r, false, "destroy");
-                    mDestroyingServices.add(r);
-                    r.destroying = true;
-                    mAm.updateOomAdjLocked(r.app, true,
-                            OomAdjuster.OOM_ADJ_REASON_UNBIND_SERVICE);
-                    r.app.thread.scheduleStopService(r);
-                } catch (Exception e) {
-                    Slog.w(TAG, "Exception when destroying service "
-                            + r.shortInstanceName, e);
-                    serviceProcessGoneLocked(r);
+            if (r.app != null) {
+                synchronized (r.stats.getBatteryStats()) {
+                    r.stats.stopLaunchedLocked();
+                }
+                r.app.services.remove(r);
+                r.app.updateBoundClientUids();
+                if (r.whitelistManager) {
+                    updateWhitelistManagerLocked(r.app);
+                }
+                if (r.app.thread != null) {
+                    updateServiceForegroundLocked(r.app, false);
+                    try {
+                        bumpServiceExecutingLocked(r, false, "destroy");
+                        mDestroyingServices.add(r);
+                        r.destroying = true;
+                        mAm.updateOomAdjLocked(r.app, true,
+                                OomAdjuster.OOM_ADJ_REASON_UNBIND_SERVICE);
+                        r.app.thread.scheduleStopService(r);
+                        SysMonitorSvcBridge.getFactory().getAnrMonitor().notesServiceTrack(r, 5);
+                    } catch (Exception e) {
+                        Slog.w(TAG, "Exception when destroying service "
+                                + r.shortInstanceName, e);
+                        serviceProcessGoneLocked(r);
+                    }
+                } else {
+                    if (DEBUG_SERVICE) Slog.v(
+                        TAG_SERVICE, "Removed service that has no process: " + r);
                 }
             } else {
                 if (DEBUG_SERVICE) Slog.v(
-                    TAG_SERVICE, "Removed service that has no process: " + r);
+                    TAG_SERVICE, "Removed service that is not running: " + r);
             }
-        } else {
-            if (DEBUG_SERVICE) Slog.v(
-                TAG_SERVICE, "Removed service that is not running: " + r);
-        }
 
-        if (r.bindings.size() > 0) {
-            r.bindings.clear();
-        }
+            if (r.bindings.size() > 0) {
+                r.bindings.clear();
+            }
 
-        if (r.restarter instanceof ServiceRestarter) {
-           ((ServiceRestarter)r.restarter).setService(null);
-        }
+            if (r.restarter instanceof ServiceRestarter) {
+               ((ServiceRestarter)r.restarter).setService(null);
+            }
 
-        int memFactor = mAm.mProcessStats.getMemFactorLocked();
-        long now = SystemClock.uptimeMillis();
-        if (r.tracker != null) {
-            r.tracker.setStarted(false, memFactor, now);
-            r.tracker.setBound(false, memFactor, now);
-            if (r.executeNesting == 0) {
-                r.tracker.clearCurrentOwner(r, false);
-                r.tracker = null;
+            int memFactor = mAm.mProcessStats.getMemFactorLocked();
+            long now = SystemClock.uptimeMillis();
+            if (r.tracker != null) {
+                r.tracker.setStarted(false, memFactor, now);
+                r.tracker.setBound(false, memFactor, now);
+                if (r.executeNesting == 0) {
+                    r.tracker.clearCurrentOwner(r, false);
+                    r.tracker = null;
+                }
             }
         }
 
         smap.ensureNotStartingBackgroundLocked(r);
+        return true;
     }
 
     void removeConnectionLocked(ConnectionRecord c, ProcessRecord skipApp,
@@ -3282,6 +3392,10 @@ public final class ActiveServices {
         }
         if (b.client != skipApp) {
             b.client.connections.remove(c);
+            if (s.appInfo.uid != b.client.uid) {
+                SysOptBridge.getFactory().getFreezeController().clientConnectionRemoveEvent(
+                        s.appInfo.uid, b.client.uid);
+            }
             if ((c.flags&Context.BIND_ABOVE_CLIENT) != 0) {
                 b.client.updateHasAboveClientLocked();
             }
@@ -3337,6 +3451,7 @@ public final class ActiveServices {
                     // we will deal with that later if it asks for one.
                     b.intent.doRebind = false;
                     s.app.thread.scheduleUnbindService(s, b.intent.intent.getIntent());
+                    SysMonitorSvcBridge.getFactory().getAnrMonitor().notesServiceTrack(s, 2);
                 } catch (Exception e) {
                     Slog.w(TAG, "Exception when unbinding service " + s.shortInstanceName, e);
                     serviceProcessGoneLocked(s);
@@ -3464,6 +3579,7 @@ public final class ActiveServices {
                 "<<< DONE EXECUTING " + r.shortInstanceName);
         r.executeNesting--;
         if (r.executeNesting <= 0) {
+            SysMonitorSvcBridge.getFactory().getAnrMonitor().cancelService(r);
             if (r.app != null) {
                 if (DEBUG_SERVICE) Slog.v(TAG_SERVICE,
                         "Nesting at 0 of " + r.shortInstanceName);
@@ -3473,6 +3589,11 @@ public final class ActiveServices {
                     if (DEBUG_SERVICE || DEBUG_SERVICE_EXECUTING) Slog.v(TAG_SERVICE_EXECUTING,
                             "No more executingServices of " + r.shortInstanceName);
                     mAm.mHandler.removeMessages(ActivityManagerService.SERVICE_TIMEOUT_MSG, r.app);
+                    if (r.app != null) {
+                        SysOptBridge.getFactory().getFreezeController().bumpServiceEvent(
+                                r.app.uid, r.app.pid, true,
+                                "serviceDoneExecuting = " + r.shortInstanceName);
+                    }
                 } else if (r.executeFg) {
                     // Need to re-evaluate whether the app still needs to be in the foreground.
                     for (int i=r.app.executingServices.size()-1; i>=0; i--) {
@@ -3746,30 +3867,38 @@ public final class ActiveServices {
             mServicetracker = null;
         }
 
-        // Clean up any connections this application has to other services.
-        for (int i = app.connections.size() - 1; i >= 0; i--) {
-            ConnectionRecord r = app.connections.valueAt(i);
-            removeConnectionLocked(r, app, null);
-        }
-        updateServiceConnectionActivitiesLocked(app);
-        app.connections.clear();
+        // Smartisan (factory): a process killed by the application freezer keeps its
+        // connections, services and the bindings of its own uid.
+        final boolean freezing = app.getSmtEx().isFreezing();
 
-        app.whitelistManager = false;
+        if (!freezing) {
+            // Clean up any connections this application has to other services.
+            for (int i = app.connections.size() - 1; i >= 0; i--) {
+                ConnectionRecord r = app.connections.valueAt(i);
+                removeConnectionLocked(r, app, null);
+            }
+            updateServiceConnectionActivitiesLocked(app);
+            app.connections.clear();
+
+            app.whitelistManager = false;
+        }
 
         // Clear app state from services.
         for (int i = app.services.size() - 1; i >= 0; i--) {
             ServiceRecord sr = app.services.valueAt(i);
-            synchronized (sr.stats.getBatteryStats()) {
-                sr.stats.stopLaunchedLocked();
+            if (!freezing) {
+                synchronized (sr.stats.getBatteryStats()) {
+                    sr.stats.stopLaunchedLocked();
+                }
+                if (sr.app != app && sr.app != null && !sr.app.isPersistent()) {
+                    sr.app.services.remove(sr);
+                    sr.app.updateBoundClientUids();
+                }
+                sr.setProcess(null);
+                sr.isolatedProc = null;
+                sr.executeNesting = 0;
+                sr.forceClearTracker();
             }
-            if (sr.app != app && sr.app != null && !sr.app.isPersistent()) {
-                sr.app.services.remove(sr);
-                sr.app.updateBoundClientUids();
-            }
-            sr.setProcess(null);
-            sr.isolatedProc = null;
-            sr.executeNesting = 0;
-            sr.forceClearTracker();
             if (mDestroyingServices.remove(sr)) {
                 if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "killServices remove destroying " + sr);
             }
@@ -3779,14 +3908,16 @@ public final class ActiveServices {
                 IntentBindRecord b = sr.bindings.valueAt(bindingi);
                 if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "Killing binding " + b
                         + ": shouldUnbind=" + b.hasBound);
-                b.binder = null;
-                b.requested = b.received = b.hasBound = false;
+                boolean keepBinding = false;
                 // If this binding is coming from a cached process and is asking to keep
                 // the service created, then we'll kill the cached process as well -- we
                 // don't want to be thrashing around restarting processes that are only
                 // there to be cached.
                 for (int appi=b.apps.size()-1; appi>=0; appi--) {
                     final ProcessRecord proc = b.apps.keyAt(appi);
+                    if (freezing && app.info.uid == proc.info.uid) {
+                        keepBinding = true;
+                    }
                     // If the process is already gone, skip it.
                     if (proc.killedByAm || proc.thread == null) {
                         continue;
@@ -3815,6 +3946,10 @@ public final class ActiveServices {
                                 + " in dying proc " + (app != null ? app.processName : "??"), true);
                     }
                 }
+                if (!keepBinding) {
+                    b.binder = null;
+                    b.requested = b.received = b.hasBound = false;
+                }
             }
         }
 
@@ -3826,7 +3961,7 @@ public final class ActiveServices {
 
             // Unless the process is persistent, this process record is going away,
             // so make sure the service is cleaned out of it.
-            if (!app.isPersistent()) {
+            if (!app.isPersistent() && !freezing) {
                 app.services.removeAt(i);
                 app.updateBoundClientUids();
             }
@@ -3836,8 +3971,11 @@ public final class ActiveServices {
             final ServiceRecord curRec = smap.mServicesByInstanceName.get(sr.instanceName);
             if (curRec != sr) {
                 if (curRec != null) {
-                    Slog.wtf(TAG, "Service " + sr + " in process " + app
+                    Slog.wtf(TAG, "debug Service " + sr + " in process " + app
                             + " not same as in map: " + curRec);
+                    if (curRec.app != null) {
+                        curRec.app.getSmtEx().printDebugLog(sr.instanceName);
+                    }
                 }
                 continue;
             }
@@ -3878,8 +4016,10 @@ public final class ActiveServices {
         }
 
         if (!allowRestart) {
-            app.services.clear();
-            app.clearBoundClientUids();
+            if (!freezing) {
+                app.services.clear();
+                app.clearBoundClientUids();
+            }
 
             // Make sure there are no more restarting services for this process.
             for (int i=mRestartingServices.size()-1; i>=0; i--) {
@@ -3911,7 +4051,9 @@ public final class ActiveServices {
             }
         }
 
-        app.executingServices.clear();
+        if (!freezing) {
+            app.executingServices.clear();
+        }
     }
 
     ActivityManager.RunningServiceInfo makeRunningServiceInfoLocked(ServiceRecord r) {
@@ -4073,6 +4215,8 @@ public final class ActiveServices {
         }
 
         if (anrMessage != null) {
+            SysOptBridge.getFactory().getFreezeController().serviceTimeoutEvent(proc.uid, proc.pid,
+                    "check Process whileTimeout proc:" + proc);
             proc.appNotResponding(null, null, null, null, false, anrMessage);
         }
     }
