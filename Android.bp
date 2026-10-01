@@ -79,6 +79,7 @@ java_defaults {
         "core/java/android/app/IPrefetchObserver.aidl",
         "core/java/android/app/ISysClient.aidl",
         "core/java/android/app/IUnFreezeCallback.aidl",
+        "core/java/android/content/IClipboardSmtEx.aidl",
         "core/java/android/content/pm/IPackageManagerMonitorEx.aidl",
         "core/java/android/content/pm/IPackageManagerSmtEx.aidl",
         "core/java/android/dvr/IVirtualInputService.aidl",
