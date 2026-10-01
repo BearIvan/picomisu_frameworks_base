@@ -322,7 +322,8 @@ public class RootActivityContainer extends ConfigurationContainer
         // The display hasn't been added to ActivityManager yet, create a new record now.
         activityDisplay = new ActivityDisplay(this, display);
         addChild(activityDisplay, ActivityDisplay.POSITION_BOTTOM);
-        if (mService.getActivityStartController() != null) {
+        // PICO (factory): a new 2D app display gets its configuration override.
+        if (android.pico.utils.Features.isNsStartAppEnabled()) {
             mService.getActivityStartController().getExt().onNewDisplayAdded(activityDisplay);
         }
         return activityDisplay;

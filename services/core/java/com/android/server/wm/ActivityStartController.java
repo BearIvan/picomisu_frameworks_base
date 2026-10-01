@@ -151,7 +151,10 @@ public class ActivityStartController {
      *         considered invalid and no longer modified or used.
      */
     ActivityStarter obtainStarter(Intent intent, String reason) {
-        mExt.obtainStarter(intent, reason);
+        // PICO (factory): SystemUI intents go to the SystemExt app.
+        if (android.pico.utils.Features.disableSystemUI()) {
+            getExt().obtainStarter(intent, reason);
+        }
         return mFactory.obtain().setIntent(intent).setReason(reason);
     }
 
