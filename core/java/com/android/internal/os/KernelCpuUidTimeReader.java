@@ -704,6 +704,15 @@ public abstract class KernelCpuUidTimeReader<T> {
                     if (notify && valid) {
                         System.arraycopy(mCurTime, 0, lastTimes, 0, mNumClusters);
                         if (cb != null) {
+                            if (mDeltaTime == null) {
+                                Slog.e("KernelCpuUidTimeReader",
+                                        "CpuClusterOutOfBounds: readDeltaImpl mDeltaTime null",
+                                        new Throwable());
+                            } else if (mDeltaTime.length == 0) {
+                                Slog.e("KernelCpuUidTimeReader",
+                                        "CpuClusterOutOfBounds: readDeltaImpl mDeltaTime length error",
+                                        new Throwable());
+                            }
                             cb.onUidCpuTime(uid, mDeltaTime);
                         }
                     }
@@ -772,6 +781,11 @@ public abstract class KernelCpuUidTimeReader<T> {
             mBuffer = new long[cores + 1];
             mCurTime = new long[mNumClusters];
             mDeltaTime = new long[mNumClusters];
+            if (mDeltaTime.length == 0) {
+                Slog.e("KernelCpuUidTimeReader",
+                        "CpuClusterOutOfBounds: checkPrecondition mDeltaTime length error "
+                                + "mNumClusters=" + mNumClusters, new Throwable());
+            }
             return true;
         }
     }

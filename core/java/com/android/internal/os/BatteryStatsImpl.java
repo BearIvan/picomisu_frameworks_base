@@ -1443,6 +1443,10 @@ public class BatteryStatsImpl extends BatteryStats {
         private LongSamplingCounterArray(TimeBase timeBase, Parcel in) {
             mTimeBase = timeBase;
             mCounts = in.createLongArray();
+            if (mCounts != null && mCounts.length == 0) {
+                Slog.e(TAG, "CpuClusterOutOfBounds: LongSamplingCounterArray mCounts length error",
+                        new Throwable());
+            }
             timeBase.add(this);
         }
 
@@ -1453,6 +1457,10 @@ public class BatteryStatsImpl extends BatteryStats {
 
         private void writeToParcel(Parcel out) {
             out.writeLongArray(mCounts);
+            if (mCounts != null && mCounts.length == 0) {
+                Slog.e(TAG, "CpuClusterOutOfBounds: writeToParcel mCounts length error",
+                        new Throwable());
+            }
         }
 
         @Override
@@ -1481,9 +1489,17 @@ public class BatteryStatsImpl extends BatteryStats {
             if (counts == null) {
                 return;
             }
+            if (counts.length == 0) {
+                Slog.e(TAG, "CpuClusterOutOfBounds: addCountLocked counts length error",
+                        new Throwable());
+            }
             if (isRunning) {
                 if (mCounts == null) {
                     mCounts = new long[counts.length];
+                }
+                if (mCounts.length == 0) {
+                    Slog.e(TAG, "CpuClusterOutOfBounds: addCountLocked mCounts length error",
+                            new Throwable());
                 }
                 for (int i = 0; i < counts.length; ++i) {
                     mCounts[i] += counts[i];
@@ -1516,10 +1532,19 @@ public class BatteryStatsImpl extends BatteryStats {
 
         private void writeSummaryToParcelLocked(Parcel out) {
             out.writeLongArray(mCounts);
+            if (mCounts != null && mCounts.length == 0) {
+                Slog.e(TAG, "CpuClusterOutOfBounds: writeSummaryToParcelLocked mCounts length error",
+                        new Throwable());
+            }
         }
 
         private void readSummaryFromParcelLocked(Parcel in) {
             mCounts = in.createLongArray();
+            if (mCounts != null && mCounts.length == 0) {
+                Slog.e(TAG,
+                        "CpuClusterOutOfBounds: readSummaryFromParcelLocked mCounts length error",
+                        new Throwable());
+            }
         }
 
         public static void writeToParcel(Parcel out, LongSamplingCounterArray counterArray) {
