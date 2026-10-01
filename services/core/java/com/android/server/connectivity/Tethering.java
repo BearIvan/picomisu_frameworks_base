@@ -137,8 +137,11 @@ import java.util.Set;
 public class Tethering extends BaseNetworkObserver {
 
     private final static String TAG = Tethering.class.getSimpleName();
-    private final static boolean DBG = false;
-    private final static boolean VDBG = false;
+    // PICO: debug logs are switched on with persist.pvr.debug.usb_tethering.
+    private final static boolean DBG =
+            SystemProperties.getBoolean("persist.pvr.debug.usb_tethering", false);
+    private final static boolean VDBG =
+            SystemProperties.getBoolean("persist.pvr.debug.usb_tethering", false);
 
     private static final Class[] messageClasses = {
             Tethering.class, TetherMasterSM.class, IpServer.class
@@ -293,6 +296,7 @@ public class Tethering extends BaseNetworkObserver {
         filter.addAction(CONNECTIVITY_ACTION);
         filter.addAction(WifiManager.WIFI_AP_STATE_CHANGED_ACTION);
         filter.addAction(Intent.ACTION_CONFIGURATION_CHANGED);
+        filter.addAction("pvr.streamassistant.usb.tethering.request");
         mContext.registerReceiver(mStateReceiver, filter, null, handler);
 
         filter = new IntentFilter();
@@ -723,6 +727,40 @@ public class Tethering extends BaseNetworkObserver {
             } else if (action.equals(Intent.ACTION_CONFIGURATION_CHANGED)) {
                 mLog.log("OBSERVED configuration changed");
                 updateConfiguration();
+            } else if (action.equals("pvr.streamassistant.usb.tethering.request")) {
+                handleStreamAssistantTetheringRequestAction(intent);
+            }
+        }
+
+        /**
+         * PICO: the streaming assistant asks for USB tethering on or off; the result of
+         * switching it on is broadcast back as pvr.streamassistant.usb.tethering.response.
+         */
+        private void handleStreamAssistantTetheringRequestAction(Intent intent) {
+            final boolean enableUsbTethering =
+                    intent.getBooleanExtra("enable_usb_tethering_request", false);
+            if (DBG) {
+                Log.v(TAG, "action:" + intent.getAction() + " received...request state:"
+                        + (enableUsbTethering ? "enable" : "disable"));
+            }
+            if (enableUsbTethering) {
+                ResultReceiver receiver = new ResultReceiver(null) {
+                    @Override
+                    protected void onReceiveResult(int resultCode, Bundle resultData) {
+                        Intent resultIntent =
+                                new Intent("pvr.streamassistant.usb.tethering.response");
+                        if (resultCode == TETHER_ERROR_NO_ERROR) {
+                            resultIntent.putExtra("enable_usb_tethering_result", true);
+                            mContext.sendBroadcastAsUser(resultIntent, UserHandle.ALL);
+                        } else {
+                            resultIntent.putExtra("enable_usb_tethering_result", false);
+                            mContext.sendBroadcastAsUser(resultIntent, UserHandle.ALL);
+                        }
+                    }
+                };
+                startTethering(TETHERING_USB, receiver, true);
+            } else {
+                stopTethering(TETHERING_USB);
             }
         }
 
@@ -745,6 +783,10 @@ public class Tethering extends BaseNetworkObserver {
 
             mLog.log(String.format("USB bcast connected:%s configured:%s rndis:%s",
                     usbConnected, usbConfigured, rndisEnabled));
+            if (DBG) {
+                Log.v(TAG, String.format("USB bcast connected:%s configured:%s rndis:%s",
+                        usbConnected, usbConfigured, rndisEnabled));
+            }
 
             // There are three types of ACTION_USB_STATE:
             //
@@ -983,8 +1025,15 @@ public class Tethering extends BaseNetworkObserver {
         }
 
         synchronized (mPublicSync) {
-            usbManager.setCurrentFunctions(enable ? UsbManager.FUNCTION_RNDIS
-                    : UsbManager.FUNCTION_NONE);
+            // PICO: with rndis on the second USB controller, tether its interface directly.
+            if (SystemProperties.get("sys.usb2.config").contains(USB_FUNCTION_RNDIS)) {
+                Log.v("usb2", "Enable usb2 rndis");
+                tetherMatchingInterfaces(enable ? IpServer.STATE_TETHERED
+                        : IpServer.STATE_AVAILABLE, TETHERING_USB);
+            } else {
+                usbManager.setCurrentFunctions(enable ? UsbManager.FUNCTION_RNDIS
+                        : UsbManager.FUNCTION_NONE);
+            }
         }
         return TETHER_ERROR_NO_ERROR;
     }
@@ -1839,6 +1888,9 @@ public class Tethering extends BaseNetworkObserver {
         }
 
         mLog.log(String.format("OBSERVED iface=%s state=%s error=%s", iface, state, error));
+        if (DBG) {
+            Log.v(TAG, String.format("OBSERVED iface=%s state=%s error=%s", iface, state, error));
+        }
 
         try {
             // Notify that we're tethering (or not) this interface.
