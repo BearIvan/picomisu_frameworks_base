@@ -693,6 +693,8 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
     @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
     public ActivityTaskManagerService(Context context) {
         mContext = context;
+        // PICO (factory): registers this service with the API layer.
+        mExt.init();
         mFactoryTest = FactoryTest.getMode();
         mSystemThread = ActivityThread.currentActivityThread();
         mUiContext = mSystemThread.getSystemUiContext();
@@ -704,6 +706,16 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
 
     // Smartisan extension state of the activity task manager (factory PICO OS 5.13.7).
     private final ActivityTaskManagerServiceSmtEx mSmtEx;
+
+    /** PICO internal extension (factory IExtActivityTaskManagerInternal). */
+    private final IExtActivityTaskManagerInternal mAtmExt =
+            new ExtActivityTaskManagerInternalImpl(this);
+    /** PICO extension (factory IExtActivityTaskManagerService). */
+    private final IExtActivityTaskManagerService mExt = new ExtActivityTaskManagerServiceImpl(this);
+
+    public IExtActivityTaskManagerService getExt() {
+        return mExt;
+    }
 
     /** Smartisan extension state of the activity task manager (factory PICO OS 5.13.7). */
     public ActivityTaskManagerServiceSmtEx getSmtEx() {
@@ -718,7 +730,7 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             mVrController.onSystemReady();
             mRecentTasks.onSystemReadyLocked();
             mStackSupervisor.onSystemReady();
-            getActivityStartController().getExt().onSystemReady();
+            mExt.onSystemReady();
         }
     }
 
@@ -837,7 +849,6 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         mConfigurationSeq = mTempConfig.seq = 1;
         mStackSupervisor = createStackSupervisor();
         mRootActivityContainer = new RootActivityContainer(this);
-        com.android.server.api.ApiLayerService.getInstance().setActivityTaskManagerService(mContext, this);
         mRootActivityContainer.onConfigurationChanged(mTempConfig);
 
         mTaskChangeNotificationController =
@@ -1594,6 +1605,9 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                 return false;
             }
 
+            // PICO (factory): pvr_manager learns which activity resumes next.
+            mExt.sendResumingActivityMsg(r);
+
             // TODO: There is a dup. of this block of code in ActivityStack.navigateUpToLocked
             // We should consolidate.
             if (mController != null) {
@@ -1816,6 +1830,10 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         synchronized (mGlobalLock) {
             ActivityRecord r = ActivityRecord.isInStackLocked(token);
             if (r == null) {
+                return;
+            }
+            // PICO (factory): activities on display 0 (the VR scene) keep their orientation.
+            if (mExt.isBelongsToDefaultDisplay(r, requestedOrientation)) {
                 return;
             }
             final long origId = Binder.clearCallingIdentity();
@@ -5672,6 +5690,8 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                 ActivityManagerInternal::updateActivityUsageStats, mAmInternal,
                 activity.mActivityComponent, activity.mUserId, event, activity.appToken, taskRoot);
         mH.sendMessage(m);
+        // PICO (factory): usage events for sysdata_sync.
+        mExt.updateActivityUsageStats(activity, event);
     }
 
     void setBooting(boolean booting) {
@@ -6151,14 +6171,8 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         }
 
         @Override
-        public android.content.pm.ActivityInfo getPicoTopResumedActivityInfo(int displayId) {
-            synchronized (mGlobalLock) {
-                final ActivityDisplay activityDisplay =
-                        mRootActivityContainer.getActivityDisplay(displayId);
-                final ActivityRecord top =
-                        activityDisplay != null ? activityDisplay.getResumedActivity() : null;
-                return top != null ? top.info : null;
-            }
+        public IExtActivityTaskManagerInternal getExt() {
+            return mAtmExt;
         }
 
         @Override

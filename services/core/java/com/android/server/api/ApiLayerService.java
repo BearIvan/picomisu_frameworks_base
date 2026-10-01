@@ -180,10 +180,7 @@ public class ApiLayerService {
         @Override
         public void updatePersistentServiceConnection(ComponentName componentName,
                 boolean connect) {
-            // Factory: mAtms.getExt().updatePersistentConnection(); the ATMS Ext layer is not
-            // ported yet.
-            Slog.w(TAG, "updatePersistentServiceConnection not supported yet: " + componentName
-                    + ", connect " + connect);
+            mAtms.getExt().updatePersistentConnection(componentName, connect);
         }
 
         @Override
