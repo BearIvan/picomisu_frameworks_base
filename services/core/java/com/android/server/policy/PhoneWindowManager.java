@@ -1600,7 +1600,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
     }
 
-    private void launchAllAppsAction() {
+    protected void launchAllAppsAction() {
         Intent intent = new Intent(Intent.ACTION_ALL_APPS);
         if (mHasFeatureLeanback) {
             final PackageManager pm = mContext.getPackageManager();
@@ -3269,7 +3269,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     /** Asks the status bar to startAssist(), usually a full "assistant" interface */
-    private void launchAssistAction(String hint, int deviceId) {
+    protected void launchAssistAction(String hint, int deviceId) {
         sendCloseSystemWindows(SYSTEM_DIALOG_REASON_ASSIST);
         if (!isUserSetupComplete()) {
             // Disable opening assist window during setup
