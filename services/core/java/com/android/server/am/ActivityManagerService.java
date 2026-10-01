@@ -15612,19 +15612,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }
 
-        // The vast majority of broadcasts sent from system internals
-        // should be protected to avoid security holes, so yell loudly
-        // to ensure we examine these cases.
-        if (callerApp != null) {
-            Log.wtf(TAG, "Sending non-protected broadcast " + action
-                            + " from system " + callerApp.toShortString() + " pkg " + callerPackage,
-                    new Throwable());
-        } else {
-            Log.wtf(TAG, "Sending non-protected broadcast " + action
-                            + " from system uid " + UserHandle.formatUid(callingUid)
-                            + " pkg " + callerPackage,
-                    new Throwable());
-        }
+        // Factory PICO OS 5.13.7: non-protected broadcasts from system internals are not
+        // reported with Log.wtf.
     }
 
     @GuardedBy("this")
