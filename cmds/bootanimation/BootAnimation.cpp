@@ -28,6 +28,7 @@
 #include <utils/misc.h>
 #include <signal.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <cutils/atomic.h>
 #include <cutils/properties.h>
@@ -65,16 +66,54 @@
 
 namespace android {
 
-static const char OEM_BOOTANIMATION_FILE[] = "/oem/media/bootanimation.zip";
-static const char PRODUCT_BOOTANIMATION_DARK_FILE[] = "/product/media/bootanimation-dark.zip";
-static const char PRODUCT_BOOTANIMATION_FILE[] = "/product/media/bootanimation.zip";
+// PICO (factory 5.13.7 libbootanimation): the /product, /apex and /oem/media candidates and the
+// dark theme animation are gone; MDM/OEM overrides live in /data and /oem/bootanimation.
 static const char SYSTEM_BOOTANIMATION_FILE[] = "/system/media/bootanimation.zip";
-static const char APEX_BOOTANIMATION_FILE[] = "/apex/com.android.bootanimation/etc/bootanimation.zip";
-static const char PRODUCT_ENCRYPTED_BOOTANIMATION_FILE[] = "/product/media/bootanimation-encrypted.zip";
 static const char SYSTEM_ENCRYPTED_BOOTANIMATION_FILE[] = "/system/media/bootanimation-encrypted.zip";
-static const char OEM_SHUTDOWNANIMATION_FILE[] = "/oem/media/shutdownanimation.zip";
-static const char PRODUCT_SHUTDOWNANIMATION_FILE[] = "/product/media/shutdownanimation.zip";
 static const char SYSTEM_SHUTDOWNANIMATION_FILE[] = "/system/media/shutdownanimation.zip";
+static const char MDM_BOOTANIMATION_FILE[] = "/data/misc/cusanim/bootanimation.zip";
+static const char OEM_BOOTANIMATION_FILE[] = "/data/media/0/bootanimation/bootanimation.zip";
+static const char OEM_CP_BOOTANIMATION_FILE[] = "/data/misc/cusanim/bootanimation.zip";
+static const char OEM2_BOOTANIMATION_FILE[] = "/oem/bootanimation/bootanimation.zip";
+static const char MDM_SHUTDOWNANIMATION_FILE[] = "/data/misc/cusanim/shutdownanimation.zip";
+static const char OEM_SHUTDOWNANIMATION_FILE[] = "/data/media/0/bootanimation/shutdownanimation.zip";
+static const char OEM2_SHUTDOWNANIMATION_FILE[] = "/oem/bootanimation/shutdownanimation.zip";
+static const char CHARGING_ANIMATION_FILE_FORMAT[] = "/system/media/charginganimation_%s.zip";
+
+// Per panel type (ro.pvr.hmd.type) animations.
+static const char SYSTEM_BOOTANIMATION_AUO_FILE[] = "/system/media/bootanimation_auo.zip";
+static const char SYSTEM_BOOTANIMATION_BOE_FILE[] = "/system/media/bootanimation_boe.zip";
+static const char SYSTEM_BOOTANIMATION_JDI4K_FILE[] = "/system/media/bootanimation_jdi4k.zip";
+static const char SYSTEM_BOOTANIMATION_SAMSUNG_FILE[] = "/system/media/bootanimation_samsung.zip";
+static const char SYSTEM_BOOTANIMATION_SHARP_FILE[] = "/system/media/bootanimation_sharp.zip";
+static const char SYSTEM_BOOTANIMATION_SHARP5K_FILE[] = "/system/media/bootanimation_sharp5k.zip";
+static const char SYSTEM_BOOTANIMATION_SHARP1KX2_FILE[] = "/system/media/bootanimation_sharp1kx2.zip";
+static const char SYSTEM_BOOTANIMATION_JDI1KX2_FILE[] = "/system/media/bootanimation_jdi1kx2.zip";
+static const char SYSTEM_BOOTANIMATION_TIANMA_FILE[] = "/system/media/bootanimation_tianma.zip";
+static const char SYSTEM_BOOTANIMATION_JDI2KTO4K_FILE[] = "/system/media/bootanimation_jdi2kto4k.zip";
+static const char SYSTEM_BOOTANIMATION_JDI1080P_FILE[] = "/system/media/bootanimation_jdi1080p.zip";
+static const char SYSTEM_BOOTANIMATION_TIANMA2K_FILE[] = "/system/media/bootanimation_tianma2k.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_AUO_FILE[] = "/system/media/shutdownanimation_auo.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_BOE_FILE[] = "/system/media/shutdownanimation_boe.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_JDI4K_FILE[] = "/system/media/shutdownanimation_jdi4k.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_SHARP5K_FILE[] = "/system/media/shutdownanimation_sharp5k.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_JDI2KTO4K_FILE[] = "/system/media/shutdownanimation_jdi2kto4k.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_JDI1080P_FILE[] = "/system/media/shutdownanimation_jdi1080p.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_SAMSUNG_FILE[] = "/system/media/shutdownanimation_samsung.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_TIANMA_FILE[] = "/system/media/shutdownanimation_tianma.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_TIANMA2K_FILE[] = "/system/media/shutdownanimation_tianma2k.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_SHARP_FILE[] = "/system/media/shutdownanimation_sharp.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_SHARP1KX2_FILE[] = "/system/media/shutdownanimation_sharp1kx2.zip";
+static const char SYSTEM_SHUTDOWNANIMATION_JDI1KX2_FILE[] = "/system/media/shutdownanimation_jdi1kx2.zip";
+
+// sys.animation.status is set (to "shutdown") by the framework before it starts bootanim for
+// the shutdown/QuickBoot animation; bootanimation clears it when it ends.
+static const char ANIMATION_STATUS_PROP_NAME[] = "sys.animation.status";
+static const char CHARGING_LEVEL_PROP_NAME[] = "persist.pvr.charging_level";
+
+// /dev/stabd (PICO stability driver) boot animation notifications: {status, 0}.
+static const int32_t STABD_BOOTANIM_START = 7;
+static const int32_t STABD_BOOTANIM_STOP = 11;
 
 static const char SYSTEM_DATA_DIR_PATH[] = "/data/system";
 static const char SYSTEM_TIME_DIR_NAME[] = "time";
@@ -99,21 +138,65 @@ static const char EXIT_PROP_NAME[] = "service.bootanim.exit";
 static const int ANIM_ENTRY_NAME_MAX = 256;
 static constexpr size_t TEXT_POS_LEN_MAX = 16;
 
+int JDI493_LEFT[2] = {960, 928};
+int JDI493_RIGHT[2] = {960, 2736};
+
+static void notifyStabdStatus(int32_t status) {
+    int32_t data[2] = {status, 0};
+    int fd = open("/dev/stabd", O_RDWR);
+    if (fd < 0) {
+        ALOGW("notifyStabdStatus:write stabd driver error");
+        return;
+    }
+    int ret;
+    do {
+        ret = write(fd, data, sizeof(data));
+    } while (ret < 0 && errno == EINTR);
+    close(fd);
+}
+
 // ---------------------------------------------------------------------------
 
 BootAnimation::BootAnimation(sp<Callbacks> callbacks)
         : Thread(false), mClockEnabled(true), mTimeIsAccurate(false),
-        mTimeFormat12Hour(false), mTimeCheckThread(nullptr), mCallbacks(callbacks) {
+        mTimeFormat12Hour(false), mTimeCheckThread(nullptr), mCallbacks(callbacks),
+        mChargingAnimation(false) {
     mSession = new SurfaceComposerClient();
 
-    std::string powerCtl = android::base::GetProperty("sys.powerctl", "");
-    if (powerCtl.empty()) {
+    std::string animationStatus = android::base::GetProperty(ANIMATION_STATUS_PROP_NAME, "");
+    if (animationStatus.empty()) {
         mShuttingDown = false;
     } else {
         mShuttingDown = true;
     }
     ALOGD("%sAnimationStartTiming start time: %" PRId64 "ms", mShuttingDown ? "Shutdown" : "Boot",
             elapsedRealtime());
+    checkIPD();
+}
+
+void BootAnimation::checkIPD() {
+    char value[PROPERTY_VALUE_MAX];
+    property_get("persist.pxr.ipd.status", value, "1");
+    int ipdStatus = atoi(value);
+    if (mShuttingDown) {
+        ALOGD(">>BootAnimation.cpp checkIPD ipd status = %d", ipdStatus);
+        switch (ipdStatus) {
+            case 1:
+                JDI493_LEFT[1] = 1020;
+                JDI493_RIGHT[1] = 2644;
+                break;
+            case 2:
+                JDI493_LEFT[1] = 928;
+                JDI493_RIGHT[1] = 2736;
+                break;
+            case 3:
+                JDI493_LEFT[1] = 836;
+                JDI493_RIGHT[1] = 2827;
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 BootAnimation::~BootAnimation() {
@@ -121,6 +204,11 @@ BootAnimation::~BootAnimation() {
         releaseAnimation(mAnimation);
         mAnimation = nullptr;
     }
+    if (mChargingAnimation) {
+        property_set(CHARGING_LEVEL_PROP_NAME, "0");
+        mChargingAnimation = false;
+    }
+    android::base::SetProperty(ANIMATION_STATUS_PROP_NAME, "");
     ALOGD("%sAnimationStopTiming start time: %" PRId64 "ms", mShuttingDown ? "Shutdown" : "Boot",
             elapsedRealtime());
 }
@@ -148,10 +236,17 @@ void BootAnimation::binderDied(const wp<IBinder>&)
     // woah, surfaceflinger died!
     SLOGD("SurfaceFlinger died, exiting...");
 
+    android::base::SetProperty(ANIMATION_STATUS_PROP_NAME, "");
+
     // calling requestExit() is not enough here because the Surface code
     // might be blocked on a condition variable that will never be updated.
     kill( getpid(), SIGKILL );
     requestExit();
+    if (mChargingAnimation) {
+        property_set(CHARGING_LEVEL_PROP_NAME, "0");
+        mChargingAnimation = false;
+    }
+    ALOGD("binderDied done %d", mChargingAnimation);
 }
 
 status_t BootAnimation::initTexture(Texture* texture, AssetManager& assets,
@@ -268,6 +363,12 @@ status_t BootAnimation::initTexture(FileMap* map, int* width, int* height)
 }
 
 status_t BootAnimation::readyToRun() {
+    property_get("ro.pvr.hmd.type", mHmdType, "AUO");
+    property_get("ro.pxr.externalfunc", mRoExternalFunc, "0");
+    property_get("persist.pxr.externalfunc", mPersistExternalFunc, "0");
+    property_get("ro.product.name", mProductName, "0");
+    property_get("ro.product.model", mProductModel, "0");
+
     mAssets.addDefaultAssets();
 
     mDisplayToken = SurfaceComposerClient::getInternalDisplayToken();
@@ -280,11 +381,38 @@ status_t BootAnimation::readyToRun() {
         return -1;
 
     // create the native surface
-    sp<SurfaceControl> control = session()->createSurface(String8("BootAnimation"),
-            dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+    sp<SurfaceControl> control;
+    if (!strcmp(mHmdType, "JDI552KT4K") || !strcmp(mHmdType, "JDI554K") ||
+            !strcmp(mHmdType, "JDI493") || !strncmp(mProductModel, "Pico Neo3", 9)) {
+        if (mShuttingDown) {
+            // The JDI shutdown animation is drawn on a surface with width and height swapped.
+            ALOGD("make jdi shutdown anim surface");
+            control = session()->createSurface(String8("BootAnimation"),
+                    dinfo.h, dinfo.w, PIXEL_FORMAT_RGB_565);
+        } else {
+            ALOGD("make jdi boot anim surface");
+            control = session()->createSurface(String8("BootAnimation"),
+                    dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+        }
+    } else if (!strcmp(mHmdType, "INNOLUX5K") || !strcmp(mHmdType, "SHARP5K") ||
+            !strncmp(mProductName, "Phoenix", 7)) {
+        if (mShuttingDown) {
+            ALOGD("make phx shutdown anim surface");
+            control = session()->createSurface(String8("BootAnimation"),
+                    dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+        } else {
+            ALOGD("make phx boot anim surface");
+            control = session()->createSurface(String8("BootAnimation"),
+                    dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+        }
+    } else {
+        ALOGD("make boot anim surface");
+        control = session()->createSurface(String8("BootAnimation"),
+                dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+    }
 
     SurfaceComposerClient::Transaction t;
-    t.setLayer(control, 0x40000000)
+    t.setLayer(control, 0x7fffffff)
         .apply();
 
     sp<Surface> s = control->getSurface();
@@ -337,6 +465,215 @@ bool BootAnimation::preloadAnimation() {
     return false;
 }
 
+// Returns the animation that replaces defaultFile: the panel/MDM/OEM boot animation, the
+// charging animation selected by persist.pvr.charging_level, or the panel/MDM/OEM shutdown
+// animation.
+const char* BootAnimation::getAnimationFileName(const char* defaultFile, bool shuttingDown) {
+    const char* file;
+    if (!shuttingDown) {
+        file = getBootAnimationFileName();
+    } else {
+        property_get(CHARGING_LEVEL_PROP_NAME, mChargingLevel, "0");
+        if (strcmp(mChargingLevel, "0") != 0 && strcmp(mChargingLevel, "-1") != 0) {
+            // The factory returns the buffer of a String8 that it has already destroyed; the
+            // path is kept in a static buffer here instead.
+            static char chargingFile[128];
+            snprintf(chargingFile, sizeof(chargingFile), CHARGING_ANIMATION_FILE_FORMAT,
+                    mChargingLevel);
+            ALOGD("get charging animation file name %s ", chargingFile);
+            if (access(chargingFile, R_OK) == 0) {
+                mChargingAnimation = true;
+                return chargingFile;
+            }
+            ALOGD("get charging animation file error, return default file.");
+            return defaultFile;
+        }
+        ALOGD("start get shutdown animation file name.");
+        file = getShutAnimationFileName();
+    }
+    return file != nullptr ? file : defaultFile;
+}
+
+const char* BootAnimation::getBootAnimationFileName() {
+    property_get("ro.pvr.hmd.type", mHmdType, "AUO");
+    property_get("ro.pxr.externalfunc", mRoExternalFunc, "0");
+    property_get("persist.pxr.externalfunc", mPersistExternalFunc, "0");
+    property_get("ro.product.name", mProductName, "0");
+    property_get("ro.product.model", mProductModel, "0");
+
+    const char* file;
+    if (!strcmp(mHmdType, "AUO")) {
+        ALOGD("BootAnimation use auo");
+        file = SYSTEM_BOOTANIMATION_AUO_FILE;
+    } else if (!strcmp(mHmdType, "BOE")) {
+        ALOGD("BootAnimation use boe");
+        file = SYSTEM_BOOTANIMATION_BOE_FILE;
+    } else if (!strcmp(mHmdType, "JDI552KT4K") || !strcmp(mHmdType, "JDI554K") ||
+            !strcmp(mHmdType, "JDI493")) {
+        ALOGD("BootAnimation use jdi55");
+        file = SYSTEM_BOOTANIMATION_JDI4K_FILE;
+    } else if (!strcmp(mHmdType, "JDI35x2")) {
+        ALOGD("BootAnimation use JDI35x2");
+        file = SYSTEM_BOOTANIMATION_BOE_FILE;
+    } else if (!strcmp(mHmdType, "Samsung")) {
+        ALOGD("BootAnimation use samsung");
+        file = SYSTEM_BOOTANIMATION_SAMSUNG_FILE;
+    } else if (!strcmp(mHmdType, "Sharp4k")) {
+        ALOGD("BootAnimation use sharp");
+        file = SYSTEM_BOOTANIMATION_SHARP_FILE;
+    } else if (!strcmp(mHmdType, "INNOLUX5K") || !strcmp(mHmdType, "SHARP5K")) {
+        ALOGD("BootAnimation use INNOLUX5K");
+        file = SYSTEM_BOOTANIMATION_SHARP5K_FILE;
+    } else if (!strcmp(mHmdType, "Sharp1Kx2")) {
+        ALOGD("BootAnimation use sharp");
+        file = SYSTEM_BOOTANIMATION_SHARP1KX2_FILE;
+    } else if (!strcmp(mHmdType, "JDI1Kx2")) {
+        ALOGD("BootAnimation use JDI1Kx2");
+        file = SYSTEM_BOOTANIMATION_JDI1KX2_FILE;
+    } else if (!strcmp(mHmdType, "TIANMA")) {
+        ALOGD("BootAnimation use TIANMA");
+        file = SYSTEM_BOOTANIMATION_TIANMA_FILE;
+    } else if (!strcmp(mHmdType, "JDI2KTO4K")) {
+        ALOGD("BootAnimation use JDI2KTO4K");
+        file = SYSTEM_BOOTANIMATION_JDI2KTO4K_FILE;
+    } else if (!strcmp(mHmdType, "JDI4K")) {
+        ALOGD("BootAnimation use JDI4K");
+        file = SYSTEM_BOOTANIMATION_JDI4K_FILE;
+    } else if (!strcmp(mHmdType, "JDI1080P")) {
+        ALOGD("BootAnimation use JDI1080P");
+        file = SYSTEM_BOOTANIMATION_JDI1080P_FILE;
+    } else if (!strcmp(mHmdType, "Tianma2K")) {
+        ALOGD("BootAnimation use TIANMA2K");
+        file = SYSTEM_BOOTANIMATION_TIANMA2K_FILE;
+    } else if (!strncmp(mProductName, "Phoenix", 7)) {
+        ALOGD("BootAnimation use PhxDefault");
+        file = SYSTEM_BOOTANIMATION_SHARP5K_FILE;
+    } else if (!strncmp(mProductModel, "Pico Neo3", 9)) {
+        ALOGD("BootAnimation use Neo3Default");
+        file = SYSTEM_BOOTANIMATION_JDI4K_FILE;
+    } else {
+        ALOGD("BootAnimation use default auo");
+        file = SYSTEM_BOOTANIMATION_FILE;
+    }
+
+    // strcmp() == 1: the property value starts with '1' (bionic returns the byte difference).
+    if (strcmp(mRoExternalFunc, "0") == 1 || strcmp(mPersistExternalFunc, "0") == 1) {
+        if (access(MDM_BOOTANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return MDM_BOOTANIMATION_FILE: %s", MDM_BOOTANIMATION_FILE);
+            return MDM_BOOTANIMATION_FILE;
+        }
+        if (access(OEM_BOOTANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return OEM_BOOTANIMATION_FILE: %s", OEM_BOOTANIMATION_FILE);
+            return OEM_BOOTANIMATION_FILE;
+        }
+        if (access(OEM_CP_BOOTANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return OEM_CP_BOOTANIMATION_FILE: %s",
+                    OEM_CP_BOOTANIMATION_FILE);
+            return OEM_CP_BOOTANIMATION_FILE;
+        }
+        ALOGD("getAnimationFileName OEM_CP_BOOTANIMATION_FILE: %s not access",
+                OEM_CP_BOOTANIMATION_FILE);
+        if (access(OEM2_BOOTANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return OEM2_BOOTANIMATION_FILE: %s",
+                    OEM2_BOOTANIMATION_FILE);
+            return OEM2_BOOTANIMATION_FILE;
+        }
+    }
+
+    if (access(file, R_OK) == 0) {
+        return file;
+    }
+    return SYSTEM_BOOTANIMATION_FILE;
+}
+
+const char* BootAnimation::getShutAnimationFileName() {
+    property_get("ro.pvr.hmd.type", mHmdType, "AUO");
+    property_get("ro.pxr.externalfunc", mRoExternalFunc, "0");
+    property_get("persist.pxr.externalfunc", mPersistExternalFunc, "0");
+    property_get("persist.picovr.funnylens.enable", mFunnyLens, "0");
+    property_get("ro.product.name", mProductName, "0");
+    property_get("ro.product.model", mProductModel, "0");
+
+    const char* file;
+    if (!strcmp(mHmdType, "AUO")) {
+        ALOGD("ShutAnimation use auo");
+        file = SYSTEM_SHUTDOWNANIMATION_AUO_FILE;
+    } else if (!strcmp(mHmdType, "BOE")) {
+        ALOGD("ShutAnimation use boe");
+        file = SYSTEM_SHUTDOWNANIMATION_BOE_FILE;
+    } else if (!strcmp(mHmdType, "JDI552KT4K") || !strcmp(mHmdType, "JDI554K") ||
+            !strcmp(mHmdType, "JDI493")) {
+        ALOGD("ShutAnimation use jdi55");
+        file = SYSTEM_SHUTDOWNANIMATION_JDI4K_FILE;
+    } else if (!strcmp(mHmdType, "INNOLUX5K") || !strcmp(mHmdType, "SHARP5K")) {
+        ALOGD("ShutAnimation use INNOLUX5K");
+        file = SYSTEM_SHUTDOWNANIMATION_SHARP5K_FILE;
+    } else if (!strcmp(mHmdType, "JDI35x2")) {
+        ALOGD("ShutAnimation use jdi");
+        file = SYSTEM_SHUTDOWNANIMATION_BOE_FILE;
+    } else if (!strcmp(mHmdType, "JDI2KTO4K")) {
+        ALOGD("ShutAnimation use JDI2KTO4K");
+        file = SYSTEM_SHUTDOWNANIMATION_JDI2KTO4K_FILE;
+    } else if (!strcmp(mHmdType, "JDI4K")) {
+        ALOGD("ShutAnimation use JDI4K");
+        file = SYSTEM_SHUTDOWNANIMATION_JDI4K_FILE;
+    } else if (!strcmp(mHmdType, "JDI1080P")) {
+        ALOGD("ShutAnimation use JDI1080P");
+        file = SYSTEM_SHUTDOWNANIMATION_JDI1080P_FILE;
+    } else if (!strcmp(mHmdType, "Samsung")) {
+        ALOGD("ShutAnimation use samsung");
+        file = SYSTEM_SHUTDOWNANIMATION_SAMSUNG_FILE;
+    } else if (!strcmp(mHmdType, "TIANMA")) {
+        ALOGD("ShutAnimation use tianma");
+        file = SYSTEM_SHUTDOWNANIMATION_TIANMA_FILE;
+    } else if (!strcmp(mHmdType, "Tianma2K")) {
+        ALOGD("ShutAnimation use tianma2k");
+        file = SYSTEM_SHUTDOWNANIMATION_TIANMA2K_FILE;
+    } else if (!strcmp(mHmdType, "Sharp4k")) {
+        ALOGD("ShutAnimation use sharp");
+        file = SYSTEM_SHUTDOWNANIMATION_SHARP_FILE;
+    } else if (!strcmp(mHmdType, "Sharp1Kx2")) {
+        ALOGD("ShutAnimation use sharp");
+        file = SYSTEM_SHUTDOWNANIMATION_SHARP1KX2_FILE;
+    } else if (!strcmp(mHmdType, "JDI1Kx2")) {
+        ALOGD("ShutAnimation use jdi");
+        file = SYSTEM_SHUTDOWNANIMATION_JDI1KX2_FILE;
+    } else if (!strncmp(mProductName, "Phoenix", 7)) {
+        ALOGD("ShutAnimation use PhxDefault");
+        file = SYSTEM_SHUTDOWNANIMATION_SHARP5K_FILE;
+    } else if (!strncmp(mProductModel, "Pico Neo3", 9)) {
+        ALOGD("ShutAnimation use Neo3Default");
+        file = SYSTEM_SHUTDOWNANIMATION_JDI4K_FILE;
+    } else {
+        ALOGD("ShutAnimation use default auo");
+        file = SYSTEM_SHUTDOWNANIMATION_FILE;
+    }
+
+    // strcmp() == 1: the property value starts with '1' (bionic returns the byte difference).
+    if (strcmp(mRoExternalFunc, "0") == 1 || strcmp(mPersistExternalFunc, "0") == 1) {
+        if (access(MDM_SHUTDOWNANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return MDM_SHUTDOWNANIMATION_FILE: %s",
+                    MDM_SHUTDOWNANIMATION_FILE);
+            return MDM_SHUTDOWNANIMATION_FILE;
+        }
+        if (access(OEM_SHUTDOWNANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return OEM_SHUTDOWNANIMATION_FILE: %s",
+                    OEM_SHUTDOWNANIMATION_FILE);
+            return OEM_SHUTDOWNANIMATION_FILE;
+        }
+        if (access(OEM2_SHUTDOWNANIMATION_FILE, R_OK) == 0) {
+            ALOGD("getAnimationFileName return OEM2_SHUTDOWNANIMATION_FILE: %s",
+                    OEM2_SHUTDOWNANIMATION_FILE);
+            return OEM2_SHUTDOWNANIMATION_FILE;
+        }
+    }
+
+    if (access(file, R_OK) == 0) {
+        return file;
+    }
+    return SYSTEM_SHUTDOWNANIMATION_FILE;
+}
+
 void BootAnimation::findBootAnimationFile() {
     // If the device has encryption turned on or is in process
     // of being encrypted we show the encrypted boot animation.
@@ -347,11 +684,10 @@ void BootAnimation::findBootAnimationFile() {
         !strcmp("trigger_restart_min_framework", decrypt);
 
     if (!mShuttingDown && encryptedAnimation) {
-        static const char* encryptedBootFiles[] =
-            {PRODUCT_ENCRYPTED_BOOTANIMATION_FILE, SYSTEM_ENCRYPTED_BOOTANIMATION_FILE};
+        static const char* encryptedBootFiles[] = {SYSTEM_ENCRYPTED_BOOTANIMATION_FILE};
         for (const char* f : encryptedBootFiles) {
-            if (access(f, R_OK) == 0) {
-                mZipFileName = f;
+            if (access(getAnimationFileName(f, mShuttingDown), R_OK) == 0) {
+                mZipFileName = getAnimationFileName(f, mShuttingDown);
                 return;
             }
         }
@@ -368,16 +704,16 @@ void BootAnimation::findBootAnimationFile() {
         return;
     }
 
-    const bool playDarkAnim = android::base::GetIntProperty("ro.boot.theme", 0) == 1;
     static const char* bootFiles[] =
-        {APEX_BOOTANIMATION_FILE, playDarkAnim ? PRODUCT_BOOTANIMATION_DARK_FILE : PRODUCT_BOOTANIMATION_FILE,
-         OEM_BOOTANIMATION_FILE, SYSTEM_BOOTANIMATION_FILE};
+        {OEM2_BOOTANIMATION_FILE, MDM_BOOTANIMATION_FILE, OEM_BOOTANIMATION_FILE,
+         SYSTEM_BOOTANIMATION_FILE};
     static const char* shutdownFiles[] =
-        {PRODUCT_SHUTDOWNANIMATION_FILE, OEM_SHUTDOWNANIMATION_FILE, SYSTEM_SHUTDOWNANIMATION_FILE, ""};
+        {OEM2_SHUTDOWNANIMATION_FILE, MDM_SHUTDOWNANIMATION_FILE, OEM_SHUTDOWNANIMATION_FILE,
+         SYSTEM_SHUTDOWNANIMATION_FILE};
 
     for (const char* f : (!mShuttingDown ? bootFiles : shutdownFiles)) {
-        if (access(f, R_OK) == 0) {
-            mZipFileName = f;
+        if (access(getAnimationFileName(f, mShuttingDown), R_OK) == 0) {
+            mZipFileName = getAnimationFileName(f, mShuttingDown);
             return;
         }
     }
@@ -385,14 +721,19 @@ void BootAnimation::findBootAnimationFile() {
 
 bool BootAnimation::threadLoop()
 {
-    bool r;
+    bool r = false;
+    notifyStabdStatus(STABD_BOOTANIM_START);
     // We have no bootanimation file, so we use the stock android logo
     // animation.
     if (mZipFileName.isEmpty()) {
-        r = android();
+        android();
     } else {
-        r = movie();
+        movie();
     }
+    if (mChargingAnimation) {
+        property_set(CHARGING_LEVEL_PROP_NAME, "-1");
+    }
+    ALOGD("threadLoop done %d, %d", r, mChargingAnimation);
 
     eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroyContext(mDisplay, mContext);
@@ -402,6 +743,7 @@ bool BootAnimation::threadLoop()
     eglTerminate(mDisplay);
     eglReleaseThread();
     IPCThreadState::self()->stopProcess();
+    notifyStabdStatus(STABD_BOOTANIM_STOP);
     return r;
 }
 
@@ -479,7 +821,21 @@ void BootAnimation::checkExit() {
     char value[PROPERTY_VALUE_MAX];
     property_get(EXIT_PROP_NAME, value, "0");
     int exitnow = atoi(value);
-    if (exitnow) {
+    // PICO: the boot animation only ends once stationservice reports station.upgrade.flag=2
+    // (or ro.pxr.station.upgrade.flag=2); the shutdown animation never ends by itself.
+    int stationStatus = property_get_int32("station.upgrade.flag", 0);
+    int roStationStatus = property_get_int32("ro.pxr.station.upgrade.flag", 0);
+    if (mShuttingDown) {
+        ALOGD(">>BootAnimation.cpp checkExit isshutdown = %d ignore exit", mShuttingDown);
+        exitnow = 0;
+    }
+    ALOGI("checkExit exitnow %d station_status %d ", exitnow, stationStatus);
+    if (exitnow && (stationStatus == 2 || roStationStatus == 2)) {
+        if (mChargingAnimation) {
+            property_set(CHARGING_LEVEL_PROP_NAME, "0");
+            mChargingAnimation = false;
+        }
+        ALOGD("checkExit done %d", mChargingAnimation);
         requestExit();
         mCallbacks->shutdown();
     }
@@ -929,13 +1285,31 @@ bool BootAnimation::movie()
 
 bool BootAnimation::playAnimation(const Animation& animation)
 {
+    const nsecs_t startTime = systemTime();
     const size_t pcount = animation.parts.size();
     nsecs_t frameDuration = s2ns(1) / animation.fps;
     const int animationX = (mWidth - animation.width) / 2;
     const int animationY = (mHeight - animation.height) / 2;
 
-    SLOGD("%sAnimationShownTiming start time: %" PRId64 "ms", mShuttingDown ? "Shutdown" : "Boot",
-            elapsedRealtime());
+    // PICO: ro.picovr.bootanima.splitscreen=1 (default) draws every frame once per lens at the
+    // panel-specific lens centres.
+    char splitScreen[PROPERTY_VALUE_MAX];
+    property_get("ro.picovr.bootanima.splitscreen", splitScreen, "1");
+    property_get("ro.pvr.hmd.type", mHmdType, "AUO");
+    property_get("persist.picovr.funnylens.enable", mFunnyLens, "0");
+    property_get("ro.product.name", mProductName, "0");
+    property_get("ro.product.model", mProductModel, "0");
+
+    // Draws the frame centred on (leftX, leftY) and on (rightX, rightY).
+    auto drawSplitScreen = [&animation](int leftX, int leftY, int rightX, int rightY) {
+        glDrawTexiOES(leftX - animation.width / 2, leftY - animation.height / 2,
+                      0, animation.width, animation.height);
+        glDrawTexiOES(rightX - animation.width / 2, rightY - animation.height / 2,
+                      0, animation.width, animation.height);
+    };
+
+    SLOGD("width=%d,height=%d ...%sAnimationShownTiming start time: %" PRId64 "ms", mWidth,
+            mHeight, mShuttingDown ? "Shutdown" : "Boot", elapsedRealtime());
     for (size_t i=0 ; i<pcount ; i++) {
         const Animation::Part& part(animation.parts[i]);
         const size_t fcount = part.frames.size();
@@ -982,7 +1356,9 @@ bool BootAnimation::playAnimation(const Animation& animation)
                 const int xc = animationX + frame.trimX;
                 const int yc = animationY + frame.trimY;
                 Region clearReg(Rect(mWidth, mHeight));
-                clearReg.subtractSelf(Rect(xc, yc, xc+frame.trimWidth, yc+frame.trimHeight));
+                if (strcmp(splitScreen, "1") != 0) {
+                    clearReg.subtractSelf(Rect(xc, yc, xc+frame.trimWidth, yc+frame.trimHeight));
+                }
                 if (!clearReg.isEmpty()) {
                     Region::const_iterator head(clearReg.begin());
                     Region::const_iterator tail(clearReg.end());
@@ -994,10 +1370,67 @@ bool BootAnimation::playAnimation(const Animation& animation)
                     }
                     glDisable(GL_SCISSOR_TEST);
                 }
-                // specify the y center as ceiling((mHeight - frame.trimHeight) / 2)
-                // which is equivalent to mHeight - (yc + frame.trimHeight)
-                glDrawTexiOES(xc, mHeight - (yc + frame.trimHeight),
-                              0, frame.trimWidth, frame.trimHeight);
+                if (strcmp(splitScreen, "1") != 0) {
+                    // PICO draws the whole animation rectangle, not the trimmed frame.
+                    glDrawTexiOES(xc, mHeight - (yc + animation.height),
+                                  0, animation.width, animation.height);
+                } else if (!strcmp(mHmdType, "Samsung")) {
+                    drawSplitScreen(723, 714, 723, 1860);
+                } else if (!strcmp(mHmdType, "BOE")) {
+                    drawSplitScreen(743, 800, 2137, 800);
+                } else if (!strcmp(mHmdType, "JDI552KT4K")) {
+                    if (mShuttingDown) {
+                        drawSplitScreen(644, 720, 1927, 720);
+                    } else {
+                        drawSplitScreen(720, 644, 720, 1927);
+                    }
+                } else if (!strcmp(mHmdType, "JDI554K")) {
+                    if (mShuttingDown) {
+                        drawSplitScreen(965, 1080, 2874, 1080);
+                    } else {
+                        drawSplitScreen(1080, 965, 1080, 2874);
+                    }
+                } else if (!strcmp(mHmdType, "JDI35x2")) {
+                    drawSplitScreen(743, 800, 2137, 800);
+                } else if (!strcmp(mHmdType, "JDI2KTO4K")) {
+                    drawSplitScreen(720, 668, 720, 1896);
+                } else if (!strcmp(mHmdType, "JDI4K")) {
+                    drawSplitScreen(1080, 965, 1080, 2874);
+                } else if (!strcmp(mHmdType, "JDI493")) {
+                    // The shutdown surface is rotated (see readyToRun()); checkIPD() moved
+                    // JDI493_*[1] for the shutdown animation.
+                    if (mShuttingDown) {
+                        drawSplitScreen(JDI493_LEFT[1], JDI493_LEFT[0],
+                                        JDI493_RIGHT[1], JDI493_RIGHT[0]);
+                    } else {
+                        drawSplitScreen(JDI493_LEFT[0], JDI493_LEFT[1],
+                                        JDI493_RIGHT[0], JDI493_RIGHT[1]);
+                    }
+                } else if (!strcmp(mHmdType, "INNOLUX5K") || !strcmp(mHmdType, "SHARP5K")) {
+                    drawSplitScreen(1080, 1080, 3240, 1080);
+                } else if (!strcmp(mHmdType, "JDI1080P")) {
+                    drawSplitScreen(488, 965, 1568, 956);
+                } else if (!strcmp(mHmdType, "Sharp4k")) {
+                    drawSplitScreen(717, 735, 1858, 735);
+                } else if (!strcmp(mHmdType, "Sharp1Kx2")) {
+                    drawSplitScreen(766, 720, 2113, 720);
+                } else if (!strcmp(mHmdType, "JDI1Kx2")) {
+                    if (strcmp(mFunnyLens, "1") != 0) {
+                        drawSplitScreen(818, 850, 2061, 850);
+                    } else {
+                        drawSplitScreen(720, 850, 2160, 850);
+                    }
+                } else if (!strcmp(mHmdType, "TIANMA")) {
+                    drawSplitScreen(723, 714, 723, 1860);
+                } else if (!strcmp(mHmdType, "Tianma2K")) {
+                    drawSplitScreen(720, 623, 720, 1936);
+                } else if (!strncmp(mProductModel, "Pico Neo3", 9)) {
+                    drawSplitScreen(592, 606, 1584, 606);
+                } else if (!strncmp(mProductName, "Phoenix", 7)) {
+                    drawSplitScreen(1080, 1080, 3240, 1080);
+                } else {
+                    drawSplitScreen(592, 606, 1584, 606);
+                }
                 if (mClockEnabled && mTimeIsAccurate && validClock(part)) {
                     drawClock(animation.clockFont, part.clockPosX, part.clockPosY);
                 }
@@ -1019,7 +1452,16 @@ bool BootAnimation::playAnimation(const Animation& animation)
                         err = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &spec, nullptr);
                     } while (err<0 && errno == EINTR);
                 }
+            }
 
+            // PICO: exit is checked once per part play instead of once per frame; with the
+            // external function (MDM) enabled, not before the animation has run for 3 s.
+            nsecs_t now = systemTime();
+            if (strcmp(mRoExternalFunc, "0") == 1 || strcmp(mPersistExternalFunc, "0") == 1) {
+                if (ns2us(now - startTime) / 1000.0 > 3000) {
+                    checkExit();
+                }
+            } else {
                 checkExit();
             }
 
@@ -1032,12 +1474,19 @@ bool BootAnimation::playAnimation(const Animation& animation)
 
     }
 
-    // Free textures created for looping parts now that the animation is done.
+    // Free textures created for looping parts now that the animation is done; PICO clears the
+    // screen to black (three buffers) before each texture is deleted.
     for (const Animation::Part& part : animation.parts) {
         if (part.count != 1) {
             const size_t fcount = part.frames.size();
             for (size_t j = 0; j < fcount; j++) {
                 const Animation::Frame& frame(part.frames[j]);
+                for (int k = 0; k < 3; k++) {
+                    glBindTexture(GL_TEXTURE_2D, frame.tid);
+                    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                    eglSwapBuffers(mDisplay, mSurface);
+                }
                 glDeleteTextures(1, &frame.tid);
             }
         }

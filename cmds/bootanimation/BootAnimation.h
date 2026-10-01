@@ -119,6 +119,12 @@ public:
 
     sp<SurfaceComposerClient> session() const;
 
+    // PICO: per-lens split-screen offsets and animation file selection.
+    void checkIPD();
+    const char* getAnimationFileName(const char* defaultFile, bool shuttingDown);
+    const char* getBootAnimationFileName();
+    const char* getShutAnimationFileName();
+
 private:
     virtual bool        threadLoop();
     virtual status_t    readyToRun();
@@ -186,7 +192,21 @@ private:
     sp<TimeCheckThread> mTimeCheckThread = nullptr;
     sp<Callbacks> mCallbacks;
     Animation* mAnimation = nullptr;
+    // PICO: property values cached by readyToRun(), playAnimation() and the file selection.
+    char        mHmdType[255];             // ro.pvr.hmd.type
+    char        mRoExternalFunc[255];      // ro.pxr.externalfunc
+    char        mPersistExternalFunc[255]; // persist.pxr.externalfunc
+    char        mProductName[255];         // ro.product.name
+    char        mProductModel[255];        // ro.product.model
+    char        mFunnyLens[255];           // persist.picovr.funnylens.enable
+    char        mChargingLevel[255];       // persist.pvr.charging_level
+    bool        mChargingAnimation;        // a charginganimation_<level>.zip was selected
 };
+
+// PICO JDI493 panel: split-screen centres {x, y} of the left and right lens, the second
+// coordinate is moved by checkIPD() for the shutdown animation.
+extern int JDI493_LEFT[2];
+extern int JDI493_RIGHT[2];
 
 // ---------------------------------------------------------------------------
 
