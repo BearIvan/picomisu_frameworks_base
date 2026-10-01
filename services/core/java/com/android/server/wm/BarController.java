@@ -177,8 +177,14 @@ public class BarController {
         final boolean wasVis = mWin.isVisibleLw();
         final boolean wasAnim = mWin.isAnimatingLw();
         final boolean skipAnim = skipAnimation();
-        final boolean change = show ? mWin.showLw(!mNoAnimationOnNextShow && !skipAnim)
-                : mWin.hideLw(!mNoAnimationOnNextShow && !skipAnim);
+        // PICO (factory): with the PICO keyguard the status and navigation bars stay hidden.
+        final boolean change;
+        if (android.pico.utils.Features.isKeyguardEnabled()) {
+            change = mWin.hideLw(!mNoAnimationOnNextShow && !skipAnim);
+        } else {
+            change = show ? mWin.showLw(!mNoAnimationOnNextShow && !skipAnim)
+                    : mWin.hideLw(!mNoAnimationOnNextShow && !skipAnim);
+        }
         mNoAnimationOnNextShow = false;
         final int state = computeStateLw(wasVis, wasAnim, mWin, change);
         final boolean stateChanged = updateStateLw(state);
