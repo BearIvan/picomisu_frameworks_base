@@ -1868,6 +1868,10 @@ public class WallpaperManager {
     public static InputStream openDefaultWallpaper(Context context, @SetWallpaperFlags int which) {
         final String whichProp;
         final int defaultResId;
+        // PICO (factory PICO OS 5.13.7): no default wallpaper unless sys.pvr.show.wallpaper=1.
+        if (android.pico.utils.Features.disableWallpaper()) {
+            return null;
+        }
         if (which == FLAG_LOCK) {
             /* Factory-default lock wallpapers are not yet supported
             whichProp = PROP_LOCK_WALLPAPER;
