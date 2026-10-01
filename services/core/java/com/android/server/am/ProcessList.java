@@ -25,7 +25,6 @@ import static android.os.Process.THREAD_PRIORITY_BACKGROUND;
 import static android.os.Process.getFreeMemory;
 import static android.os.Process.getTotalMemory;
 import static android.os.Process.killProcessQuiet;
-import static android.os.Process.startWebView;
 
 import static com.android.server.am.ActivityManagerDebugConfig.DEBUG_LRU;
 import static com.android.server.am.ActivityManagerDebugConfig.DEBUG_PROCESSES;
@@ -1934,13 +1933,10 @@ public final class ProcessList {
                     app.processName);
             checkSlow(startTime, "startProcess: asking zygote to start proc");
             final Process.ProcessStartResult startResult;
-            if (hostingRecord.usesWebviewZygote()) {
-                startResult = startWebView(entryPoint,
-                        app.processName, uid, uid, gids, runtimeFlags, mountExternal,
-                        app.info.targetSdkVersion, seInfo, requiredAbi, instructionSet,
-                        app.info.dataDir, null, app.info.packageName,
-                        new String[] {PROC_START_SEQ_IDENT + app.startSeq});
-            } else if (hostingRecord.usesAppZygote()) {
+            // PICO (factory PICO OS 5.13.7): the WebView zygote is never used; usesWebviewZygote()
+            // is still called and its result ignored, WebView processes start from the zygote.
+            hostingRecord.usesWebviewZygote();
+            if (hostingRecord.usesAppZygote()) {
                 final AppZygote appZygote = createAppZygoteForProcessIfNeeded(app);
                 // Smartisan (factory): with the 0x200000 performance flag, a new app zygote
                 // of a uid in the top app scheduling group joins the top app process group.
@@ -1971,9 +1967,8 @@ public final class ProcessList {
             SysOptBridge.getFactory().getFreezeController().startProcessEvent(app, startResult.pid);
             if (mPerfServiceStartHint != null) {
                 if ((hostingRecord.getType() != null) && (hostingRecord.getType().equals("activity"))) {
-                    if (startResult != null) {
-                        mPerfServiceStartHint.perfHint(BoostFramework.VENDOR_HINT_FIRST_LAUNCH_BOOST, app.processName, startResult.pid, BoostFramework.Launch.TYPE_START_PROC);
-                    }
+                    // Factory PICO OS 5.13.7: no null check of startResult (dereferenced above).
+                    mPerfServiceStartHint.perfHint(BoostFramework.VENDOR_HINT_FIRST_LAUNCH_BOOST, app.processName, startResult.pid, BoostFramework.Launch.TYPE_START_PROC);
                 }
             }
             checkSlow(startTime, "startProcess: returned from zygote!");
