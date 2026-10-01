@@ -2582,17 +2582,6 @@ public final class SurfaceControl implements Parcelable {
             return this;
         }
 
-        /**
-         * @hide
-         */
-        public Transaction setDisplayFlags(IBinder displayToken, int flags) {
-            if (displayToken == null) {
-                throw new IllegalArgumentException("displayToken must not be null");
-            }
-            nativeSetDisplayFlags(mNativeObject, displayToken, flags);
-            return this;
-        }
-
         /** @hide */
         public Transaction setDisplaySize(IBinder displayToken, int width, int height) {
             if (displayToken == null) {
@@ -2603,6 +2592,19 @@ public final class SurfaceControl implements Parcelable {
             }
 
             nativeSetDisplaySize(mNativeObject, displayToken, width, height);
+            return this;
+        }
+
+        /**
+         * PICO: follows setDisplaySize as on the factory (keeps the factory synthetic accessor
+         * numbering, access$3500 = nativeSetDisplaySize, access$3600 = nativeSetDisplayFlags).
+         * @hide
+         */
+        public Transaction setDisplayFlags(IBinder displayToken, int flags) {
+            if (displayToken == null) {
+                throw new IllegalArgumentException("displayToken must not be null");
+            }
+            nativeSetDisplayFlags(mNativeObject, displayToken, flags);
             return this;
         }
 
