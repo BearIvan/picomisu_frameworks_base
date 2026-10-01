@@ -51,6 +51,7 @@ import android.os.ServiceManager;
 import android.os.ShellCallback;
 import android.os.ShellCommand;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.Trace;
 import android.os.UEventObserver;
 import android.os.UserHandle;
@@ -140,9 +141,9 @@ public final class BatteryService extends SystemService {
     BinderService mBinderService;
     private final Handler mHandler;
 
-    private final Object mLock = new Object();
+    protected final Object mLock = new Object();
 
-    private HealthInfo mHealthInfo;
+    protected HealthInfo mHealthInfo;
     private final HealthInfo mLastHealthInfo = new HealthInfo();
     private boolean mBatteryLevelCritical;
     private int mLastBatteryStatus;
@@ -178,11 +179,14 @@ public final class BatteryService extends SystemService {
 
     private boolean mUpdatesStopped;
 
-    private Led mLed;
+    protected Led mLed;
 
     private boolean mSentLowBatteryBroadcast = false;
 
     private ActivityManagerInternal mActivityManagerInternal;
+
+    /** PICO (factory): charging LED, low battery mode, temperature UI, OTG limit. */
+    private IExtBatteryService mExt;
 
     private HealthServiceWrapper mHealthServiceWrapper;
     private HealthHalCallback mHealthHalCallback;
@@ -229,6 +233,7 @@ public final class BatteryService extends SystemService {
             invalidChargerObserver.startObserving(
                     "DEVPATH=/devices/virtual/switch/invalid_charger");
         }
+        mExt = new ExtBatteryServiceImpl(this, mContext, mActivityManagerInternal, mHandler);
     }
 
     @Override
@@ -240,6 +245,7 @@ public final class BatteryService extends SystemService {
         mBatteryPropertiesRegistrar = new BatteryPropertiesRegistrar();
         publishBinderService("batteryproperties", mBatteryPropertiesRegistrar);
         publishLocalService(BatteryManagerInternal.class, new LocalService());
+        mExt.onStart();
     }
 
     @Override
@@ -357,52 +363,46 @@ public final class BatteryService extends SystemService {
                 && (oldPlugged || mLastBatteryLevel > mLowBatteryWarningLevel);
     }
 
+    /** Factory body; unused there as here (the PICO rule is ExtBatteryServiceImpl's). */
     private boolean shouldShutdownLocked() {
-        if (mHealthInfo.batteryLevel > 0) {
-            return false;
-        }
-
-        // Battery-less devices should not shutdown.
-        if (!mHealthInfo.batteryPresent) {
-            return false;
-        }
-
-        // If battery state is not CHARGING, shutdown.
-        // - If battery present and state == unknown, this is an unexpected error state.
-        // - If level <= 0 and state == full, this is also an unexpected state
-        // - All other states (NOT_CHARGING, DISCHARGING) means it is not charging.
-        return mHealthInfo.batteryStatus != BatteryManager.BATTERY_STATUS_CHARGING;
+        return mHealthInfo.batteryLevel <= 5 && mHealthInfo.batteryPresent
+                && mHealthInfo.batteryStatus != BatteryManager.BATTERY_STATUS_CHARGING;
     }
 
-    private void shutdownIfNoPowerLocked() {
-        // shut down gracefully if our battery is critically low and we are not powered.
-        // wait until the system has booted before attempting to display the shutdown dialog.
-        if (shouldShutdownLocked()) {
+    protected void shutdownIfNoPowerLocked() {
+        // PICO (factory): below 1 %, or at low battery after the screen went off.
+        if (mExt.shouldShutdownLocked()
+                && SystemProperties.getInt("persist.pxr.shutdown_lowpower", 1) == 1) {
             mHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    if (mActivityManagerInternal.isSystemReady()) {
-                        Intent intent = new Intent(Intent.ACTION_REQUEST_SHUTDOWN);
-                        intent.putExtra(Intent.EXTRA_KEY_CONFIRM, false);
-                        intent.putExtra(Intent.EXTRA_REASON,
-                                PowerManager.SHUTDOWN_LOW_BATTERY);
-                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        mContext.startActivityAsUser(intent, UserHandle.CURRENT);
-                    }
+                    shutdownDirectly();
                 }
             });
         }
     }
 
-    private void shutdownIfOverTempLocked() {
-        // shut down gracefully if temperature is too high (> 68.0C by default)
-        // wait until the system has booted before attempting to display the
-        // shutdown dialog.
-        if (mHealthInfo.batteryTemperature > mShutdownBatteryTemperature) {
+    protected void shutdownDirectly() {
+        if (mActivityManagerInternal.isSystemReady()) {
+            Slog.d(TAG, "battery shutdownIfNoPowerLocked for low battery level");
+            Slog.i(TAG, "checkLowPowerByScreenState shutdownDirectly succ");
+            Intent intent = new Intent(Intent.ACTION_REQUEST_SHUTDOWN);
+            intent.putExtra(Intent.EXTRA_KEY_CONFIRM, false);
+            intent.putExtra(Intent.EXTRA_REASON, PowerManager.SHUTDOWN_LOW_BATTERY);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            mContext.startActivityAsUser(intent, UserHandle.CURRENT);
+        }
+    }
+
+    protected void shutdownIfOverTempLocked() {
+        // PICO (factory): shut down above 59.0C unless persist.pxr.shutdown_overtemp is 0.
+        if (mHealthInfo.batteryTemperature > 590
+                && SystemProperties.getInt("persist.pxr.shutdown_overtemp", 1) == 1) {
             mHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     if (mActivityManagerInternal.isSystemReady()) {
+                        Slog.d(TAG, "battery shutdownIfOverTempLocked for battery over temp");
                         Intent intent = new Intent(Intent.ACTION_REQUEST_SHUTDOWN);
                         intent.putExtra(Intent.EXTRA_KEY_CONFIRM, false);
                         intent.putExtra(Intent.EXTRA_REASON,
@@ -491,6 +491,8 @@ public final class BatteryService extends SystemService {
 
         shutdownIfNoPowerLocked();
         shutdownIfOverTempLocked();
+        // PICO (factory): low battery mode and battery temperature UI.
+        mExt.onProcessValuesLocked();
 
         if (force || (mHealthInfo.batteryStatus != mLastBatteryStatus ||
                 mHealthInfo.batteryHealth != mLastBatteryHealth ||
@@ -673,6 +675,8 @@ public final class BatteryService extends SystemService {
             mLastChargeCounter = mHealthInfo.batteryChargeCounter;
             mLastBatteryLevelCritical = mBatteryLevelCritical;
             mLastInvalidCharger = mInvalidCharger;
+            // PICO (factory): OTG current limit.
+            mExt.onBatteryChanged();
         }
     }
 
@@ -1062,7 +1066,7 @@ public final class BatteryService extends SystemService {
         Trace.traceEnd(Trace.TRACE_TAG_SYSTEM_SERVER);
     }
 
-    private final class Led {
+    protected final class Led {
         private final Light mBatteryLight;
 
         private final int mBatteryLowARGB;
@@ -1090,6 +1094,10 @@ public final class BatteryService extends SystemService {
          * Synchronize on BatteryService.
          */
         public void updateLightsLocked() {
+            // PICO (factory): the PICO charging LED; the AOSP LED logic below never runs.
+            if (mExt.updateLightsLocked(mBatteryLight)) {
+                return;
+            }
             final int level = mHealthInfo.batteryLevel;
             final int status = mHealthInfo.batteryStatus;
             if (level < mLowBatteryWarningLevel) {
