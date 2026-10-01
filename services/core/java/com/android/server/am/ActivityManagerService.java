@@ -5036,6 +5036,10 @@ public class ActivityManagerService extends IActivityManager.Stub
                 Slog.w(TAG, "Unattached app died before broadcast acknowledged, skipping");
                 skipPendingBroadcastLocked(pid);
             }
+            // Factory: let ATM clean up the activities waiting for this process.
+            Slog.w(TAG, "Process " + app + " : enforce excute handleAppDied");
+            mAtmInternal.handleAppDied(app.getWindowProcessController(), false /* restarting */,
+                    () -> {});
         } else {
             Slog.w(TAG, "Spurious process start timeout - pid not known for " + app);
         }
