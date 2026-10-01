@@ -287,6 +287,9 @@ public class AudioService extends IAudioService.Stub
     private static final int MSG_PLAYBACK_CONFIG_CHANGE = 29;
     private static final int MSG_INIT_SPATIALIZER = 30;
     private static final int MSG_PERSIST_SPATIAL_AUDIO_DEVICE_SETTINGS = 31;
+    // PICO OS 5.13.7: volume initialization deferred to the audio handler thread
+    private static final int MSG_DELAY_INIT_VOLUMES = 1001;
+    private static final int MSG_INIT_STREAM_VOLUME = 1002;
     // start of messages handled under wakelock
     //   these messages can only be queued, i.e. sent with queueMsgUnderWakeLock(),
     //   and not with sendMsg(..., ..., SENDMSG_QUEUE, ...)
@@ -308,6 +311,11 @@ public class AudioService extends IAudioService.Stub
     }
 
     private SettingsObserver mSettingsObserver;
+
+    // PICO OS 5.13.7: background playback extension (ExtAudioServiceImpl)
+    private IExtAudioService mServiceEx;
+    // PICO OS 5.13.7: persist.pxr.volumesoundnotice, play the volume change sound on all streams
+    private boolean mVolumeChangeSoundNotice = false;
 
     private int mMode = AudioSystem.MODE_NORMAL;
     // protects mRingerMode
@@ -661,30 +669,13 @@ public class AudioService extends IAudioService.Stub
         PowerManager pm = (PowerManager)context.getSystemService(Context.POWER_SERVICE);
         mAudioEventWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "handleAudioEvent");
 
+        mSpatializerHelper = new SpatializerHelper(this);
+
         mVibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         mHasVibrator = mVibrator == null ? false : mVibrator.hasVibrator();
 
-        // Initialize volume
-        // Priority 1 - Android Property
-        // Priority 2 - Audio Policy Service
-        // Priority 3 - Default Value
-        if (AudioProductStrategy.getAudioProductStrategies().size() > 0) {
-            int numStreamTypes = AudioSystem.getNumStreamTypes();
-
-            for (int streamType = numStreamTypes - 1; streamType >= 0; streamType--) {
-                AudioAttributes attr =
-                        AudioProductStrategy.getAudioAttributesForStrategyWithLegacyStreamType(
-                                streamType);
-                int maxVolume = AudioSystem.getMaxVolumeIndexForAttributes(attr);
-                if (maxVolume != -1) {
-                    MAX_STREAM_VOLUME[streamType] = maxVolume;
-                }
-                int minVolume = AudioSystem.getMinVolumeIndexForAttributes(attr);
-                if (minVolume != -1) {
-                    MIN_STREAM_VOLUME[streamType] = minVolume;
-                }
-            }
-        }
+        // PICO OS 5.13.7: the stream volume ranges are not read from the audio policy service
+        // (no AudioProductStrategy lookup); Android properties, then default values.
 
         int maxCallVolume = SystemProperties.getInt("ro.config.vc_call_vol_steps", -1);
         if (maxCallVolume != -1) {
@@ -782,19 +773,17 @@ public class AudioService extends IAudioService.Stub
 
         mDeviceBroker = new AudioDeviceBroker(mContext, this);
 
-        mSpatializerHelper = new SpatializerHelper(this);
-
         // must be called before readPersistedSettings() which needs a valid mStreamVolumeAlias[]
         // array initialized by updateStreamVolumeAlias()
         updateStreamVolumeAlias(false /*updateVolumes*/, TAG);
-        readPersistedSettings();
-        readUserRestrictions();
-        mSettingsObserver = new SettingsObserver();
         createStreamStates();
 
-        // mSafeUsbMediaVolumeIndex must be initialized after createStreamStates() because it
-        // relies on audio policy having correct ranges for volume indexes.
-        mSafeUsbMediaVolumeIndex = getSafeUsbMediaVolumeIndex();
+        mServiceEx = new ExtAudioServiceImpl(mContext);
+
+        // PICO OS 5.13.7: the persisted settings, the stream volume checks, the low RAM
+        // attribute and the ringer mode are applied on the audio handler thread
+        // (onDelayInitVolumes()), as are the AudioSystem.initStreamVolume() calls.
+        sendMsg(mAudioHandler, MSG_DELAY_INIT_VOLUMES, SENDMSG_QUEUE, 0, 0, null, 0);
 
         mPlaybackMonitor =
                 new PlaybackActivityMonitor(context, MAX_STREAM_VOLUME[AudioSystem.STREAM_ALARM]);
@@ -803,12 +792,9 @@ public class AudioService extends IAudioService.Stub
 
         mRecordMonitor = new RecordingActivityMonitor(mContext);
 
-        readAndSetLowRamDevice();
-
-        // Call setRingerModeInt() to apply correct mute
-        // state on streams affected by ringer mode.
-        mRingerAndZenModeMutedStreams = 0;
-        setRingerModeInt(getRingerModeInternal(), false);
+        if (mServiceEx != null) {
+            mServiceEx.setPlaybackActivityMonitor(mPlaybackMonitor);
+        }
 
         // Register for device connection intent broadcasts.
         IntentFilter intentFilter =
@@ -861,6 +847,30 @@ public class AudioService extends IAudioService.Stub
 
         queueMsgUnderWakeLock(mAudioHandler, MSG_INIT_SPATIALIZER,
                 0 /*arg1*/, 0 /*arg2*/, null /*obj*/, 0 /*delay*/);
+    }
+
+    // PICO OS 5.13.7: second half of the constructor, run on the audio handler thread.
+    private void onDelayInitVolumes() {
+        Log.d(TAG, "start onDelayInitVolumes()");
+        readPersistedSettings();
+        readUserRestrictions();
+        mSettingsObserver = new SettingsObserver();
+        if (mServiceEx != null) {
+            mServiceEx.initialize();
+        }
+        checkStreamVolumes();
+
+        // mSafeUsbMediaVolumeIndex must be initialized after createStreamStates() because it
+        // relies on audio policy having correct ranges for volume indexes.
+        mSafeUsbMediaVolumeIndex = getSafeUsbMediaVolumeIndex();
+
+        readAndSetLowRamDevice();
+
+        // Call setRingerModeInt() to apply correct mute
+        // state on streams affected by ringer mode.
+        mRingerAndZenModeMutedStreams = 0;
+        setRingerModeInt(getRingerModeInternal(), false);
+        Log.d(TAG, "end onDelayInitVolumes()");
     }
 
     public void systemReady() {
@@ -1252,7 +1262,10 @@ public class AudioService extends IAudioService.Stub
             streams[i] =
                     new VolumeStreamState(System.VOLUME_SETTINGS_INT[mStreamVolumeAlias[i]], i);
         }
+    }
 
+    // PICO OS 5.13.7: run by onDelayInitVolumes() instead of createStreamStates()
+    private void checkStreamVolumes() {
         checkAllFixedVolumeDevices();
         checkAllAliasStreamVolumes();
         checkMuteAffectedStreams();
@@ -1672,10 +1685,8 @@ public class AudioService extends IAudioService.Stub
 
     private void adjustSuggestedStreamVolume(int direction, int suggestedStreamType, int flags,
             String callingPackage, String caller, int uid) {
-        if (DEBUG_VOL) Log.d(TAG, "adjustSuggestedStreamVolume() stream=" + suggestedStreamType
-                + ", flags=" + flags + ", caller=" + caller
-                + ", volControlStream=" + mVolumeControlStream
-                + ", userSelect=" + mUserSelectedVolumeControlStream);
+        Log.i(TAG, "adjustSuggestedStreamVolume() stream=" + suggestedStreamType
+                + ", flags=" + flags + ", caller=" + caller + ", uid=" + uid);
         if (direction != AudioManager.ADJUST_SAME) {
             sVolumeLogger.log(new VolumeEvent(VolumeEvent.VOL_ADJUST_SUGG_VOL, suggestedStreamType,
                     direction/*val1*/, flags/*val2*/, new StringBuilder(callingPackage)
@@ -1683,10 +1694,6 @@ public class AudioService extends IAudioService.Stub
         }
         final int streamType;
         synchronized (mForceControlStreamLock) {
-            if (DEBUG_VOL) Log.d(TAG, "adjustSuggestedStreamVolume() stream=" + suggestedStreamType
-                    + ", flags=" + flags + ", caller=" + caller
-                    + ", volControlStream=" + mVolumeControlStream
-                    + ", userSelect=" + mUserSelectedVolumeControlStream);
             // Request lock in case mVolumeControlStream is changed by other thread.
             if (mUserSelectedVolumeControlStream) { // implies mVolumeControlStream != -1
                 streamType = mVolumeControlStream;
@@ -1712,21 +1719,26 @@ public class AudioService extends IAudioService.Stub
         ensureValidStreamType(streamType);
         final int resolvedStream = mStreamVolumeAlias[streamType];
 
-        // Play sounds on STREAM_RING only.
+        // Play sounds on STREAM_RING only, unless persist.pxr.volumesoundnotice is set.
+        mVolumeChangeSoundNotice =
+                SystemProperties.getBoolean("persist.pxr.volumesoundnotice", false);
         if ((flags & AudioManager.FLAG_PLAY_SOUND) != 0 &&
-                resolvedStream != AudioSystem.STREAM_RING) {
+                resolvedStream != AudioSystem.STREAM_RING && !mVolumeChangeSoundNotice) {
             flags &= ~AudioManager.FLAG_PLAY_SOUND;
         }
 
         // For notifications/ring, show the ui before making any adjustments
         // Don't suppress mute/unmute requests
         // Don't suppress adjustments for single volume device
+        // PICO: nor when persist.pxr.onekeyshowui (default) is set
+        final boolean isOneKeyShowUI =
+                SystemProperties.getBoolean("persist.pxr.onekeyshowui", true);
+        Log.d(TAG, "Volume controller suppressed adjustment isOneKeyShowUI:" + isOneKeyShowUI);
         if (mVolumeController.suppressAdjustment(resolvedStream, flags, isMute)
-                && !mIsSingleVolume) {
+                && !mIsSingleVolume && !isOneKeyShowUI) {
             direction = 0;
             flags &= ~AudioManager.FLAG_PLAY_SOUND;
             flags &= ~AudioManager.FLAG_VIBRATE;
-            if (DEBUG_VOL) Log.d(TAG, "Volume controller suppressed adjustment");
         }
 
         adjustStreamVolume(streamType, direction, flags, callingPackage, caller, uid);
@@ -1740,6 +1752,8 @@ public class AudioService extends IAudioService.Stub
                     + "CHANGE_ACCESSIBILITY_VOLUME / callingPackage=" + callingPackage);
             return;
         }
+        Log.i(TAG, "adjustStreamVolume() stream=" + streamType + ", dir=" + direction
+                + ", flags=" + flags + ", caller=" + callingPackage);
         sVolumeLogger.log(new VolumeEvent(VolumeEvent.VOL_ADJUST_STREAM_VOL, streamType,
                 direction/*val1*/, flags/*val2*/, callingPackage));
         adjustStreamVolume(streamType, direction, flags, callingPackage, callingPackage,
@@ -2002,6 +2016,9 @@ public class AudioService extends IAudioService.Stub
         }
         int index = mStreamStates[streamType].getIndex(device);
         sendVolumeUpdate(streamType, oldIndex, index, flags, device);
+        // PICO OS 5.13.7: volume change telemetry
+        AudioEventTracker.getInstance().sendVolumeChangedEvent(streamType, oldIndex, index,
+                device, callingPackage);
     }
 
     // Called after a delay when volume down is pressed while muted
@@ -2204,6 +2221,8 @@ public class AudioService extends IAudioService.Stub
                     + " MODIFY_PHONE_STATE  callingPackage=" + callingPackage);
             return;
         }
+        Log.i(TAG, "setStreamVolume() stream=" + streamType + ", index=" + index
+                + ", flags=" + flags + ", calling=" + callingPackage);
         sVolumeLogger.log(new VolumeEvent(VolumeEvent.VOL_SET_STREAM_VOL, streamType,
                 index/*val1*/, flags/*val2*/, callingPackage));
         setStreamVolume(streamType, index, flags, callingPackage, callingPackage,
@@ -2351,6 +2370,14 @@ public class AudioService extends IAudioService.Stub
         final int device = getDeviceForStream(streamType);
         int oldIndex;
 
+        // PICO OS 5.13.7: persist.pxr.volumesoundnotice, play the sound on all streams
+        mVolumeChangeSoundNotice =
+                SystemProperties.getBoolean("persist.pxr.volumesoundnotice", false);
+        if ((flags & AudioManager.FLAG_PLAY_SOUND) != 0
+                && streamTypeAlias != AudioSystem.STREAM_RING && !mVolumeChangeSoundNotice) {
+            flags &= ~AudioManager.FLAG_PLAY_SOUND;
+        }
+
         // skip a2dp absolute volume control request when the device
         // is not an a2dp device
         if ((device & AudioSystem.DEVICE_OUT_ALL_A2DP) == 0 &&
@@ -2446,6 +2473,8 @@ public class AudioService extends IAudioService.Stub
             }
         }
         sendVolumeUpdate(streamType, oldIndex, index, flags, device);
+        AudioEventTracker.getInstance().sendVolumeChangedEvent(streamType, oldIndex, index,
+                device, callingPackage);
     }
 
 
@@ -3372,9 +3401,8 @@ public class AudioService extends IAudioService.Stub
                     }
                 }
             } else {
-                if (hdlr == null) {
-                    hdlr = new SetModeDeathHandler(cb, pid);
-                }
+                // As in the factory, a new handler is registered for each call.
+                hdlr = new SetModeDeathHandler(cb, pid);
                 // Register for client death notification
                 try {
                     cb.linkToDeath(hdlr, 0);
@@ -3551,7 +3579,9 @@ public class AudioService extends IAudioService.Stub
     /** @see AudioManager#playSoundEffect(int, float) */
     public void playSoundEffectVolume(int effectType, float volume) {
         // do not try to play the sound effect if the system stream is muted
-        if (isStreamMutedByRingerOrZenMode(STREAM_SYSTEM)) {
+        // PICO OS 5.13.7: nor when the music stream volume is 0
+        if (getStreamVolume(AudioSystem.STREAM_MUSIC) == 0
+                || isStreamMutedByRingerOrZenMode(STREAM_SYSTEM)) {
             return;
         }
 
@@ -4244,8 +4274,8 @@ public class AudioService extends IAudioService.Stub
     }
 
     private int getActiveStreamType(int suggestedStreamType) {
-        if (mIsSingleVolume
-                && suggestedStreamType == AudioManager.USE_DEFAULT_STREAM_TYPE) {
+        // PICO OS 5.13.7: a single volume device always uses STREAM_MUSIC
+        if (mIsSingleVolume) {
             return AudioSystem.STREAM_MUSIC;
         }
 
@@ -4643,13 +4673,29 @@ public class AudioService extends IAudioService.Stub
             mStreamType = streamType;
             mIndexMin = MIN_STREAM_VOLUME[streamType] * 10;
             mIndexMax = MAX_STREAM_VOLUME[streamType] * 10;
-            AudioSystem.initStreamVolume(streamType, mIndexMin / 10, mIndexMax / 10);
+            // PICO OS 5.13.7: AudioSystem.initStreamVolume() on the audio handler thread
+            sendMsg(mAudioHandler, MSG_INIT_STREAM_VOLUME, SENDMSG_QUEUE, 0, 0, this, 0);
 
             readSettings();
             mVolumeChanged = new Intent(AudioManager.VOLUME_CHANGED_ACTION);
             mVolumeChanged.putExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, mStreamType);
             mStreamDevicesChanged = new Intent(AudioManager.STREAM_DEVICES_CHANGED_ACTION);
             mStreamDevicesChanged.putExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, mStreamType);
+        }
+
+        public void initStreamVolume() {
+            AudioSystem.initStreamVolume(mStreamType, mIndexMin / 10, mIndexMax / 10);
+        }
+
+        // PICO OS 5.13.7: com.picovr.volumestatus broadcast. The factory has no caller.
+        private void notifyVolumeStatusToAll(int newIndex, int oldIndex, int type) {
+            Intent volumeStatus = new Intent("com.picovr.volumestatus");
+            Log.w(TAG, "send extratream is: " + type);
+            volumeStatus.putExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, type);
+            volumeStatus.putExtra(AudioManager.EXTRA_VOLUME_STREAM_VALUE, newIndex);
+            volumeStatus.putExtra(AudioManager.EXTRA_PREV_VOLUME_STREAM_VALUE, oldIndex);
+            volumeStatus.putExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE_ALIAS, type);
+            sendBroadcastToAll(volumeStatus);
         }
 
         public int observeDevicesForStream_syncVSS(boolean checkOthers) {
@@ -5540,6 +5586,14 @@ public class AudioService extends IAudioService.Stub
                     mPlaybackMonitor.disableAudioForUid( msg.arg1 == 1 /* disable */,
                             msg.arg2 /* uid */);
                     mAudioEventWakeLock.release();
+                    break;
+
+                case MSG_DELAY_INIT_VOLUMES:
+                    onDelayInitVolumes();
+                    break;
+
+                case MSG_INIT_STREAM_VOLUME:
+                    ((VolumeStreamState) msg.obj).initStreamVolume();
                     break;
 
                 case MSG_CHECK_MUSIC_ACTIVE:
@@ -6454,6 +6508,7 @@ public class AudioService extends IAudioService.Stub
     static final int LOG_NB_EVENTS_VOLUME = 40;
     static final int LOG_NB_EVENTS_DYN_POLICY = 10;
     static final int LOG_NB_EVENTS_SPATIAL = 30;
+    static final int LOG_NB_EVENTS_SET_VOLUME_CONTROLLER = 10;
 
     final private AudioEventLogger mModeLogger = new AudioEventLogger(LOG_NB_EVENTS_PHONE_STATE,
             "phone state (logged after successfull call to AudioSystem.setPhoneState(int))");
@@ -6463,6 +6518,10 @@ public class AudioService extends IAudioService.Stub
     // - A2DP: logged at reception of method call
     /*package*/ static final AudioEventLogger sDeviceLogger = new AudioEventLogger(
             LOG_NB_EVENTS_DEVICE_CONNECTION, "wired/A2DP/hearing aid device connection");
+
+    // PICO OS 5.13.7: callers of setVolumeController()
+    static final AudioEventLogger sSetVolumeControllerLogger = new AudioEventLogger(
+            LOG_NB_EVENTS_SET_VOLUME_CONTROLLER, "set volume controller");
 
     static final AudioEventLogger sForceUseLogger = new AudioEventLogger(
             LOG_NB_EVENTS_FORCE_USE,
@@ -6569,8 +6628,14 @@ public class AudioService extends IAudioService.Stub
         sForceUseLogger.dump(pw);
         pw.println("\n");
         sVolumeLogger.dump(pw);
+        pw.println("\n");
+        sSetVolumeControllerLogger.dump(pw);
+        if (mServiceEx != null) {
+            mServiceEx.dump(fd, pw, args);
+        }
 
         pw.println("\n");
+        pw.println("\nSpatial audio:");
         pw.println("mHasSpatializerEffect:" + mHasSpatializerEffect + " (effect present)");
         pw.println("isSpatializerEnabled:" + isSpatializerEnabled() + " (routing dependent)");
         mSpatializerHelper.dump(pw);
@@ -6615,6 +6680,20 @@ public class AudioService extends IAudioService.Stub
 
     @Override
     public void setVolumeController(final IVolumeController controller) {
+        // PICO OS 5.13.7: log the caller before the permission check
+        final int pid = Binder.getCallingPid();
+        final int uid = Binder.getCallingUid();
+        String pkgName = "";
+        final long token = Binder.clearCallingIdentity();
+        try {
+            pkgName = AudioPackageManager.getPackageName(uid, pid);
+        } finally {
+            Binder.restoreCallingIdentity(token);
+            sSetVolumeControllerLogger.log(new AudioEventLogger.StringEvent("uid/pid " + uid
+                    + "/" + pid + ", " + (controller != null ? controller.asBinder() : "null")
+                    + ", cur " + mVolumeController + ", pkg " + pkgName));
+        }
+
         enforceVolumeController("set the volume controller");
 
         // return early if things are not actually changing
@@ -7274,7 +7353,23 @@ public class AudioService extends IAudioService.Stub
         final boolean isPrivileged =
                 (PackageManager.PERMISSION_GRANTED == mContext.checkCallingPermission(
                         android.Manifest.permission.MODIFY_AUDIO_ROUTING));
-        mRecordMonitor.registerRecordingCallback(rcdb, isPrivileged);
+        // PICO OS 5.13.7: the PICO matrix app receives the privileged configurations
+        boolean isMatrix = false;
+        final int callingUid = Binder.getCallingUid();
+        final String[] packages = mContext.getPackageManager().getPackagesForUid(callingUid);
+        if (packages != null) {
+            for (String pkg : packages) {
+                if ("com.bytedance.pico.matrix".equals(pkg)) {
+                    Log.e(TAG, "matrix_app , Binder.getCallingUid" + Binder.getCallingUid());
+                    isMatrix = true;
+                }
+            }
+        }
+        if (isMatrix) {
+            mRecordMonitor.registerRecordingCallback(rcdb, true);
+        } else {
+            mRecordMonitor.registerRecordingCallback(rcdb, isPrivileged);
+        }
     }
 
     public void unregisterRecordingCallback(IRecordingConfigDispatcher rcdb) {
@@ -7285,6 +7380,21 @@ public class AudioService extends IAudioService.Stub
         final boolean isPrivileged =
                 (PackageManager.PERMISSION_GRANTED == mContext.checkCallingPermission(
                         android.Manifest.permission.MODIFY_AUDIO_ROUTING));
+        // PICO OS 5.13.7: the PICO matrix app receives the privileged configurations
+        boolean isMatrix = false;
+        final int callingUid = Binder.getCallingUid();
+        final String[] packages = mContext.getPackageManager().getPackagesForUid(callingUid);
+        if (packages != null) {
+            for (String pkg : packages) {
+                if ("com.bytedance.pico.matrix".equals(pkg)) {
+                    Log.e(TAG, "matrix_app , Binder.getCallingUid" + Binder.getCallingUid());
+                    isMatrix = true;
+                }
+            }
+        }
+        if (isMatrix) {
+            return mRecordMonitor.getActiveRecordingConfigurations(true);
+        }
         return mRecordMonitor.getActiveRecordingConfigurations(isPrivileged);
     }
 
@@ -7352,7 +7462,11 @@ public class AudioService extends IAudioService.Stub
     }
 
     public int trackPlayer(PlayerBase.PlayerIdCard pic) {
-        return mPlaybackMonitor.trackPlayer(pic);
+        final int piid = mPlaybackMonitor.trackPlayer(pic);
+        if (mServiceEx != null) {
+            mServiceEx.trackPlayer(piid, Binder.getCallingUid(), Binder.getCallingPid(), pic);
+        }
+        return piid;
     }
 
     public void playerAttributes(int piid, AudioAttributes attr) {

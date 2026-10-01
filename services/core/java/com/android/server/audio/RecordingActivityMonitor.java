@@ -29,6 +29,8 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
+import com.android.server.SysOptBridge;
+
 import java.io.PrintWriter;
 import java.text.DateFormat;
 import java.util.ArrayList;
@@ -407,13 +409,26 @@ public final class RecordingActivityMonitor implements AudioSystem.AudioRecordin
                     configChanged = state.setActive(true);
                     if (config != null) {
                         configChanged = state.setConfig(config) || configChanged;
+                        // PICO OS 5.13.7: Smartisan smart scenes recording state
+                        if (state.getConfig() != null) {
+                            SysOptBridge.getFactory().getSmartScenes().updateRecordingUid(
+                                    state.getConfig().getClientUid(), true);
+                        }
                     }
                     break;
                 case AudioManager.RECORD_CONFIG_EVENT_UPDATE:
                     // For this event config != null
                     configChanged = state.setConfig(config);
+                    if (state.getConfig() != null) {
+                        SysOptBridge.getFactory().getSmartScenes().updateRecordingUid(
+                                state.getConfig().getClientUid(), true);
+                    }
                     break;
                 case AudioManager.RECORD_CONFIG_EVENT_STOP:
+                    if (state != null && state.getConfig() != null) {
+                        SysOptBridge.getFactory().getSmartScenes().updateRecordingUid(
+                                state.getConfig().getClientUid(), false);
+                    }
                     configChanged = state.setActive(false);
                     if (!state.hasDeathHandler()) {
                         // A recorder tracked by AudioServer has to be removed now so it
@@ -422,6 +437,10 @@ public final class RecordingActivityMonitor implements AudioSystem.AudioRecordin
                     }
                     break;
                 case AudioManager.RECORD_CONFIG_EVENT_RELEASE:
+                    if (state != null && state.getConfig() != null) {
+                        SysOptBridge.getFactory().getSmartScenes().updateRecordingUid(
+                                state.getConfig().getClientUid(), false);
+                    }
                     configChanged = state.isActiveConfiguration();
                     state.release();
                     mRecordStates.remove(stateIndex);

@@ -37,6 +37,10 @@ public interface ISysSvsFactory extends ISysMonitorSvcFactory {
         return new ISmartService() {};
     }
 
+    default ISmartScenes getSmartScenes() {
+        return new ISmartScenes() {};
+    }
+
     default IMemoryProcessController getMemoryProcessController() {
         return new IMemoryProcessController() {};
     }
