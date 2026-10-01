@@ -1656,7 +1656,8 @@ public final class ActiveServices {
             String instanceName, String callingPackage, final int userId)
             throws TransactionTooLargeException {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "bindService: " + service
-                + " type=" + resolvedType + " conn=" + connection.asBinder()
+                + " type=" + resolvedType + ",callingPackage : " + callingPackage
+                + " conn=" + connection.asBinder()
                 + " flags=0x" + Integer.toHexString(flags));
         final ProcessRecord callerApp = mAm.getRecordForAppLocked(caller, true);
         // PICO (factory): remember the action of this bind.
@@ -1955,6 +1956,7 @@ public final class ActiveServices {
                 // publish the connection.
                 try {
                     c.conn.connected(s.name, b.intent.binder, false);
+                } catch (FrozenObjectException e) {
                 } catch (Exception e) {
                     Slog.w(TAG, "Failure sending service " + s.shortInstanceName
                             + " to connection " + c.conn.asBinder()
@@ -2970,6 +2972,7 @@ public final class ActiveServices {
                 Slog.e(TAG, "Failed to send start details to servicetracker HAL", e);
                 mServicetracker = null;
             }
+        } catch (FrozenObjectException e) {
         } catch (DeadObjectException e) {
             Slog.w(TAG, "Application dead when creating service " + r);
             mAm.appDiedLocked(app);
