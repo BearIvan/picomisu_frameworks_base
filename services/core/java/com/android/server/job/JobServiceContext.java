@@ -28,6 +28,7 @@ import android.app.usage.UsageStatsManagerInternal;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentSmtBase;
 import android.content.ServiceConnection;
 import android.net.Uri;
 import android.os.Binder;
@@ -247,6 +248,8 @@ public final class JobServiceContext implements ServiceConnection {
             mVerb = VERB_BINDING;
             scheduleOpTimeOutLocked();
             final Intent intent = new Intent().setComponent(job.getServiceComponent());
+            // Smartisan (factory): mark job service binds for the app freezer.
+            intent.setAction(IntentSmtBase.ACTION_FROM_JOB_SERVICE);
             boolean binding = false;
             try {
                 binding = mContext.bindServiceAsUser(intent, this,
