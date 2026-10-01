@@ -70,6 +70,9 @@ public class WindowConfiguration implements Parcelable, Comparable<WindowConfigu
      */
     private int mRotation = ROTATION_UNDEFINED;
 
+    /** Smartisan extension (factory PICO OS 5.13.7). */
+    private WindowConfigurationSmtBase mSmtEx = new WindowConfigurationSmtBase(this);
+
     /** Rotation is not defined, use the parent containers rotation. */
     public static final int ROTATION_UNDEFINED = -1;
 
@@ -790,5 +793,10 @@ public class WindowConfiguration implements Parcelable, Comparable<WindowConfigu
             case ALWAYS_ON_TOP_OFF: return "off";
         }
         return String.valueOf(alwaysOnTop);
+    }
+
+    /** @hide */
+    public WindowConfigurationSmtBase getSmtEx() {
+        return mSmtEx;
     }
 }
