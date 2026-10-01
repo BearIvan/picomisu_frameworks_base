@@ -361,6 +361,29 @@ final class BroadcastRecord extends Binder {
         }
     }
 
+    String getReceiverPackageName(Object receiver) {
+        if (receiver instanceof BroadcastFilter) {
+            return ((BroadcastFilter) receiver).packageName;
+        } else /* if (receiver instanceof ResolveInfo) */ {
+            return ((ResolveInfo) receiver).activityInfo.applicationInfo.packageName;
+        }
+    }
+
+    /**
+     * PICO (factory): drop the first receiver that belongs to {@code packageName}.
+     */
+    void removeReceiverByPackageName(String packageName) {
+        if (packageName == null) {
+            return;
+        }
+        for (int i = 0; i < receivers.size(); i++) {
+            if (packageName.equals(getReceiverPackageName(receivers.get(i)))) {
+                receivers.remove(i);
+                break;
+            }
+        }
+    }
+
     public BroadcastRecord maybeStripForHistory() {
         if (!intent.canStripForHistory()) {
             return this;

@@ -16307,6 +16307,10 @@ public class ActivityManagerService extends IActivityManager.Stub
                     allowBackgroundActivityStarts, timeoutExempt);
 
             if (DEBUG_BROADCAST) Slog.v(TAG_BROADCAST, "Enqueueing ordered broadcast " + r);
+            // PICO (factory): com.pvr.shortcut does not get the ordered shutdown broadcast.
+            if (Intent.ACTION_SHUTDOWN.equals(r.intent.getAction())) {
+                r.removeReceiverByPackageName("com.pvr.shortcut");
+            }
 
             final BroadcastRecord oldRecord =
                     replacePending ? queue.replaceOrderedBroadcastLocked(r) : null;
