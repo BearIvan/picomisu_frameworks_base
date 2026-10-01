@@ -557,6 +557,11 @@ final class WifiDisplayController implements DumpUtils.Dump {
     }
 
     private void connect(final WifiP2pDevice device) {
+        if (mHandler.hasCallbacks(mAutoFreshRunnable)) {
+            mHandler.removeCallbacks(mAutoFreshRunnable);
+        }
+        SystemProperties.set("pxr.sf.autorefresh", "1");
+
         if (mDesiredDevice != null
                 && !mDesiredDevice.deviceAddress.equals(device.deviceAddress)) {
             if (DEBUG) {
@@ -595,6 +600,10 @@ final class WifiDisplayController implements DumpUtils.Dump {
     private void disconnect() {
         mDesiredDevice = null;
         updateConnection();
+        if (mHandler.hasCallbacks(mAutoFreshRunnable)) {
+            mHandler.removeCallbacks(mAutoFreshRunnable);
+        }
+        mHandler.postDelayed(mAutoFreshRunnable, 1000);
     }
 
     private void retryConnection() {
@@ -1027,6 +1036,10 @@ final class WifiDisplayController implements DumpUtils.Dump {
             }
         }
     };
+
+    // PICO OS 5.13.7: SurfaceFlinger auto refresh (pxr.sf.autorefresh) is enabled while a
+    // Wifi display connects and disabled one second after a disconnect.
+    Runnable mAutoFreshRunnable = () -> SystemProperties.set("pxr.sf.autorefresh", "0");
 
     private final Runnable mRtspTimeout = new Runnable() {
         @Override

@@ -35,9 +35,12 @@ import android.media.RemoteDisplay;
 import android.os.Handler;
 import android.util.Slog;
 import android.content.Context;
+import android.pico.utils.Features;
 
 class ExtendedRemoteDisplayHelper {
     private static final String TAG = "ExtendedRemoteDisplayHelper";
+    // PICO OS 5.13.7
+    private static final String PRODUCT_NAME_MERLINE = "merline";
 
     // ExtendedRemoteDisplay class
     // ExtendedRemoteDisplay is an enhanced RemoteDisplay. It has
@@ -151,6 +154,13 @@ class ExtendedRemoteDisplayHelper {
      */
     public static boolean isAvailable()
     {
+        // PICO OS 5.13.7: never on neo3 and merline (the factory compares the build project, a
+        // compile-time constant).
+        if (Features.PROJECT_NEO3.equals(Features.PROJECT_PHOENIX)
+                || PRODUCT_NAME_MERLINE.equals(Features.PROJECT_PHOENIX)) {
+            Slog.i(TAG, "In neo3 or merline, extendedRemoteDisplay isAvailable() : Not Available.");
+            return false;
+        }
         if(sExtRemoteDisplayClass != null &&
            sExtRemoteDisplayDispose != null &&
            sExtRemoteDisplayListen != null) {
