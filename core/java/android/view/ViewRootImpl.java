@@ -7146,6 +7146,10 @@ public final class ViewRootImpl implements ViewParent,
                 mPendingMergedConfiguration, mSurfaceControl, mTempInsets);
         if (mSurfaceControl.isValid()) {
             mSurface.copyFrom(mSurfaceControl);
+            if (mAttachInfo.mThreadedRenderer != null) {
+                mAttachInfo.mThreadedRenderer.setName(
+                        mWindowAttributes.getTitle().toString() + "_" + mSurface);
+            }
         } else {
             destroySurface();
         }
