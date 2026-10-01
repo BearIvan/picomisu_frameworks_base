@@ -500,7 +500,8 @@ public final class SurfaceControl implements Parcelable {
      */
     public static class Builder {
         private SurfaceSession mSession;
-        private int mFlags = HIDDEN;
+        /** @hide Protected as on the factory (SurfaceControlSmtBase.BuilderSmtEx reads it). */
+        protected int mFlags = HIDDEN;
         private int mWidth;
         private int mHeight;
         private int mFormat = PixelFormat.OPAQUE;
@@ -735,7 +736,8 @@ public final class SurfaceControl implements Parcelable {
             return this;
         }
 
-        private Builder setFlags(int flags, int mask) {
+        /** @hide Protected as on the factory (SurfaceControlSmtBase.BuilderSmtEx calls it). */
+        protected Builder setFlags(int flags, int mask) {
             mFlags = (mFlags & ~mask) | flags;
             return this;
         }
