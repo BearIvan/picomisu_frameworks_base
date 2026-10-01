@@ -302,7 +302,9 @@ void RenderMonitor::addFrame(FrameInfo& frame, const std::string& name) {
 }
 
 // Analyses the frames once no frame was drawn for three frame intervals.
-void RenderMonitor::postMonitorTaskIfNeeded(nsecs_t runAt) {
+// The factory defines this and postAnimatorTask inline (no out-of-line copy; the posted
+// lambdas are mangled as {lambda()#1} of these members).
+inline void RenderMonitor::postMonitorTaskIfNeeded(nsecs_t runAt) {
     if (mMonitorTaskPosted) {
         return;
     }
@@ -322,7 +324,7 @@ void RenderMonitor::postMonitorTaskIfNeeded(nsecs_t runAt) {
     });
 }
 
-void RenderMonitor::postAnimatorTask(nsecs_t runAt) {
+inline void RenderMonitor::postAnimatorTask(nsecs_t runAt) {
     mRenderThread->queue().postAt(runAt, [this]() {
         ATRACE_NAME("scanOperationAreaForAnimator");
         scanOperationArea();
