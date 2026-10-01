@@ -1215,7 +1215,8 @@ public class RootActivityContainer extends ConfigurationContainer
                     resumedOnDisplay |= topRunningActivity.makeActiveIfNeeded(target);
                 }
             }
-            if (!resumedOnDisplay) {
+            // Factory: nothing is resumed explicitly while the device shuts down.
+            if (!resumedOnDisplay && !mService.mShuttingDown) {
                 // In cases when there are no valid activities (e.g. device just booted or launcher
                 // crashed) it's possible that nothing was resumed on a display. Requesting resume
                 // of top activity in focused stack explicitly will make sure that at least home

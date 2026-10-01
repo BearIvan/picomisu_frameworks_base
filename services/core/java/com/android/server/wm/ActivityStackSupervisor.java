@@ -1479,6 +1479,11 @@ public class ActivityStackSupervisor implements RecentTasks.Callbacks {
             mRootActivityContainer.resumeFocusedStacksTopActivities();
         }
 
+        // Factory: an activity that became idle may be the last one the shutdown waits for.
+        if (mService.mShuttingDown) {
+            checkReadyForSleepLocked(false /* allowDelay */);
+        }
+
         return r;
     }
 
