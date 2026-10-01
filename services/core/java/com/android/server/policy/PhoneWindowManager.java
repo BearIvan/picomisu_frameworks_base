@@ -293,7 +293,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     // must match: config_longPressOnHomeBehavior in config.xml
     static final int LONG_PRESS_HOME_NOTHING = 0;
     static final int LONG_PRESS_HOME_ALL_APPS = 1;
-    static final int LONG_PRESS_HOME_ASSIST = 2;
+    // Factory PICO OS 5.13.7 value.
+    static final int LONG_PRESS_HOME_ASSIST = 4;
     static final int LAST_LONG_PRESS_HOME_BEHAVIOR = LONG_PRESS_HOME_ASSIST;
 
     // must match: config_doubleTapOnHomeBehavior in config.xml
@@ -2027,6 +2028,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
      * eg. Disable long press on home goes to recents on sw600dp.
      */
     private void readConfigurationDependentBehaviors() {
+        if (mContext == null) {
+            return;
+        }
         final Resources res = mContext.getResources();
 
         mLongPressOnHomeBehavior = res.getInteger(
@@ -4277,6 +4281,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
             case KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK:
             case KeyEvent.KEYCODE_CAMERA:
+            // Factory PICO OS 5.13.7: back and menu do not wake the device either.
+            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_MENU:
                 return false;
         }
         return true;
