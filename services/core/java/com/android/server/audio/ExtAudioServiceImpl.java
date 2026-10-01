@@ -184,7 +184,9 @@ public class ExtAudioServiceImpl implements IExtAudioService {
                             }
                         }
                         if (!alive) {
-                            // As in the factory, only the first released player is removed.
+                            // As in the factory, only the first released player is removed
+                            // (its PlayerInfo is read first and not used).
+                            PlayerInfo info = mPlayers.valueAt(i);
                             mPlayers.remove(piid);
                             break;
                         }
