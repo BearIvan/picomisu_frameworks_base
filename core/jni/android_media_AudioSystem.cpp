@@ -38,6 +38,11 @@
 #include "android_media_AudioErrors.h"
 #include "android_media_MicrophoneInfo.h"
 #include "android_media_AudioAttributes.h"
+#include "android_media_AudioDeviceAttributes.h"
+#include "android_util_Binder.h"
+
+#include <android/media/INativeSpatializerCallback.h>
+#include <android/media/ISpatializer.h>
 
 // ----------------------------------------------------------------------------
 
@@ -2249,33 +2254,87 @@ android_media_AudioSystem_setRttEnabled(JNIEnv *env, jobject thiz, jboolean enab
 }
 
 // PICO OS 5.13.7 backports the Android 13 spatializer and a per-package record silencing
-// control into its native audio policy service. The factory libandroid_runtime forwards
-// these three methods to AudioSystem::setRecordSilenced(), AudioSystem::getSpatializer()
-// and AudioSystem::canBeSpatialized() of the PICO libaudioclient. The Android 10
-// libaudioclient and audio policy service of this build have neither a spatializer nor
-// these entry points, so the methods report the factory results for an audio policy
-// service without them: the request is not supported, no ISpatializer interface is
-// returned and no playback context can be spatialized.
+// control into its native audio policy service (IAudioPolicyService 74..76). As in the
+// factory libandroid_runtime, these methods forward to AudioSystem::setRecordSilenced(),
+// AudioSystem::getSpatializer() and AudioSystem::canBeSpatialized() of the PICO
+// libaudioclient.
 static jint
 android_media_AudioSystem_setRecordSilenced(JNIEnv *env, jobject thiz, jstring packageName,
                                            jboolean silenced)
 {
-    ALOGW("setRecordSilenced(silenced=%d): not supported by the audio policy service",
-          silenced);
-    return (jint) check_AudioSystem_Command(INVALID_OPERATION);
+    const char *c_packageName = env->GetStringUTFChars(packageName, NULL);
+    int status = check_AudioSystem_Command(
+            AudioSystem::setRecordSilenced(c_packageName, silenced));
+    env->ReleaseStringUTFChars(packageName, c_packageName);
+    return (jint) status;
+}
+
+// Android 13; the factory exports it from this file.
+void javaAudioFormatToNativeAudioConfig(JNIEnv *env, audio_config_t *nConfig,
+                                       const jobject jFormat, bool isInput) {
+    *nConfig = AUDIO_CONFIG_INITIALIZER;
+    nConfig->format = audioFormatToNative(env->GetIntField(jFormat, gAudioFormatFields.mEncoding));
+    nConfig->sample_rate = env->GetIntField(jFormat, gAudioFormatFields.mSampleRate);
+    jint jChannelMask = env->GetIntField(jFormat, gAudioFormatFields.mChannelMask);
+    if (isInput) {
+        nConfig->channel_mask = inChannelMaskToNative(jChannelMask);
+    } else {
+        nConfig->channel_mask = outChannelMaskToNative(jChannelMask);
+    }
 }
 
 static jobject
 android_media_AudioSystem_getSpatializer(JNIEnv *env, jobject thiz, jobject jISpatializerCallback)
 {
-    return nullptr;
+    sp<media::INativeSpatializerCallback> nISpatializerCallback
+            = interface_cast<media::INativeSpatializerCallback>(
+                    ibinderForJavaObject(env, jISpatializerCallback));
+    sp<media::ISpatializer> nSpatializer;
+    status_t status = AudioSystem::getSpatializer(nISpatializerCallback,
+                                        &nSpatializer);
+    if (status != NO_ERROR) {
+        return nullptr;
+    }
+    return javaObjectForIBinder(env, IInterface::asBinder(nSpatializer));
 }
 
 static jboolean
 android_media_AudioSystem_canBeSpatialized(JNIEnv *env, jobject thiz, jobject jaa,
                                            jobject jFormat, jobjectArray jDeviceArray)
 {
-    return false;
+    JNIAudioAttributeHelper::UniqueAaPtr paa = JNIAudioAttributeHelper::makeUnique();
+    jint jStatus = JNIAudioAttributeHelper::nativeFromJava(env, jaa, paa.get());
+    if (jStatus != (jint)AUDIO_JAVA_SUCCESS) {
+        return false;
+    }
+
+    AudioDeviceTypeAddrForSpatialVector nDevices;
+
+    const size_t numDevices = env->GetArrayLength(jDeviceArray);
+    for (size_t i = 0;  i < numDevices; ++i) {
+        AudioDeviceTypeAddrForSpatial device;
+        jobject jDevice  = env->GetObjectArrayElement(jDeviceArray, i);
+        if (jDevice == nullptr) {
+            return false;
+        }
+        jStatus = createAudioDeviceTypeAddrFromJava(env, &device, jDevice);
+        if (jStatus != (jint)AUDIO_JAVA_SUCCESS) {
+            return false;
+        }
+        nDevices.push_back(device);
+    }
+
+    audio_config_t nConfig;
+    javaAudioFormatToNativeAudioConfig(env, &nConfig, jFormat, false /*isInput*/);
+
+    bool canBeSpatialized;
+    status_t status =
+            AudioSystem::canBeSpatialized(paa.get(), &nConfig, nDevices, &canBeSpatialized);
+    if (status != NO_ERROR) {
+        ALOGW("%s native returned error %d", __func__, status);
+        return false;
+    }
+    return canBeSpatialized;
 }
 
 // ----------------------------------------------------------------------------

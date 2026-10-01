@@ -116,6 +116,8 @@ extern int register_android_media_MicrophoneInfo(JNIEnv *env);
 extern int register_android_media_JetPlayer(JNIEnv *env);
 extern int register_android_media_ToneGenerator(JNIEnv *env);
 extern int register_android_media_midi(JNIEnv *env);
+// PICO OS 5.13.7: Android 13 AudioDeviceAttributes helpers of the spatializer backport.
+extern int register_android_media_AudioDeviceAttributes(JNIEnv *env);
 
 namespace android {
 extern int register_android_util_SeempLog(JNIEnv* env);
@@ -1590,6 +1592,7 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_media_RemoteDisplay),
     REG_JNI(register_android_media_ToneGenerator),
     REG_JNI(register_android_media_midi),
+    REG_JNI(register_android_media_AudioDeviceAttributes),
 
     REG_JNI(register_android_opengl_classes),
     REG_JNI(register_android_server_NetworkManagementSocketTagger),
