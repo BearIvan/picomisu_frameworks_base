@@ -38,35 +38,35 @@ public class ActivityTaskManagerDebugConfig {
     static final String TAG_ATM = "ActivityTaskManager";
 
     // Enable all debug log categories.
-    static final boolean DEBUG_ALL = false;
+    static boolean DEBUG_ALL = false;
 
     // Enable all debug log categories for activities.
-    private static final boolean DEBUG_ALL_ACTIVITIES = DEBUG_ALL || false;
+    private static boolean DEBUG_ALL_ACTIVITIES = DEBUG_ALL || false;
 
-    static final boolean DEBUG_ADD_REMOVE = DEBUG_ALL_ACTIVITIES || false;
-    public static final boolean DEBUG_CONFIGURATION = DEBUG_ALL || false;
-    static final boolean DEBUG_CONTAINERS = DEBUG_ALL_ACTIVITIES || false;
-    static final boolean DEBUG_FOCUS = false;
-    static final boolean DEBUG_IMMERSIVE = DEBUG_ALL || false;
-    static final boolean DEBUG_LOCKTASK = DEBUG_ALL || false;
-    static final boolean DEBUG_PAUSE = DEBUG_ALL || false;
-    static final boolean DEBUG_RECENTS = DEBUG_ALL || false;
-    static final boolean DEBUG_RECENTS_TRIM_TASKS = DEBUG_RECENTS || false;
-    static final boolean DEBUG_SAVED_STATE = DEBUG_ALL_ACTIVITIES || false;
-    static final boolean DEBUG_STACK = DEBUG_ALL || false;
-    static final boolean DEBUG_STATES = DEBUG_ALL_ACTIVITIES || false;
-    public static final boolean DEBUG_SWITCH = DEBUG_ALL || false;
-    static final boolean DEBUG_TASKS = DEBUG_ALL || false;
-    static final boolean DEBUG_TRANSITION = DEBUG_ALL || false;
-    static final boolean DEBUG_VISIBILITY = DEBUG_ALL || false;
-    static final boolean DEBUG_APP = DEBUG_ALL_ACTIVITIES || false;
-    static final boolean DEBUG_IDLE = DEBUG_ALL_ACTIVITIES || false;
-    static final boolean DEBUG_RELEASE = DEBUG_ALL_ACTIVITIES || false;
-    static final boolean DEBUG_USER_LEAVING = DEBUG_ALL || false;
-    static final boolean DEBUG_PERMISSIONS_REVIEW = DEBUG_ALL || false;
-    static final boolean DEBUG_RESULTS = DEBUG_ALL || false;
-    public static final boolean DEBUG_CLEANUP = DEBUG_ALL || false;
-    public static final boolean DEBUG_METRICS = DEBUG_ALL || false;
+    static boolean DEBUG_ADD_REMOVE = DEBUG_ALL_ACTIVITIES || false;
+    public static boolean DEBUG_CONFIGURATION = DEBUG_ALL || false;
+    static boolean DEBUG_CONTAINERS = DEBUG_ALL_ACTIVITIES || false;
+    static boolean DEBUG_FOCUS = false;
+    static boolean DEBUG_IMMERSIVE = DEBUG_ALL || false;
+    static boolean DEBUG_LOCKTASK = DEBUG_ALL || false;
+    static boolean DEBUG_PAUSE = DEBUG_ALL || false;
+    static boolean DEBUG_RECENTS = DEBUG_ALL || false;
+    static boolean DEBUG_RECENTS_TRIM_TASKS = DEBUG_RECENTS || false;
+    static boolean DEBUG_SAVED_STATE = DEBUG_ALL_ACTIVITIES || false;
+    static boolean DEBUG_STACK = DEBUG_ALL || false;
+    static boolean DEBUG_STATES = DEBUG_ALL_ACTIVITIES || false;
+    public static boolean DEBUG_SWITCH = DEBUG_ALL || false;
+    static boolean DEBUG_TASKS = DEBUG_ALL || false;
+    static boolean DEBUG_TRANSITION = DEBUG_ALL || false;
+    static boolean DEBUG_VISIBILITY = DEBUG_ALL || false;
+    static boolean DEBUG_APP = DEBUG_ALL_ACTIVITIES || false;
+    static boolean DEBUG_IDLE = DEBUG_ALL_ACTIVITIES || false;
+    static boolean DEBUG_RELEASE = DEBUG_ALL_ACTIVITIES || false;
+    static boolean DEBUG_USER_LEAVING = DEBUG_ALL || false;
+    static boolean DEBUG_PERMISSIONS_REVIEW = DEBUG_ALL || false;
+    static boolean DEBUG_RESULTS = DEBUG_ALL || false;
+    public static boolean DEBUG_CLEANUP = DEBUG_ALL || false;
+    public static boolean DEBUG_METRICS = DEBUG_ALL || false;
 
     static final String POSTFIX_APP = APPEND_CATEGORY_NAME ? "_App" : "";
     static final String POSTFIX_CLEANUP = (APPEND_CATEGORY_NAME) ? "_Cleanup" : "";
@@ -89,4 +89,38 @@ public class ActivityTaskManagerDebugConfig {
     static final String POSTFIX_TRANSITION = APPEND_CATEGORY_NAME ? "_Transition" : "";
     static final String POSTFIX_VISIBILITY = APPEND_CATEGORY_NAME ? "_Visibility" : "";
     static final String POSTFIX_RESULTS = APPEND_CATEGORY_NAME ? "_Results" : "";
+
+    /**
+     * PICO (factory): restores the defaults; the flags are not final so that
+     * IWindowManager transaction 10001 (ExtWindowManagerServiceImpl.enableDebug) can
+     * switch them at run time on debuggable builds.
+     */
+    protected static void reset() {
+        DEBUG_ALL = false;
+        DEBUG_ALL_ACTIVITIES = DEBUG_ALL || false;
+        DEBUG_ADD_REMOVE = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_CONFIGURATION = DEBUG_ALL || false;
+        DEBUG_CONTAINERS = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_FOCUS = false;
+        DEBUG_IMMERSIVE = DEBUG_ALL || false;
+        DEBUG_LOCKTASK = DEBUG_ALL || false;
+        DEBUG_PAUSE = DEBUG_ALL || false;
+        DEBUG_RECENTS = DEBUG_ALL || false;
+        DEBUG_RECENTS_TRIM_TASKS = DEBUG_RECENTS || false;
+        DEBUG_SAVED_STATE = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_STACK = DEBUG_ALL || false;
+        DEBUG_STATES = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_SWITCH = DEBUG_ALL || false;
+        DEBUG_TASKS = DEBUG_ALL || false;
+        DEBUG_TRANSITION = DEBUG_ALL || false;
+        DEBUG_VISIBILITY = DEBUG_ALL || false;
+        DEBUG_APP = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_IDLE = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_RELEASE = DEBUG_ALL_ACTIVITIES || false;
+        DEBUG_USER_LEAVING = DEBUG_ALL || false;
+        DEBUG_PERMISSIONS_REVIEW = DEBUG_ALL || false;
+        DEBUG_RESULTS = DEBUG_ALL || false;
+        DEBUG_CLEANUP = DEBUG_ALL || false;
+        DEBUG_METRICS = DEBUG_ALL || false;
+    }
 }

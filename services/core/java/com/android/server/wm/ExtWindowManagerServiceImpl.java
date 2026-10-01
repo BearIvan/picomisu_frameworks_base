@@ -7,26 +7,30 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteCallback;
+import android.os.SystemProperties;
 import android.text.TextUtils;
 import android.util.Slog;
 
 import com.android.internal.app.RunningAppInfo;
 import com.android.internal.app.ScenesStateListener;
 import com.android.internal.os.BackgroundThread;
+import com.android.server.am.ActivityManagerDebugConfig;
 import com.android.server.api.ApiLayerService;
+import com.android.server.inputmethod.InputMethodManagerService;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * PICO window manager service extension (factory PICO OS 5.13.7
  * com.android.server.wm.ExtWindowManagerServiceImpl): the PICO IWindowManager transactions, the
  * IME target/visibility relay from InputMethodManagerService, the display frame of the IME
- * target of selected apps, the disabled strict-mode border, SystemExt display focus and the
- * visible app callbacks (fed by a scenes state listener on the API layer).
- *
- * Not ported: {@link #CODE_ENABLE_DEBUG}, which needs the runtime-switchable WM/AM/ATM debug
- * configuration of the factory.
+ * target of selected apps, the disabled strict-mode border, SystemExt display focus, the
+ * visible app callbacks (fed by a scenes state listener on the API layer) and the run-time
+ * debug switch of debuggable builds ({@link #CODE_ENABLE_DEBUG}).
  */
 public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
     public static final int CODE_ENABLE_DEBUG = 10001;
@@ -52,6 +56,16 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
     /** Called by WindowManagerService.onTransact for codes IWindowManager does not know. */
     @Override
     public boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
+        if (code == CODE_ENABLE_DEBUG) {
+            data.enforceInterface(DESCRIPTOR);
+            try {
+                String cmd = data.readString();
+                enableDebug(cmd);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return true;
+        }
         if (code == CODE_GET_API_LAYER) {
             // The PICO SDK reads an int flag and the IApiLayer binder without an exception
             // header.
@@ -78,6 +92,56 @@ public class ExtWindowManagerServiceImpl implements IExtWindowManagerService {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Debuggable builds only: resets the WM, AM, ATM and IMMS debug flags, then sets the DEBUG*
+     * fields named in {@code cmd} ("wm:DEBUG_FOCUS,DEBUG_LAYOUT%atm:DEBUG_TASKS%imms:DEBUG").
+     */
+    private void enableDebug(String cmd) {
+        if (!"1".equals(SystemProperties.get("ro.debuggable"))) {
+            return;
+        }
+        WindowManagerDebugConfig.reset();
+        ActivityManagerDebugConfig.reset();
+        ActivityTaskManagerDebugConfig.reset();
+        InputMethodManagerService.DEBUG = false;
+        if (TextUtils.isEmpty(cmd)) {
+            return;
+        }
+        Map<String, Class> debugMap = new HashMap<>();
+        debugMap.put("wm", WindowManagerDebugConfig.class);
+        debugMap.put("am", ActivityManagerDebugConfig.class);
+        debugMap.put("atm", ActivityTaskManagerDebugConfig.class);
+        debugMap.put("imms", InputMethodManagerService.class);
+        Slog.w(TAG, "enableDebug [" + cmd + "]");
+        for (String str : cmd.split("%")) {
+            if (TextUtils.isEmpty(str)) {
+                continue;
+            }
+            String[] arr = str.split(":");
+            Class debugClass;
+            if (arr.length != 2 || (debugClass = debugMap.get(arr[0])) == null) {
+                continue;
+            }
+            Slog.w(TAG, "enable debug on [" + arr[0] + "], params [" + arr[1] + "]");
+            for (String debugName : arr[1].split(",")) {
+                if (TextUtils.isEmpty(debugName)) {
+                    continue;
+                }
+                String name = debugName.trim();
+                if (!name.contains("DEBUG")) {
+                    continue;
+                }
+                Slog.w(TAG, "open debug [" + name + "]");
+                try {
+                    Field field = debugClass.getDeclaredField(name);
+                    field.setBoolean(null, true);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     @Override
