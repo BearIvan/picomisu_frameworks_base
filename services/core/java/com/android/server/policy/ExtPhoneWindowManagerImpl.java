@@ -889,28 +889,28 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
             notifyHomeKeyActionIfNeeded(keycode, 1);
             tapMessageHold = false;
             mDoubleTapPending = false;
-            int i = keycode;
-            if (i == KeyEvent.KEYCODE_HOME) {
-                if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1
-                        && !Features.PROJECT_PHOENIX.equals(BUILD_PROJECT)) {
-                    Slog.i(TAG, "doKeyTapAction shortcut preview");
-                    launchScreenAction("pvr.intent.action.SCREEN_SHOT", "system_key");
-                    isConsumed = true;
-                    return;
-                }
-            } else if (i != KeyEvent.KEYCODE_CAMERA) {
-                if (i == LEFT_CONTROLLER_KEYCODE || i == RIGHT_CONTROLLER_KEYCODE) {
-                    if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1) {
+            // Factory PICO OS 5.13.7: HOME and both controller HOME keys share the preview check,
+            // including the build project test ("phoenix".equals("phoenix"), always true), so the
+            // screenshot preview shortcut never runs for them.
+            switch (keycode) {
+                case KeyEvent.KEYCODE_HOME:
+                case LEFT_CONTROLLER_KEYCODE:
+                case RIGHT_CONTROLLER_KEYCODE:
+                    if (SystemProperties.getInt("pvr.screenshot.preview", 0) == 1
+                            && !Features.PROJECT_PHOENIX.equals(BUILD_PROJECT)) {
                         Slog.i(TAG, "doKeyTapAction shortcut preview");
                         launchScreenAction("pvr.intent.action.SCREEN_SHOT", "system_key");
                         isConsumed = true;
                         return;
                     }
-                }
-            } else if (SettingsObserverExt.getInstance().isSetupWizardComplete()) {
-                launchScreenAction("pvr.intent.action.SCREEN_SHOT", "capture_key");
-                isConsumed = true;
-                return;
+                    break;
+                case KeyEvent.KEYCODE_CAMERA:
+                    if (SettingsObserverExt.getInstance().isSetupWizardComplete()) {
+                        launchScreenAction("pvr.intent.action.SCREEN_SHOT", "capture_key");
+                        isConsumed = true;
+                        return;
+                    }
+                    break;
             }
             if (!isConsumed) {
                 isConsumed = true;
@@ -1567,7 +1567,7 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
         return false;
     }
 
-    /** DisplayHomeButtonHandler: HOME held for over 5 s is reported as pxr notification. */
+    /** DisplayHomeButtonHandler: HOME held for over 3 s is reported as pxr notification. */
     @Override
     public void sendTapHomeMsgIfNeeded(KeyEvent event) {
         int repeatCount = event.getRepeatCount();
@@ -1581,7 +1581,7 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
         long now = System.currentTimeMillis();
         long downTime = mHomeDownTime;
         mRepeatHomeTime = now - downTime;
-        if (downTime != -1 && mRepeatHomeTime > 5000) {
+        if (downTime != -1 && mRepeatHomeTime > 3000) {
             try {
                 Context context = mBase.mContext;
                 if (PxrNotificationService.getInstance(context) != null) {
