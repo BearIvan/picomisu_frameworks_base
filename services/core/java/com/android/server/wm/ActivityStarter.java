@@ -151,6 +151,8 @@ class ActivityStarter {
     private final ActivityStackSupervisor mSupervisor;
     private final ActivityStartInterceptor mInterceptor;
     private final ActivityStartController mController;
+    /** PICO extension (factory IExtActivityStarter). */
+    private final IExtActivityStarter mExt = new ExtActivityStarterImpl(this);
 
     // Share state variable among methods when starting an activity.
     private ActivityRecord mStartActivity;
@@ -631,6 +633,12 @@ class ActivityStarter {
         final Bundle verificationBundle
                 = options != null ? options.popAppVerificationBundle() : null;
 
+        // PICO (factory): no activity starts while the VR loading screen or the app abort mode
+        // is up.
+        if (mExt.interruptStartActivity(callingPackage, intent)) {
+            return ActivityManager.START_CANCELED;
+        }
+
         WindowProcessController callerApp = null;
         if (caller != null) {
             callerApp = mService.getProcessController(caller);
@@ -648,9 +656,20 @@ class ActivityStarter {
         final int userId = aInfo != null && aInfo.applicationInfo != null
                 ? UserHandle.getUserId(aInfo.applicationInfo.uid) : 0;
 
+        // PICO (factory): missing runtime permissions of listed VR apps are requested first.
+        if (mExt.helpRequestPermission(aInfo, mService.mContext, userId)) {
+            Slog.i(TAG, "need help app request permission.");
+            return ActivityManager.START_SUCCESS;
+        }
+
         if (err == ActivityManager.START_SUCCESS) {
             Slog.i(TAG, "START u" + userId + " {" + intent.toShortString(true, true, true, false)
                     + "} from uid " + callingUid);
+            // PICO (factory): third-party apps may not start a launcher.
+            if (mExt.refuseStartLauncher(intent, callingUid)) {
+                mService.moveActivityTaskToBack(resultTo, true);
+                return ActivityManager.START_CANCELED;
+            }
         }
 
         ActivityRecord sourceRecord = null;
@@ -664,6 +683,16 @@ class ActivityStarter {
                     resultRecord = sourceRecord;
                 }
             }
+        }
+
+        // PICO (factory): a prefetched app does not get the VR permission dialog (the factory
+        // also cancels the prefetch through the Smartisan WindowProcessController layer, which
+        // Source does not have; isPrefetch is only set by the absent sys services JAR).
+        if (mExt.isPrefetchAppRequestPermission(callerApp, aInfo)) {
+            if (caller != null) {
+                Slog.w(TAG, "request vr permission from prefetch app need intercept!");
+            }
+            return ActivityManager.START_SUCCESS;
         }
 
         final int launchFlags = intent.getFlags();
@@ -794,8 +823,8 @@ class ActivityStarter {
                     .getPendingRemoteAnimationRegistry()
                     .overrideOptionsIfNeeded(callingPackage, checkedOptions);
         }
-        // Factory ExtActivityStarterImpl.sendActivityStartingMsg.
-        com.android.server.api.ApiLayerService.getInstance().onActivityStarting(aInfo);
+        // PICO (factory): the API layer and pvr_manager learn about the start.
+        mExt.sendActivityStartingMsg(aInfo);
         if (mService.mController != null) {
             try {
                 // The Intent we give to the watcher has the extra data
