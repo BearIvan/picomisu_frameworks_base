@@ -1867,9 +1867,13 @@ public class PackageManagerService extends IPackageManager.Stub
             // legacy apps.
             if (grantPermissions) {
                 final int callingUid = Binder.getCallingUid();
-                mPermissionManager.grantRequestedRuntimePermissions(
-                        res.pkg, res.newUsers, grantedPermissions, callingUid,
-                        mPermissionCallback);
+                try {
+                    mPermissionManager.grantRequestedRuntimePermissions(
+                            res.pkg, res.newUsers, grantedPermissions, callingUid,
+                            mPermissionCallback);
+                } catch (SecurityException e) {
+                    e.printStackTrace();
+                }
             }
 
             final String installerPackageName =
