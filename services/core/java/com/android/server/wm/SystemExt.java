@@ -11,6 +11,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
@@ -39,44 +40,38 @@ import java.util.ArrayList;
  * ({@link #requestCreateVirtualDisplay}) and reports task, display and screen changes. The app
  * calls back through {@link ClientBinder}. Every call is transaction
  * {@link #CODE_SYSTEM_EXT_CLIENT} with interface token "com.bytedance.IRemoteCallback" and the
- * action as the first int, as in the factory.
+ * action as the first int; each method builds its parcels as on the factory.
  */
 public class SystemExt implements IBinder.DeathRecipient {
-    private static final String TAG = "SystemExt";
-    private static final String DESCRIPTOR = "com.bytedance.IRemoteCallback";
-    private static final int CODE_SYSTEM_EXT_CLIENT = 400002;
-
-    private static final int ACTION_WMS_INIT = 0;
     private static final int ACTION_CREATE_VIRTUAL_DISPLAY = 1;
-    private static final int ACTION_NOTIFY_VIRTUAL_DISPLAY_VISIBILITY_CHANGED = 2;
-    private static final int ACTION_NOTIFY_VRSHELL_RESUMED = 3;
-    private static final int ACTION_NOTIFY_TASK_MOVED_TO_FRONT = 4;
-    private static final int ACTION_NOTIFY_TASK_REMOVED = 5;
-    private static final int ACTION_NOTIFY_TASK_EMPTY = 6;
-    private static final int ACTION_SCREEN_STATE_CHANGE = 7;
-    private static final int ACTION_RESIZE_VIRTUAL_DISPLAY = 8;
-    private static final int ACTION_START_ACTIVITY = 9;
     private static final int ACTION_DESTROY_ACTIVITY = 10;
     private static final int ACTION_NOTIFY_FOCUS_CHANGED = 11;
-
-    public static final int START_SUCCESS = 0;
+    private static final int ACTION_NOTIFY_TASK_EMPTY = 6;
+    private static final int ACTION_NOTIFY_TASK_MOVED_TO_FRONT = 4;
+    private static final int ACTION_NOTIFY_TASK_REMOVED = 5;
+    private static final int ACTION_NOTIFY_VIRTUAL_DISPLAY_VISIBILITY_CHANGED = 2;
+    private static final int ACTION_NOTIFY_VRSHELL_RESUMED = 3;
+    private static final int ACTION_RESIZE_VIRTUAL_DISPLAY = 8;
+    private static final int ACTION_SCREEN_STATE_CHANGE = 7;
+    private static final int ACTION_START_ACTIVITY = 9;
+    private static final int ACTION_WMS_INIT = 0;
+    private static final int CODE_SYSTEM_EXT_CLIENT = 400002;
+    private static boolean DEBUG_SYSTEMEXT = false;
     public static final int START_CANCELED = 1;
     public static final int START_PENDING = 2;
-
+    public static final int START_SUCCESS = 0;
+    private static final String TAG = "SystemExt";
     public static final String sAction = "picovr.system_ext.action.HOME";
     public static final String sCurrentPkg = "com.picovr.systemext";
-    private static final boolean DEBUG_SYSTEMEXT = false;
-
-    private final ActivityTaskManagerService mService;
+    public static boolean sUseSystemExt;
     private final Handler mHandler;
     private volatile IBinder mNativeShellService;
-    private final IBinder mClientBinder = new ClientBinder();
-    private boolean mSystemExtDied = false;
-
-    private final BroadcastReceiver mScreenStateReceiver = new BroadcastReceiver() {
+    private PackageManager mPM;
+    private ActivityTaskManagerService mService;
+    private BroadcastReceiver mScreenStateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
+            String action = intent.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 notifyScreenStateChanged(false);
             } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
@@ -84,6 +79,8 @@ public class SystemExt implements IBinder.DeathRecipient {
             }
         }
     };
+    private IBinder mClientBinder = new ClientBinder();
+    private boolean mSystemExtDied = false;
 
     public SystemExt(ActivityTaskManagerService service) {
         mService = service;
@@ -91,10 +88,10 @@ public class SystemExt implements IBinder.DeathRecipient {
     }
 
     public void onSystemReady() {
-        final IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_SCREEN_ON);
-        filter.addAction(Intent.ACTION_SCREEN_OFF);
-        mService.mContext.registerReceiver(mScreenStateReceiver, filter);
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(Intent.ACTION_SCREEN_ON);
+        intentFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        mService.mContext.registerReceiver(mScreenStateReceiver, intentFilter);
         Settings.Global.putInt(mService.mContext.getContentResolver(), "systemext_enabled", 1);
     }
 
@@ -113,7 +110,7 @@ public class SystemExt implements IBinder.DeathRecipient {
                 }
                 mHandler.removeMessages(StartHandler.RETRY_GET_NATIVE_SHELL_SERVICE_MSG);
                 mHandler.sendEmptyMessageDelayed(StartHandler.RETRY_GET_NATIVE_SHELL_SERVICE_MSG,
-                        1000);
+                        1000L);
             } finally {
                 WindowManagerService.resetPriorityAfterLockedSection();
             }
@@ -123,9 +120,7 @@ public class SystemExt implements IBinder.DeathRecipient {
     /** Connects to the SystemExt app's "native_shell" service; retries every second until up. */
     public boolean checkClientService() {
         if (mNativeShellService == null) {
-            // checkService: this runs under the global lock on activity starts, so it must not
-            // wait for the service like getService() does.
-            mNativeShellService = ServiceManager.checkService("native_shell");
+            mNativeShellService = ServiceManager.getService("native_shell");
             Slog.i(TAG, "checkNativeShellService : " + mNativeShellService);
             if (mNativeShellService != null) {
                 requestInit(mClientBinder);
@@ -141,23 +136,25 @@ public class SystemExt implements IBinder.DeathRecipient {
             } else {
                 mHandler.removeMessages(StartHandler.RETRY_GET_NATIVE_SHELL_SERVICE_MSG);
                 mHandler.sendEmptyMessageDelayed(StartHandler.RETRY_GET_NATIVE_SHELL_SERVICE_MSG,
-                        1000);
+                        1000L);
             }
         }
         return mNativeShellService != null;
     }
 
+    /** After SystemExt died: remove the 2D tasks above the top VR task on display 0. */
     private void clear2DTaskOnMainScreen() {
-        final ArrayList<Integer> taskIds = new ArrayList<>();
-        final ActivityDisplay defaultDisplay = mService.mRootActivityContainer.getDefaultDisplay();
+        ArrayList<Integer> taskIds = new ArrayList<>();
+        ActivityDisplay defaultDisplay = mService.mRootActivityContainer.getDefaultDisplay();
         for (int stackNdx = defaultDisplay.getChildCount() - 1; stackNdx >= 0; stackNdx--) {
-            final ActivityRecord r = defaultDisplay.getChildAt(stackNdx).topRunningActivityLocked();
-            if (r != null) {
-                if (r.info.getExt().isVrActivity()) {
+            ActivityStack stack = defaultDisplay.getChildAt(stackNdx);
+            ActivityRecord activityRecord = stack.topRunningActivityLocked();
+            if (activityRecord != null) {
+                if (activityRecord.info.getExt().isVrActivity()) {
                     break;
                 }
-                Slog.i(TAG, "clear task : " + r.getTaskRecord());
-                taskIds.add(r.getTaskRecord().taskId);
+                Slog.i(TAG, "clear task : " + activityRecord.getTaskRecord());
+                taskIds.add(activityRecord.getTaskRecord().taskId);
             }
         }
         for (int taskId : taskIds) {
@@ -166,39 +163,13 @@ public class SystemExt implements IBinder.DeathRecipient {
         }
     }
 
-    /** A prepared call: token and action written; {@link #call} sends it. */
-    private Parcel obtain(int action) {
-        final Parcel data = Parcel.obtain();
-        data.writeInterfaceToken(DESCRIPTOR);
-        data.writeInt(action);
-        return data;
-    }
-
-    /** Sends {@code data} (recycled here); returns the reply int, or {@code def} on failure. */
-    private int call(Parcel data, boolean oneway, int def) {
-        final IBinder service = mNativeShellService;
-        final Parcel reply = Parcel.obtain();
-        try {
-            if (service == null) {
-                return def;
-            }
-            service.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
-                    oneway ? IBinder.FLAG_ONEWAY : 0);
-            return oneway ? def : reply.readInt();
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            return def;
-        } finally {
-            reply.recycle();
-            data.recycle();
-        }
-    }
-
     private void requestInit(IBinder clientBinder) {
-        final Parcel data = obtain(ACTION_WMS_INIT);
-        data.writeStrongBinder(clientBinder);
-        final Parcel reply = Parcel.obtain();
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
         try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_WMS_INIT);
+            data.writeStrongBinder(clientBinder);
             mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply, 0);
         } catch (RemoteException e) {
             e.printStackTrace();
@@ -208,97 +179,166 @@ public class SystemExt implements IBinder.DeathRecipient {
         }
     }
 
+    /** Asks SystemExt whether an activity may start: START_SUCCESS, _CANCELED or _PENDING. */
     public int handleStartActivity(long seq, Intent intent, ActivityInfo startActivity,
             ActivityInfo sourceActivity, int targetDisplayId, int callingDisplayId,
             String callingPackage, boolean resumed) {
         if (mNativeShellService == null) {
             return START_SUCCESS;
         }
-        final Parcel data = obtain(ACTION_START_ACTIVITY);
-        data.writeLong(seq);
-        startActivity.writeToParcel(data, 0);
-        if (sourceActivity != null) {
-            data.writeInt(1);
-            sourceActivity.writeToParcel(data, 0);
-        } else {
-            data.writeInt(0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_START_ACTIVITY);
+            data.writeLong(seq);
+            startActivity.writeToParcel(data, 0);
+            if (sourceActivity != null) {
+                data.writeInt(1);
+                sourceActivity.writeToParcel(data, 0);
+            } else {
+                data.writeInt(0);
+            }
+            data.writeInt(targetDisplayId);
+            data.writeInt(callingDisplayId);
+            if (callingPackage != null) {
+                data.writeInt(1);
+                data.writeString(callingPackage);
+            } else {
+                data.writeInt(0);
+            }
+            if (intent != null) {
+                data.writeInt(1);
+                intent.writeToParcel(data, 0);
+            } else {
+                data.writeInt(0);
+            }
+            data.writeBoolean(resumed);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply, 0);
+            return reply.readInt();
+        } catch (RemoteException e) {
+            e.printStackTrace();
+            return START_SUCCESS;
+        } finally {
+            reply.recycle();
+            data.recycle();
         }
-        data.writeInt(targetDisplayId);
-        data.writeInt(callingDisplayId);
-        if (callingPackage != null) {
-            data.writeInt(1);
-            data.writeString(callingPackage);
-        } else {
-            data.writeInt(0);
-        }
-        if (intent != null) {
-            data.writeInt(1);
-            intent.writeToParcel(data, 0);
-        } else {
-            data.writeInt(0);
-        }
-        data.writeBoolean(resumed);
-        return call(data, false, START_SUCCESS);
     }
 
     public void handleDestroyActivity(ActivityInfo activityInfo) {
         if (mNativeShellService == null) {
             return;
         }
-        final Parcel data = obtain(ACTION_DESTROY_ACTIVITY);
-        activityInfo.writeToParcel(data, 0);
-        call(data, false, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_DESTROY_ACTIVITY);
+            activityInfo.writeToParcel(data, 0);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply, 0);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
+    /** Asks SystemExt for a virtual display for a 2D activity; its id, or -1. */
     public int requestCreateVirtualDisplay(ActivityRecord startActivity,
             ActivityRecord sourceRecord) {
         if (mNativeShellService == null) {
             return -1;
         }
         int callingDisplayId = sourceRecord != null ? sourceRecord.getDisplayId() : -1;
-        final String callingPackage = startActivity.launchedFromPackage;
-        final int parentDisplayId = findParentDisplayId(callingDisplayId, callingPackage);
+        String callingPackage = startActivity.launchedFromPackage;
+        int parentDisplayId = findParentDisplayId(callingDisplayId, callingPackage);
         if (parentDisplayId != -1) {
             callingDisplayId = parentDisplayId;
         }
-        final ActivityInfo activityInfo = startActivity.info;
+        ActivityInfo activityInfo = startActivity.info;
         Slog.i(TAG, "requestCreateVirtualDisplay : " + activityInfo.packageName + ", "
                 + activityInfo.name + ", callingDisplayId : " + callingDisplayId
                 + ", callingPackage : " + callingPackage);
-        final Parcel data = obtain(ACTION_CREATE_VIRTUAL_DISPLAY);
-        activityInfo.writeToParcel(data, 0);
-        data.writeInt(callingDisplayId);
-        data.writeString(callingPackage);
-        return call(data, false, -1);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_CREATE_VIRTUAL_DISPLAY);
+            activityInfo.writeToParcel(data, 0);
+            data.writeInt(callingDisplayId);
+            data.writeString(callingPackage);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply, 0);
+            return reply.readInt();
+        } catch (RemoteException e) {
+            e.printStackTrace();
+            return -1;
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyTaskMovedToFront(int displayId, ActivityManager.RunningTaskInfo taskInfo) {
         if (mNativeShellService == null) {
             return;
         }
-        final Parcel data = obtain(ACTION_NOTIFY_TASK_MOVED_TO_FRONT);
-        data.writeInt(displayId);
-        taskInfo.writeToParcel(data, 0);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_NOTIFY_TASK_MOVED_TO_FRONT);
+            data.writeInt(displayId);
+            taskInfo.writeToParcel(data, 0);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyTaskRemoved(int displayId, ActivityManager.RunningTaskInfo taskInfo) {
         if (mNativeShellService == null) {
             return;
         }
-        final Parcel data = obtain(ACTION_NOTIFY_TASK_REMOVED);
-        data.writeInt(displayId);
-        data.writeInt(taskInfo.taskId);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_NOTIFY_TASK_REMOVED);
+            data.writeInt(displayId);
+            data.writeInt(taskInfo.taskId);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyTaskEmpty(int displayId) {
         if (mNativeShellService == null) {
             return;
         }
-        final Parcel data = obtain(ACTION_NOTIFY_TASK_EMPTY);
-        data.writeInt(displayId);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_NOTIFY_TASK_EMPTY);
+            data.writeInt(displayId);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyVirtualDisplayVisibilityChanged(int displayId, boolean isVisible) {
@@ -309,10 +349,21 @@ public class SystemExt implements IBinder.DeathRecipient {
             Slog.i(TAG, "notifyVirtualDisplayVisibilityChanged displayId: " + displayId
                     + ", isVisible : " + isVisible);
         }
-        final Parcel data = obtain(ACTION_NOTIFY_VIRTUAL_DISPLAY_VISIBILITY_CHANGED);
-        data.writeInt(displayId);
-        data.writeInt(isVisible ? 1 : 0);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_NOTIFY_VIRTUAL_DISPLAY_VISIBILITY_CHANGED);
+            data.writeInt(displayId);
+            data.writeInt(isVisible ? 1 : 0);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyVrShellResumed() {
@@ -320,7 +371,19 @@ public class SystemExt implements IBinder.DeathRecipient {
             return;
         }
         Slog.i(TAG, "on vrshell resumed");
-        call(obtain(ACTION_NOTIFY_VRSHELL_RESUMED), true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_NOTIFY_VRSHELL_RESUMED);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyScreenStateChanged(boolean screenOn) {
@@ -328,9 +391,20 @@ public class SystemExt implements IBinder.DeathRecipient {
         if (mNativeShellService == null) {
             return;
         }
-        final Parcel data = obtain(ACTION_SCREEN_STATE_CHANGE);
-        data.writeInt(screenOn ? 1 : 0);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_SCREEN_STATE_CHANGE);
+            data.writeInt(screenOn ? 1 : 0);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyResizeVirtualDisplay(int displayId, int reqOrientation) {
@@ -339,10 +413,21 @@ public class SystemExt implements IBinder.DeathRecipient {
         }
         Slog.i(TAG, "notifyResizeVirtualDisplay displayId : " + displayId + ", reqOrientation : "
                 + reqOrientation);
-        final Parcel data = obtain(ACTION_RESIZE_VIRTUAL_DISPLAY);
-        data.writeInt(displayId);
-        data.writeInt(reqOrientation);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_RESIZE_VIRTUAL_DISPLAY);
+            data.writeInt(displayId);
+            data.writeInt(reqOrientation);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
     public void notifyFocusDisplayChanged(int displayId) {
@@ -350,20 +435,38 @@ public class SystemExt implements IBinder.DeathRecipient {
             return;
         }
         Slog.i(TAG, "notifyFocusDisplayChanged displayId : " + displayId);
-        final Parcel data = obtain(ACTION_NOTIFY_FOCUS_CHANGED);
-        data.writeInt(displayId);
-        call(data, true, 0);
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.bytedance.IRemoteCallback");
+            data.writeInt(ACTION_NOTIFY_FOCUS_CHANGED);
+            data.writeInt(displayId);
+            mNativeShellService.transact(CODE_SYSTEM_EXT_CLIENT, data, reply,
+                    IBinder.FLAG_ONEWAY);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
     }
 
+    /**
+     * The display that embeds the calling display (an ActivityView inside a 2D app panel), so
+     * SystemExt places the new panel next to the panel the user sees; -1 when there is none.
+     */
     private int findParentDisplayId(int callingDisplayId, String callingPackage) {
+        DisplayContent displayContent;
+        WindowState parentWindow;
+        DisplayContent parentDisplay;
+        WindowState focusWindow;
         if (callingDisplayId == 0) {
             return -1;
         }
-        final DisplayContent displayContent;
         if (callingDisplayId == -1) {
-            final WindowState focusWindow =
-                    mService.mWindowManager.mRoot.getTopFocusedDisplayContent().mCurrentFocus;
-            if (TextUtils.isEmpty(callingPackage) || focusWindow == null
+            if (TextUtils.isEmpty(callingPackage)
+                    || (focusWindow = mService.mWindowManager.mRoot
+                            .getTopFocusedDisplayContent().mCurrentFocus) == null
                     || !callingPackage.equals(focusWindow.getOwningPackage())) {
                 return -1;
             }
@@ -371,42 +474,16 @@ public class SystemExt implements IBinder.DeathRecipient {
         } else {
             displayContent = mService.mWindowManager.mRoot.getDisplayContent(callingDisplayId);
         }
-        if (displayContent == null || displayContent.getDisplay().getExt().isVr2dDisplay()) {
+        if (displayContent == null || displayContent.getDisplay().getExt().isVr2dDisplay()
+                || (parentWindow = displayContent.getParentWindow()) == null
+                || (parentDisplay = parentWindow.getDisplayContent()) == null) {
             return -1;
         }
-        final WindowState parentWindow = displayContent.getParentWindow();
-        final DisplayContent parentDisplay =
-                parentWindow != null ? parentWindow.getDisplayContent() : null;
-        return parentDisplay != null ? parentDisplay.getDisplayId() : -1;
-    }
-
-    /** Factory ExtWindowManagerServiceImpl.updateDisplayFocus. */
-    private void updateDisplayFocus(int displayId, String reason) {
-        synchronized (mService.mGlobalLock) {
-            try {
-                WindowManagerService.boostPriorityForLockedSection();
-                final DisplayContent dc = mService.mWindowManager.mRoot.getDisplayContent(displayId);
-                if (dc == null) {
-                    Slog.w(TAG, "updateDisplayFocus failed by dc is null");
-                    return;
-                }
-                final TaskStack stack = dc.getTopStack();
-                final Task task = stack != null ? stack.getTopChild() : null;
-                if (task == null) {
-                    Slog.w(TAG, "updateDisplayFocus failed by getTopRootTask is null");
-                    return;
-                }
-                Slog.w(TAG, "updateDisplayFocus displayId " + displayId + ", task " + task
-                        + ", reason[" + reason + "]");
-                mService.setFocusedTask(task.mTaskId);
-            } finally {
-                WindowManagerService.resetPriorityAfterLockedSection();
-            }
-        }
+        return parentDisplay.getDisplayId();
     }
 
     private final class StartHandler extends Handler {
-        static final int RETRY_GET_NATIVE_SHELL_SERVICE_MSG = 1;
+        private static final int RETRY_GET_NATIVE_SHELL_SERVICE_MSG = 1;
 
         StartHandler(Looper looper) {
             super(looper, null, true);
@@ -429,62 +506,78 @@ public class SystemExt implements IBinder.DeathRecipient {
 
     /** Calls from the SystemExt app into system_server. */
     private class ClientBinder extends Binder implements IInterface {
-        private static final int CODE_WMS_MOVE_DISPLAY_TO_BACK = 1000;
-        private static final int CODE_WMS_MOVE_DISPLAY_TO_FRONT = 1001;
         private static final int CODE_WMS_APP_SWITCH_ALLOWED_RESULT = 1003;
-        private static final int CODE_WMS_FORCE_HIDE_SOFT_INPUT_METHOD = 1004;
-        private static final int CODE_WMS_GET_DEFAULT_DISPLAY_TOP_RUNNING_TASK = 1005;
         private static final int CODE_WMS_APP_SWITCH_ALLOWED_RESULT_BATCH = 1006;
         private static final int CODE_WMS_BEFORE_EXIT_3D_APP = 1007;
+        private static final int CODE_WMS_FORCE_HIDE_SOFT_INPUT_METHOD = 1004;
+        private static final int CODE_WMS_GET_DEFAULT_DISPLAY_TOP_RUNNING_TASK = 1005;
+        private static final int CODE_WMS_MOVE_DISPLAY_TO_BACK = 1000;
+        private static final int CODE_WMS_MOVE_DISPLAY_TO_FRONT = 1001;
         private static final int CODE_WMS_UPDATE_DISPLAY_FOCUS = 1008;
+        private static final String DESCRIPTOR = "com.bytedance.IRemoteCallback";
 
         ClientBinder() {
             attachInterface(this, DESCRIPTOR);
-        }
-
-        private void setVirtualDisplayVisible(int displayId, boolean visible) {
-            final long callingId = Binder.clearCallingIdentity();
-            try {
-                synchronized (mService.mGlobalLock) {
-                    try {
-                        WindowManagerService.boostPriorityForLockedSection();
-                        mService.getActivityStartController().getExt()
-                                .handleClientVirtualDisplayVisibilityChanged(displayId, visible);
-                    } finally {
-                        WindowManagerService.resetPriorityAfterLockedSection();
-                    }
-                }
-            } finally {
-                Binder.restoreCallingIdentity(callingId);
-            }
         }
 
         @Override
         protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                 throws RemoteException {
             switch (code) {
-                case CODE_WMS_MOVE_DISPLAY_TO_BACK:
+                case CODE_WMS_MOVE_DISPLAY_TO_BACK: {
                     data.enforceInterface(DESCRIPTOR);
-                    setVirtualDisplayVisible(data.readInt(), false);
+                    int displayId = data.readInt();
+                    long callingId = Binder.clearCallingIdentity();
+                    try {
+                        synchronized (mService.mGlobalLock) {
+                            try {
+                                WindowManagerService.boostPriorityForLockedSection();
+                                mService.getActivityStartController().getExt()
+                                        .handleClientVirtualDisplayVisibilityChanged(displayId,
+                                                false);
+                            } finally {
+                                WindowManagerService.resetPriorityAfterLockedSection();
+                            }
+                        }
+                    } finally {
+                        Binder.restoreCallingIdentity(callingId);
+                    }
                     return true;
-                case CODE_WMS_MOVE_DISPLAY_TO_FRONT:
+                }
+                case CODE_WMS_MOVE_DISPLAY_TO_FRONT: {
                     data.enforceInterface(DESCRIPTOR);
-                    setVirtualDisplayVisible(data.readInt(), true);
+                    int displayId = data.readInt();
+                    long callingId = Binder.clearCallingIdentity();
+                    try {
+                        synchronized (mService.mGlobalLock) {
+                            try {
+                                WindowManagerService.boostPriorityForLockedSection();
+                                mService.getActivityStartController().getExt()
+                                        .handleClientVirtualDisplayVisibilityChanged(displayId,
+                                                true);
+                            } finally {
+                                WindowManagerService.resetPriorityAfterLockedSection();
+                            }
+                        }
+                    } finally {
+                        Binder.restoreCallingIdentity(callingId);
+                    }
                     return true;
+                }
                 case CODE_WMS_APP_SWITCH_ALLOWED_RESULT: {
                     data.enforceInterface(DESCRIPTOR);
-                    final long seq = data.readLong();
-                    final boolean allowed = data.readInt() != 0;
+                    long seq = data.readLong();
+                    boolean allowed = data.readInt() != 0;
                     mService.getActivityStartController().getExt()
                             .handleClientActivityOrTaskSwitchAllowedResult(seq, allowed);
                     return true;
                 }
                 case CODE_WMS_FORCE_HIDE_SOFT_INPUT_METHOD:
                     try {
-                        final InputMethodManagerInternal imm =
+                        InputMethodManagerInternal inputMethodManagerInternal =
                                 LocalServices.getService(InputMethodManagerInternal.class);
-                        if (imm != null) {
-                            imm.hideCurrentInputMethod();
+                        if (inputMethodManagerInternal != null) {
+                            inputMethodManagerInternal.hideCurrentInputMethod();
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -492,9 +585,8 @@ public class SystemExt implements IBinder.DeathRecipient {
                     return true;
                 case CODE_WMS_GET_DEFAULT_DISPLAY_TOP_RUNNING_TASK: {
                     data.enforceInterface(DESCRIPTOR);
-                    final ActivityManager.RunningTaskInfo taskInfo =
-                            mService.getActivityStartController().getExt()
-                                    .getDefaultDisplayTopTaskInfo();
+                    ActivityManager.RunningTaskInfo taskInfo = mService
+                            .getActivityStartController().getExt().getDefaultDisplayTopTaskInfo();
                     if (taskInfo == null) {
                         reply.writeInt(0);
                     } else {
@@ -505,22 +597,25 @@ public class SystemExt implements IBinder.DeathRecipient {
                 }
                 case CODE_WMS_APP_SWITCH_ALLOWED_RESULT_BATCH: {
                     data.enforceInterface(DESCRIPTOR);
-                    final int length = data.readInt();
+                    int length = data.readInt();
                     if (length > 0) {
-                        final long[] seqArray = new long[length];
+                        long[] seqArray = new long[length];
                         data.readLongArray(seqArray);
                         mService.getActivityStartController().getExt()
                                 .handleClientActivityOrTaskBatchAllowedResult(seqArray);
                     }
                     return true;
                 }
-                case CODE_WMS_UPDATE_DISPLAY_FOCUS:
+                case CODE_WMS_UPDATE_DISPLAY_FOCUS: {
                     data.enforceInterface(DESCRIPTOR);
                     Slog.w(TAG, "CODE_WMS_UPDATE_DISPLAY_FOCUS");
-                    updateDisplayFocus(data.readInt(), "USER_UPDATE_DISPLAY_FOCUS");
+                    int displayId = data.readInt();
+                    mService.mWindowManager.getExt().updateDisplayFocus(displayId,
+                            "USER_UPDATE_DISPLAY_FOCUS");
                     return true;
+                }
                 default:
-                    // 1002 (MSG_DO_TRANVERSAL) and 1007 are not handled here in the factory either.
+                    // 1002 (MSG_DO_TRANVERSAL) and 1007 are not handled here on the factory.
                     return super.onTransact(code, data, reply, flags);
             }
         }

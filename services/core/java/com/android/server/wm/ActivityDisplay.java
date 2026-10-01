@@ -177,10 +177,10 @@ class ActivityDisplay extends ConfigurationContainer<ActivityStack>
         mExt.init(mService, mDisplay);
     }
 
-    /** PICO VR state of this display (factory ExtActivityDisplayImpl). */
-    private final ExtActivityDisplayImpl mExt = new ExtActivityDisplayImpl(this);
+    /** PICO VR state of this display (factory IExtActivityDisplay). */
+    private final IExtActivityDisplay mExt = new ExtActivityDisplayImpl(this);
 
-    ExtActivityDisplayImpl getExt() {
+    public IExtActivityDisplay getExt() {
         return mExt;
     }
 

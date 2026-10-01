@@ -21,7 +21,7 @@ import java.util.ArrayList;
  * visibility of a 2D app virtual display as SystemExt sees it, and the top task history used to
  * report "task moved to front", "task removed" and "display empty" to SystemExt.
  */
-public class ExtActivityDisplayImpl {
+public class ExtActivityDisplayImpl implements IExtActivityDisplay {
     private static final String TAG = "ActivityStartControllerExt";
     public static final int PENDING_INVISIBLE = 1;
     public static final int INVISIBLE = 2;
@@ -114,7 +114,7 @@ public class ExtActivityDisplayImpl {
     }
 
     private void onTaskMovedToFront(ActivityManager.RunningTaskInfo taskInfo) {
-        final ExtActivityStartControllerImpl controller =
+        final IExtActivityStartController controller =
                 mService.getActivityStartController().getExt();
         if (mBase.mDisplayId == 0) {
             Slog.i(TAG, "notifyDefaultDisplayTaskMoveToFront : " + taskInfo);

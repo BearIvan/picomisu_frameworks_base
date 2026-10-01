@@ -30,6 +30,7 @@ import android.util.Slog;
 import android.view.Display;
 import android.view.DisplayInfo;
 
+import com.android.server.SysOptBridge;
 import com.android.server.am.ActivityManagerService;
 
 import java.util.ArrayList;
@@ -47,10 +48,10 @@ import java.util.ArrayList;
  * orientation request on a 2D app display asks SystemExt to resize the virtual display
  * (handleResizeVirtualDisplay).
  *
- * Not ported yet: startActivityFromRecents and the Smartisan single-3D-app pending launch
- * notification.
+ * The SystemExt-related settings (setup wizard, ToB custom app/home, dock and screenshot flags)
+ * are kept by {@link SettingsObserverExt}, created here as on the factory.
  */
-public class ExtActivityStartControllerImpl {
+public class ExtActivityStartControllerImpl implements IExtActivityStartController {
     private static final String TAG = "ActivityStartControllerExt";
     private static final String ACTIVITY_FALLBACK_HOME = "com.android.settings/.FallbackHome";
     private static final String ACTIVITY_VR_SHELL = "com.pvr.vrshell/.MainActivity";
@@ -98,6 +99,7 @@ public class ExtActivityStartControllerImpl {
         mService = service;
         mHandler = new StartHandler(mService.mH.getLooper());
         mSystemExt = new SystemExt(service);
+        SettingsObserverExt.init(mService.mContext, mHandler);
     }
 
     public SystemExt getSystemExt() {
@@ -108,6 +110,7 @@ public class ExtActivityStartControllerImpl {
         if (!Features.isPvr2DEnabled()) {
             return;
         }
+        SettingsObserverExt.getInstance().onSystemReady();
         mSystemExt.onSystemReady();
     }
 
@@ -237,6 +240,24 @@ public class ExtActivityStartControllerImpl {
         }
     }
 
+    /**
+     * Restarts a recent task through startActivityInPackage (factory; not called by the factory
+     * either).
+     */
+    public int startActivityFromRecents(int taskId, int callingPid, int callingUid,
+            SafeActivityOptions options) {
+        TaskRecord task = mService.mRootActivityContainer.anyTaskForId(taskId,
+                RootActivityContainer.MATCH_TASK_IN_STACKS_OR_RECENT_TASKS,
+                options != null ? options.getOptions(mService.mStackSupervisor) : null, true);
+        if (task == null) {
+            throw new IllegalArgumentException(
+                    "startActivityFromRecents: Task " + taskId + " not found.");
+        }
+        return mService.getActivityStartController().startActivityInPackage(task.mCallingUid,
+                callingPid, callingUid, task.mCallingPackage, task.intent, null, null, null, 0, 0,
+                options, task.userId, null, "startActivityFromRecentsExt", false, null, false);
+    }
+
     public void reuseTask(ActivityRecord startActivity, RootActivityContainer.FindTaskResult tmpResult,
             RootActivityContainer.FindTaskResult result, boolean isPreferDisplay) {
         if (!Features.isPvr2DEnabled()) {
@@ -288,12 +309,12 @@ public class ExtActivityStartControllerImpl {
         if (display == null || (display.mDisplay.getFlags() & FLAG_VR_2D_VIRTUAL_DISPLAY) == 0) {
             return;
         }
-        final ExtActivityDisplayImpl displayExt = display.getExt();
-        if (displayExt.getVisibility() == ExtActivityDisplayImpl.INVISIBLE
-                || displayExt.getVisibility() == ExtActivityDisplayImpl.PENDING_INVISIBLE) {
+        final IExtActivityDisplay displayExt = display.getExt();
+        if (displayExt.getVisibility() == IExtActivityDisplay.INVISIBLE
+                || displayExt.getVisibility() == IExtActivityDisplay.PENDING_INVISIBLE) {
             return;
         }
-        displayExt.setVisibility(ExtActivityDisplayImpl.PENDING_INVISIBLE);
+        displayExt.setVisibility(IExtActivityDisplay.PENDING_INVISIBLE);
         Slog.i(TAG, "onTaskMovedToBack and notify hide VirtualDisplay, displayId : "
                 + display.mDisplayId);
         mSystemExt.notifyVirtualDisplayVisibilityChanged(display.mDisplayId, false);
@@ -309,10 +330,10 @@ public class ExtActivityStartControllerImpl {
         checkForDisplayTopTaskChanged();
         if ((activityDisplay.mDisplay.getFlags() & FLAG_VR_2D_VIRTUAL_DISPLAY) != 0
                 && !"setFocusedTask".equals(reason)) {
-            final ExtActivityDisplayImpl displayExt = activityDisplay.getExt();
-            if (displayExt.getVisibility() == ExtActivityDisplayImpl.INVISIBLE
-                    || displayExt.getVisibility() == ExtActivityDisplayImpl.PENDING_INVISIBLE) {
-                displayExt.setVisibility(ExtActivityDisplayImpl.PENDING_VISIBLE);
+            final IExtActivityDisplay displayExt = activityDisplay.getExt();
+            if (displayExt.getVisibility() == IExtActivityDisplay.INVISIBLE
+                    || displayExt.getVisibility() == IExtActivityDisplay.PENDING_INVISIBLE) {
+                displayExt.setVisibility(IExtActivityDisplay.PENDING_VISIBLE);
                 if (ActivityTaskManagerDebugConfig.DEBUG_TASKS) {
                     Slog.i(TAG, "onTaskMovedToFront and notify show VirtualDisplay : "
                             + activityDisplay.topRunningActivity() + ", displayId : "
@@ -374,15 +395,9 @@ public class ExtActivityStartControllerImpl {
         return top != null ? top.getTaskRecord() : null;
     }
 
-    private static ComponentName getComponentName(ActivityManager.RunningTaskInfo taskInfo) {
-        if (taskInfo == null) {
-            return null;
-        }
-        return taskInfo.baseActivity != null ? taskInfo.baseActivity : taskInfo.topActivity;
-    }
-
     private void doPendingActivityLaunches(PendingActivityLaunch launch, boolean checkVrShell) {
-        final ComponentName topActivity = getComponentName(mDefaultDisplayTopTaskInfo);
+        final ComponentName topActivity =
+                SettingsObserverExt.getComponentName(mDefaultDisplayTopTaskInfo);
         if (checkVrShell && !launch.r.info.getExt().isVrActivity() && (topActivity == null
                 || !ACTIVITY_VR_SHELL.equals(topActivity.flattenToShortString()))) {
             Slog.w(TAG, "do pending launch 2D App failed : " + launch.r + ", vr app :"
@@ -426,12 +441,13 @@ public class ExtActivityStartControllerImpl {
                 }
             }
         }
+        final ActivityStarter starter = mService.getActivityStartController()
+                .obtainStarter(null, "pendingActivityLaunchExt");
         try {
-            mBase.obtainStarter(null, "pendingActivityLaunchExt").startResolvedActivity(launch.r,
-                    launch.sourceRecord, null, null, launch.startFlags, true,
-                    launch.r.pendingOptions, null);
+            starter.startResolvedActivity(launch.r, launch.sourceRecord, null, null,
+                    launch.startFlags, true, launch.r.pendingOptions, null);
         } catch (Exception e) {
-            Slog.w(TAG, "do pending launch failed: " + launch.r, e);
+            // Ignored, as on the factory.
         }
     }
 
@@ -448,7 +464,7 @@ public class ExtActivityStartControllerImpl {
             if (ActivityTaskManagerDebugConfig.DEBUG_TASKS) {
                 Slog.i(TAG, "move virtual display to top: " + displayId + ", show :" + show);
             }
-            activityDisplay.getExt().setVisibility(ExtActivityDisplayImpl.VISIBLE);
+            activityDisplay.getExt().setVisibility(IExtActivityDisplay.VISIBLE);
             if (parent != null) {
                 parent.positionChildAt(Integer.MAX_VALUE, displayContent, true);
                 mService.mRootActivityContainer.resumeFocusedStacksTopActivities();
@@ -458,7 +474,7 @@ public class ExtActivityStartControllerImpl {
         if (ActivityTaskManagerDebugConfig.DEBUG_TASKS) {
             Slog.i(TAG, "move virtual display to bottom: " + displayId + ", show :" + show);
         }
-        activityDisplay.getExt().setVisibility(ExtActivityDisplayImpl.INVISIBLE);
+        activityDisplay.getExt().setVisibility(IExtActivityDisplay.INVISIBLE);
         if (parent == null) {
             return;
         }
@@ -607,7 +623,7 @@ public class ExtActivityStartControllerImpl {
                 || !displayContent.getDisplay().getExt().isVr2dDisplay()) {
             return false;
         }
-        final ExtActivityDisplayImpl displayExt = displayContent.mAcitvityDisplay.getExt();
+        final IExtActivityDisplay displayExt = displayContent.mAcitvityDisplay.getExt();
         if (reqOrientation != displayExt.getReqOrientation() || forceUpdate) {
             displayExt.setReqOrientation(reqOrientation);
             if (displayExt.isScreenOn()
@@ -664,11 +680,6 @@ public class ExtActivityStartControllerImpl {
             }
             return isTask ? r.getTaskRecord() == other.r.getTaskRecord()
                     : sameStartActivity(r, other.r);
-        }
-
-        @Override
-        public int hashCode() {
-            return r.mActivityComponent.hashCode();
         }
     }
 
@@ -746,7 +757,26 @@ public class ExtActivityStartControllerImpl {
                 display.setIsSleeping(false);
             }
         }
+        updatePendingLaunchActivity();
         return intercept;
+    }
+
+    /** Tells the Single3DApp policy which starts wait for the answer of SystemExt. */
+    private void updatePendingLaunchActivity() {
+        ArrayList<String> targetPackages = new ArrayList<>();
+        ArrayList<Integer> targetUids = new ArrayList<>();
+        ArrayList<String> sourcePackages = new ArrayList<>();
+        ArrayList<Integer> sourceUids = new ArrayList<>();
+        for (PendingActivityLaunch pending : mPendingOnCheckingActivityLaunches) {
+            if (pending.r != null && pending.sourceRecord != null) {
+                targetPackages.add(pending.r.packageName);
+                targetUids.add(pending.r.appInfo.uid);
+                sourcePackages.add(pending.sourceRecord.packageName);
+                sourceUids.add(pending.sourceRecord.appInfo.uid);
+            }
+        }
+        SysOptBridge.getFactory().getSingle3DApp().updatePendingLaunchActivity(targetPackages,
+                targetUids, sourcePackages, sourceUids);
     }
 
     /** VRShell forwards 2D launches wrapped in a pvr.intent.action.VRSHELL intent. */

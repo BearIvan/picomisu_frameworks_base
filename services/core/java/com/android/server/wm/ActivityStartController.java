@@ -138,10 +138,10 @@ public class ActivityStartController {
         mExt = new ExtActivityStartControllerImpl(this, service);
     }
 
-    /** PICO VR activity start routing (factory ExtActivityStartControllerImpl). */
-    private final ExtActivityStartControllerImpl mExt;
+    /** PICO VR activity start routing (factory IExtActivityStartController). */
+    private final IExtActivityStartController mExt;
 
-    ExtActivityStartControllerImpl getExt() {
+    public IExtActivityStartController getExt() {
         return mExt;
     }
 
