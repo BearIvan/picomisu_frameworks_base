@@ -125,7 +125,7 @@ public class ExtActivityStackImpl implements IExtActivityStack {
         }
         final String position = record.info.getExt().get2dAppPosition();
         int callerStackId = INVALID_STACK_ID;
-        ActivityRecord sourceRecord = record.mPicoSourceRecord;
+        ActivityRecord sourceRecord = record.getExt().getSourceRecord();
         if (sourceRecord == null) {
             sourceRecord = getResumedActivity(record.launchedFromPackage);
             Slog.w(TAG, "setIntent, get real sourceRecord: " + sourceRecord + ", record: "
@@ -147,7 +147,7 @@ public class ExtActivityStackImpl implements IExtActivityStack {
             final ActivityStack sourceStack = sourceRecord.getActivityStack();
             callerStackId = sourceStack != null
                     ? sourceStack.getExt().getCallerStackId() : INVALID_STACK_ID;
-            sourceRecord = sourceRecord.mPicoSourceRecord;
+            sourceRecord = sourceRecord.getExt().getSourceRecord();
         }
         setCallerStackId(callerStackId, "setIntent");
     }

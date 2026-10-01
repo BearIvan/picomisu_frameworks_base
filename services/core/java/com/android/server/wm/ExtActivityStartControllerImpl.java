@@ -228,7 +228,7 @@ public class ExtActivityStartControllerImpl {
         }
         if (displayId <= 0) {
             displayId = mSystemExt.requestCreateVirtualDisplay(startActivity,
-                    startActivity.mPicoSourceRecord);
+                    startActivity.getExt().getSourceRecord());
             Slog.d(TAG, "calculateDisplayId: " + displayId + ", for activity: " + startActivity);
             startActivity.appInfo.getExt().setDisplayId(displayId);
         }

@@ -945,8 +945,8 @@ public final class ActivityRecord extends ConfigurationContainer {
         }
     }
 
-    /** PICO: the activity that started this one (factory ExtActivityRecordImpl). */
-    ActivityRecord mPicoSourceRecord;
+    /** PICO activity extension (factory IExtActivityRecord). */
+    private IExtActivityRecord mExt = new ExtActivityRecordImpl(this);
 
     ActivityRecord(ActivityTaskManagerService _service, WindowProcessController _caller,
             int _launchedFromPid, int _launchedFromUid, String _launchedFromPackage, Intent _intent,
@@ -955,7 +955,8 @@ public final class ActivityRecord extends ConfigurationContainer {
             boolean _rootVoiceInteraction, ActivityStackSupervisor supervisor,
             ActivityOptions options, ActivityRecord sourceRecord) {
         mAtmService = _service;
-        mPicoSourceRecord = sourceRecord;
+        // PICO (factory): the extension remembers the activity that started this one.
+        getExt().setSourceRecord(sourceRecord);
         mRootActivityContainer = _service.mRootActivityContainer;
         appToken = new Token(this, _intent);
         info = aInfo;
@@ -1252,6 +1253,10 @@ public final class ActivityRecord extends ConfigurationContainer {
     }
 
     private boolean isHomeIntent(Intent intent) {
+        // PICO (factory): the VRShell intent (pvr.intent.action.VRSHELL) is a home intent.
+        if (mExt.isHomeAction(intent)) {
+            return true;
+        }
         return ACTION_MAIN.equals(intent.getAction())
                 && (intent.hasCategory(CATEGORY_HOME)
                 || intent.hasCategory(CATEGORY_SECONDARY_HOME))
@@ -3769,6 +3774,11 @@ public final class ActivityRecord extends ConfigurationContainer {
      *         Multi-windowing mode will be exited if true is returned.
      */
     boolean canShowWhenLocked() {
+        // PICO (factory): with the PICO keyguard no activity shows over the lock screen.
+        if (android.pico.utils.Features.isKeyguardEnabled()) {
+            mShowWhenLocked = false;
+            return false;
+        }
         if (!inPinnedWindowingMode() && (mShowWhenLocked
                 || (mAppWindowToken != null && mAppWindowToken.containsShowWhenLockedWindow()))) {
             return true;
@@ -3851,6 +3861,10 @@ public final class ActivityRecord extends ConfigurationContainer {
     /** PICO (factory). */
     public ActivityInfo getActivityInfo() {
         return info;
+    }
+
+    public IExtActivityRecord getExt() {
+        return mExt;
     }
 
     @Override
