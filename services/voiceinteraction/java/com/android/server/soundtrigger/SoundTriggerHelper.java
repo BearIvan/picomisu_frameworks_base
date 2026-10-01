@@ -78,7 +78,7 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
     private static final int INVALID_VALUE = Integer.MIN_VALUE;
 
     /** The {@link ModuleProperties} for the system, or null if none exists. */
-    final ModuleProperties mModuleProperties;
+    ModuleProperties mModuleProperties;
 
     /** The properties for the DSP module */
     private SoundTriggerModule mModule;
@@ -110,22 +110,29 @@ public class SoundTriggerHelper implements SoundTrigger.StatusListener {
     private PowerSaveModeListener mPowerSaveModeListener;
 
     SoundTriggerHelper(Context context) {
-        ArrayList <ModuleProperties> modules = new ArrayList<>();
-        int status = SoundTrigger.listModules(modules);
         mContext = context;
         mTelephonyManager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
         mPowerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         mModelDataMap = new HashMap<UUID, ModelData>();
         mKeyphraseUuidMap = new HashMap<Integer, UUID>();
         mPhoneStateListener = new MyCallStateListener();
-        if (status != SoundTrigger.STATUS_OK || modules.size() == 0) {
-            Slog.w(TAG, "listModules status=" + status + ", # of modules=" + modules.size());
-            mModuleProperties = null;
-            mModule = null;
-        } else {
-            // TODO: Figure out how to determine which module corresponds to the DSP hardware.
-            mModuleProperties = modules.get(0);
-        }
+        new Thread() {
+            @Override
+            public void run() {
+                ArrayList <ModuleProperties> modules = new ArrayList<>();
+                int status = SoundTrigger.listModules(modules);
+                if (status != SoundTrigger.STATUS_OK || modules.size() == 0) {
+                    Slog.w(TAG, "listModules status=" + status + ", # of modules="
+                            + modules.size());
+                    mModuleProperties = null;
+                    mModule = null;
+                } else {
+                    // TODO: Figure out how to determine which module corresponds to the DSP
+                    // hardware.
+                    mModuleProperties = modules.get(0);
+                }
+            }
+        }.start();
     }
 
     /**
