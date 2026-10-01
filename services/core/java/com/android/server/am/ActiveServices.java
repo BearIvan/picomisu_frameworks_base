@@ -3897,6 +3897,7 @@ public final class ActiveServices {
                     sr.app.updateBoundClientUids();
                 }
                 sr.setProcess(null);
+                sr.cancelNotification();
                 sr.isolatedProc = null;
                 sr.executeNesting = 0;
                 sr.forceClearTracker();
