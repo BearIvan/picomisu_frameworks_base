@@ -133,6 +133,9 @@ class PackageManagerShellCommand extends ShellCommand {
     final IPackageManager mInterface;
     final private WeakHashMap<String, Resources> mResourceCache =
             new WeakHashMap<String, Resources>();
+    // PICO (factory): tells the VR display service about set-home-activity.
+    private final IExtPackageManagerShellCommand mExt =
+            new ExtPackageManagerShellCommandImpl(this);
     int mTargetUser;
     boolean mBrief;
     boolean mComponents;
@@ -2527,6 +2530,8 @@ class PackageManagerShellCommand extends ShellCommand {
 
         String pkgName;
         String component = getNextArg();
+        // PICO (factory)
+        mExt.notifyHomeChanges(component);
         if (component.indexOf('/') < 0) {
             // No component specified, so assume it's just a package name.
             pkgName = component;
