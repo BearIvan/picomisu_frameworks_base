@@ -664,8 +664,11 @@ public final class AudioAttributes implements Parcelable {
      * @return the spatialization type
      */
     public @SpatialAudioType int getSpatializationType() {
-        return ((mFlags & FLAG_SPATIALIZE_AMBISONIC) == FLAG_SPATIALIZE_AMBISONIC)
-                ? SPATIALIZATION_TYPE_AMBISONIC : SPATIALIZATION_TYPE_AUDIO_CHANNELS;
+        // Factory (PICO OS 5.13.7) form: explicit returns.
+        if ((mFlags & FLAG_SPATIALIZE_AMBISONIC) == FLAG_SPATIALIZE_AMBISONIC) {
+            return SPATIALIZATION_TYPE_AMBISONIC;
+        }
+        return SPATIALIZATION_TYPE_AUDIO_CHANNELS;
     }
 
 
