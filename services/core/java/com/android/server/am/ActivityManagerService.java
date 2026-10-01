@@ -9722,8 +9722,18 @@ public class ActivityManagerService extends IActivityManager.Stub
             ApplicationErrorReport.ParcelableCrashInfo crashInfo) {
         // Smartisan (factory): also find the Smartisan (frozen) processes.
         ProcessRecord r = findAppProcess(app, "Crash", 3);
-        final String processName = app == null ? "system_server"
-                : (r == null ? "unknown" : r.processName);
+        final String processName;
+        if (app == null) {
+            // Factory: a crash reported without an app thread comes from a native/system
+            // caller; attribute it to the calling process unless it is system_server itself.
+            synchronized (mPidsSelfLocked) {
+                r = mPidsSelfLocked.get(Binder.getCallingPid());
+            }
+            processName = Binder.getCallingPid() != MY_PID
+                    ? (r == null ? "unknown" : r.processName) : "system_server";
+        } else {
+            processName = r == null ? "unknown" : r.processName;
+        }
 
         handleApplicationCrashInner("crash", r, processName, crashInfo);
     }
