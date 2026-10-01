@@ -530,7 +530,8 @@ public class DisplayRotation {
                     // the sensor reading was cleared which can cause it to relaunch the app that
                     // will show in the wrong orientation first before correcting leading to app
                     // launch delays.
-                    mOrientationListener.enable(true /* clearCurrentRotation */);
+                    // PICO (factory PICO OS 5.13.7): the orientation sensor listener is never
+                    // enabled; only the field read of the original check remains.
                 }
             }
         }
@@ -778,10 +779,16 @@ public class DisplayRotation {
             default:
                 // For USER, UNSPECIFIED, NOSENSOR, SENSOR and FULL_SENSOR,
                 // just return the preferred orientation we already calculated.
+                // PICO (factory PICO OS 5.13.7): the default display stays in a landscape
+                // rotation.
                 if (preferredRotation >= 0) {
+                    if (isDefaultDisplay) {
+                        return isLandscapeOrSeascape(preferredRotation)
+                                ? preferredRotation : mLandscapeRotation;
+                    }
                     return preferredRotation;
                 }
-                return Surface.ROTATION_0;
+                return isDefaultDisplay ? mLandscapeRotation : Surface.ROTATION_0;
         }
     }
 
