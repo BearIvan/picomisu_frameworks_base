@@ -152,6 +152,10 @@ public class BatterySipper implements Comparable<BatterySipper> {
         WIFI,
     }
 
+    // Factory (PICO OS 5.13.7) no-argument constructor.
+    public BatterySipper() {
+    }
+
     @UnsupportedAppUsage
     public BatterySipper(DrainType drainType, Uid uid, double value) {
         this.totalPowerMah = value;
