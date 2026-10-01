@@ -68,7 +68,9 @@ public class PicoSettings {
             String selection = null;
             ArrayList<String> args = new ArrayList<>();
             if (!TextUtils.isEmpty(packageName)) {
-                selection = "packagename = ?";
+                if (TextUtils.isEmpty(selection)) {
+                    selection = "packagename = ?";
+                }
                 args.add(packageName);
             }
             if (!TextUtils.isEmpty(className)) {
@@ -81,7 +83,13 @@ public class PicoSettings {
                         : selection + " and type = ?";
                 args.add(type);
             }
-            String[] selectionArgs = args.size() > 0 ? args.toArray(new String[args.size()]) : null;
+            String[] selectionArgs = null;
+            if (args.size() > 0) {
+                selectionArgs = new String[args.size()];
+                for (int i = 0; i < args.size(); i++) {
+                    selectionArgs[i] = args.get(i);
+                }
+            }
             JSONArray items = new JSONArray();
             Cursor cursor = null;
             try {
@@ -110,7 +118,25 @@ public class PicoSettings {
                     cursor.close();
                 }
             }
-            return toJson(items, "whitelist_items");
+            if (items.length() <= 0) {
+                Log.e(TAG, "Query result is empty.");
+                return null;
+            }
+            JSONObject result = new JSONObject();
+            try {
+                result.put("whitelist_items", items);
+            } catch (JSONException e) {
+                Log.e(TAG, "Exception occurs when query--organize json data");
+                e.printStackTrace();
+            }
+            if (result.has("whitelist_items")) {
+                return result.toString();
+            }
+            if (cursor != null) {
+                cursor.close();
+            }
+            Log.e(TAG, "Put json data to JsonObject failed!");
+            return null;
         }
 
         public static boolean insert(ContentResolver cr, String packageName, String className,
@@ -293,7 +319,9 @@ public class PicoSettings {
             String selection = null;
             ArrayList<String> args = new ArrayList<>();
             if (!TextUtils.isEmpty(packageName)) {
-                selection = "packagename = ?";
+                if (TextUtils.isEmpty(selection)) {
+                    selection = "packagename = ?";
+                }
                 args.add(packageName);
             }
             if (!TextUtils.isEmpty(className)) {
@@ -311,7 +339,13 @@ public class PicoSettings {
                         : selection + " and versionname = ?";
                 args.add(versionName);
             }
-            String[] selectionArgs = args.size() > 0 ? args.toArray(new String[args.size()]) : null;
+            String[] selectionArgs = null;
+            if (args.size() > 0) {
+                selectionArgs = new String[args.size()];
+                for (int i = 0; i < args.size(); i++) {
+                    selectionArgs[i] = args.get(i);
+                }
+            }
             JSONArray items = new JSONArray();
             Cursor cursor = null;
             try {
@@ -344,26 +378,25 @@ public class PicoSettings {
                     cursor.close();
                 }
             }
-            return toJson(items, "blacklist_items");
-        }
-    }
-
-    private static String toJson(JSONArray items, String key) {
-        if (items.length() <= 0) {
-            Log.e(TAG, "Query result is empty.");
+            if (items.length() <= 0) {
+                Log.e(TAG, "Query result is empty.");
+                return null;
+            }
+            JSONObject result = new JSONObject();
+            try {
+                result.put("blacklist_items", items);
+            } catch (JSONException e) {
+                Log.e(TAG, "Exception occurs when query--organize json data");
+                e.printStackTrace();
+            }
+            if (result.has("blacklist_items")) {
+                return result.toString();
+            }
+            if (cursor != null) {
+                cursor.close();
+            }
+            Log.e(TAG, "Put json data to JsonObject failed!");
             return null;
         }
-        JSONObject result = new JSONObject();
-        try {
-            result.put(key, items);
-        } catch (JSONException e) {
-            Log.e(TAG, "Exception occurs when query--organize json data");
-            e.printStackTrace();
-        }
-        if (result.has(key)) {
-            return result.toString();
-        }
-        Log.e(TAG, "Put json data to JsonObject failed!");
-        return null;
     }
 }
