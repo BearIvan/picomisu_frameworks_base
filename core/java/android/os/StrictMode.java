@@ -29,6 +29,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ApplicationInfoSmtBase;
 import android.content.pm.PackageManager;
 import android.net.TrafficStats;
 import android.net.Uri;
@@ -72,6 +73,8 @@ import dalvik.system.CloseGuard;
 import dalvik.system.VMDebug;
 import dalvik.system.VMRuntime;
 
+import smartisanos.util.FeatLog;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.annotation.Retention;
@@ -83,6 +86,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1373,7 +1377,43 @@ public final class StrictMode {
             }
         }
 
+        // Smartisan (factory): persist.sys.strictmode.flags may switch StrictMode on.
+        enableStrictMode(ai, builder, new Callable<ThreadPolicy.Builder>() {
+            @Override
+            public ThreadPolicy.Builder call() {
+                builder.detectAll();
+                builder.penaltyDropBox();
+                builder.penaltyFlashScreen();
+                return builder;
+            }
+        });
+
         setThreadPolicy(builder.build());
+    }
+
+    private static void enableStrictMode(ApplicationInfo ai, Object builder, Callable callable) {
+        try {
+            if (ai == null || ai.packageName == null) {
+                IActivityManager am = ActivityManager.getService();
+                if (am != null) {
+                    int strictMode = am.getISmtEx().getStrictModeFlags();
+                    if (strictMode > 0) {
+                        builder = callable.call();
+                    }
+                }
+            } else {
+                int strictMode = ai.getSmtEx().mStrictModeFlags;
+                if ((strictMode & ApplicationInfoSmtBase.STRICT_MODE_FLAG_SYSTEM_APP) != 0
+                        && ai.isSystemApp()) {
+                    builder = callable.call();
+                } else if ((strictMode & ApplicationInfoSmtBase.STRICT_MODE_FLAG_APP) != 0) {
+                    builder = callable.call();
+                }
+            }
+        } catch (Exception e) {
+            FeatLog.e(TAG, "FEAT_ENABLE_STRICTMODE", 0,
+                    "initThreadDefaults enable StrictMode failed:" + e.getMessage());
+        }
     }
 
     /**
@@ -1410,6 +1450,17 @@ public final class StrictMode {
                 builder.penaltyLog();
             }
         }
+
+        // Smartisan (factory): persist.sys.strictmode.flags may switch StrictMode on.
+        enableStrictMode(ai, builder, new Callable<VmPolicy.Builder>() {
+            @Override
+            public VmPolicy.Builder call() {
+                builder.detectAll();
+                builder.permitUntaggedSockets();
+                builder.penaltyDropBox();
+                return builder;
+            }
+        });
 
         setVmPolicy(builder.build());
     }
