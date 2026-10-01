@@ -1631,11 +1631,14 @@ public final class BroadcastQueue {
         }
 
         // Smartisan (factory): the process intercept may refuse the receiver (it then finishes
-        // it itself); otherwise thaw a frozen receiver process before the delivery.
+        // it itself); otherwise thaw a frozen receiver process before the delivery. The factory
+        // also records in a local that the process was thawed (not read afterwards).
+        boolean unfrozen = false;
         if (app == null || app.thread == null) {
             if (!mSmtEx.isBroadcastAllowStart(info, r)) {
                 return;
             }
+            unfrozen = true;
             app = SysOptBridge.getFactory().getApplicationFreezer().unfreezeAppIfNeededLocked(app,
                     targetProcess, info.activityInfo.applicationInfo.uid,
                     IApplicationFreezer.UnfreezeReason.NEED_BROADCAST, null, null);
