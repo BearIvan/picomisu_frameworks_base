@@ -865,6 +865,9 @@ public final class OomAdjuster {
     private final ComputeOomAdjWindowCallback mTmpComputeOomAdjWindowCallback =
             new ComputeOomAdjWindowCallback();
 
+    // Factory PICO OS 5.13.7 field (kept by the factory, not read in services.jar).
+    long mJudgeLowMemTime = 0;
+
     /** These methods are called inline during computeOomAdjLocked(), on the same thread */
     private final class ComputeOomAdjWindowCallback
             implements WindowProcessController.ComputeOomAdjCallback {
