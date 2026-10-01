@@ -133,6 +133,9 @@ public final class ShutdownThread extends Thread {
     private static AlertDialog sConfirmDialog;
     private ProgressDialog mProgressDialog;
 
+    /** PICO (factory): the confirm argument of the last {@link #shutdown} request. */
+    private static boolean mConfirm;
+
     private ShutdownThread() {
     }
 
@@ -150,7 +153,13 @@ public final class ShutdownThread extends Thread {
         mReboot = false;
         mRebootSafeMode = false;
         mReason = reason;
+        mConfirm = confirm;
         shutdownInner(context, confirm);
+    }
+
+    /** PICO (factory). */
+    public static boolean getConfirm() {
+        return mConfirm;
     }
 
     private static void shutdownInner(final Context context, boolean confirm) {
@@ -313,6 +322,10 @@ public final class ShutdownThread extends Thread {
                             com.android.internal.R.string.reboot_to_update_reboot));
             }
         } else if (mReason != null && mReason.equals(PowerManager.REBOOT_RECOVERY)) {
+            // PICO (factory): SysUI shows the factory reset UI when it can.
+            if (IExtShutdownThread.showShutDownAnim() && showSysuiReboot()) {
+                return null;
+            }
             if (RescueParty.isAttemptingFactoryReset()) {
                 // We're not actually doing a factory reset yet; we're rebooting
                 // to ask the user if they'd like to reset, so give them a less
@@ -338,6 +351,10 @@ public final class ShutdownThread extends Thread {
         pd.setCancelable(false);
         pd.getWindow().setType(WindowManager.LayoutParams.TYPE_KEYGUARD_DIALOG);
 
+        // PICO (factory): the shutdown animation replaces the progress dialog.
+        if (IExtShutdownThread.showShutDownAnim()) {
+            return pd;
+        }
         pd.show();
         return pd;
     }
@@ -368,17 +385,15 @@ public final class ShutdownThread extends Thread {
             sIsStarted = true;
         }
 
-        /* If shutdown animation enabled, notify bootanimation module to play
-           shutdown animation by set prop */
-        final boolean shutdownAnimationEnabled = context.getResources()
-                .getBoolean(com.android.internal.R.bool.config_shutdownAnimationEnabled);
-        if (shutdownAnimationEnabled) {
-            SystemProperties.set("sys.powerctl", "shutdownanim");
-            SystemProperties.set("service.bootanim.exit", "0");
-            SystemProperties.set("ctl.start", "bootanim");
-        }
+        Log.i(TAG, "beginShutdownSequence mReboot: " + mReboot + ", mRebootSafeMode: "
+                + mRebootSafeMode);
+        // The factory turns a shutdown into a Smartisan quick boot "fake shutdown" here when
+        // persist.pvr.quick_boot_enable is set (QuickBootStateMachine.goToQuickBootShutdown in
+        // sys-services.jar). Quick boot is not in Source.
 
         sInstance.mProgressDialog = showShutdownDialog(context);
+        // PICO (factory): black system dialog + bootanim shutdown animation.
+        IExtShutdownThread.showEmptyDialogForAnimation(context);
         sInstance.mContext = context;
         sInstance.mPowerManager = (PowerManager)context.getSystemService(Context.POWER_SERVICE);
 
@@ -415,6 +430,12 @@ public final class ShutdownThread extends Thread {
         // start the thread that initiates shutdown
         sInstance.mHandler = new Handler() {
         };
+        // PICO (factory): PVR_ACTION_SHUTDOWN broadcast, then the thread starts after
+        // persist.pxr.shutdown.waittime seconds.
+        if (IExtShutdownThread.adjustInstantStart(sInstance.mContext, sInstance,
+                sInstance.mHandler)) {
+            return;
+        }
         sInstance.start();
     }
 
@@ -724,22 +745,6 @@ public final class ShutdownThread extends Thread {
                         Log.i(TAG, "Vendor subsystem(s) shutdown successful");
                 }
         }
-        final boolean shutdownAnimEnabled = context.getResources().getBoolean(
-                com.android.internal.R.bool.config_shutdownAnimationEnabled);
-
-        if (shutdownAnimEnabled) {
-            final int shutdownAnimDuration = context.getResources().getInteger(
-                    com.android.internal.R.integer.config_shutdownAnimationDurationMs);
-            int sleepDuration = reboot ? shutdownAnimDuration
-                    : shutdownAnimDuration - SHUTDOWN_VIBRATE_MS;
-            try {
-                if (sleepDuration > 0) {
-                    Thread.sleep(sleepDuration);
-                }
-            } catch (InterruptedException unused) {
-            }
-        }
-
         if (reboot) {
             Log.i(TAG, "Rebooting, reason: " + reason);
             PowerManagerService.lowLevelReboot(reason);
