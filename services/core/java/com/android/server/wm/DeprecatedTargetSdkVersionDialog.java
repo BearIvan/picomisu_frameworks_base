@@ -82,7 +82,7 @@ public class DeprecatedTargetSdkVersionDialog {
 
     public void show() {
         Log.w(TAG, "Showing SDK deprecation warning for package " + mPackageName);
-        mDialog.show();
+        // Factory PICO OS 5.13.7: the warning is only logged, the dialog is not shown.
     }
 
     public void dismiss() {
