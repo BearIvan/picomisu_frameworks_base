@@ -935,6 +935,25 @@ class ActivityStarter {
             aInfo = mSupervisor.resolveActivity(intent, rInfo, startFlags, null /*profilerInfo*/);
         }
 
+        // PICO (factory): drop Unity player arguments that make a system app load another
+        // XR SDK library or Mono search path.
+        if (aInfo != null) {
+            try {
+                if (aInfo.applicationInfo != null && aInfo.applicationInfo.isSystemApp()
+                        && intent != null && intent.hasExtra("unity")) {
+                    final String unityArgs = intent.getStringExtra("unity");
+                    if (!TextUtils.isEmpty(unityArgs)
+                            && (unityArgs.contains("-xrsdk-pre-init-library")
+                                    || unityArgs.contains("-overrideMonoSearchPath"))) {
+                        intent.removeExtra("unity");
+                        Slog.w(TAG, "remove illegal unity extra data [" + unityArgs + "]");
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
         ActivityRecord r = new ActivityRecord(mService, callerApp, callingPid, callingUid,
                 callingPackage, intent, resolvedType, aInfo, mService.getGlobalConfiguration(),
                 resultRecord, resultWho, requestCode, componentSpecified, voiceSession != null,
