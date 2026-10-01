@@ -18,6 +18,8 @@ package android.hardware.display;
 import android.view.Display;
 import android.view.Surface;
 
+import com.android.internal.app.SysTransManager;
+
 /**
  * Represents a virtual display. The content of a virtual display is rendered to a
  * {@link android.view.Surface} that you must provide to {@link DisplayManager#createVirtualDisplay
@@ -77,6 +79,10 @@ public final class VirtualDisplay {
     public void setSurface(Surface surface) {
         if (mSurface != surface) {
             mGlobal.setVirtualDisplaySurface(mToken, surface);
+            if (surface != null) {
+                SysTransManager.notifyVirtualDisplaySurfaceChanged(mDisplay.getDisplayId(),
+                        surface.getTextureName());
+            }
             mSurface = surface;
             if (surface != null) {
                 surface.registerFreezeSelf();
