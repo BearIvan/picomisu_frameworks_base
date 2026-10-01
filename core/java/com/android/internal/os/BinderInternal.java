@@ -84,6 +84,10 @@ public class BinderInternal {
         long timeStarted;
         // Should be set to one when an exception is thrown.
         boolean exceptionThrown;
+        // Factory PICO OS 5.13.7: VMDebug.getSysUptimeMillis() at the beginning of the call.
+        public long sysMillis;
+        // Factory PICO OS 5.13.7: transaction flags (Binder.FLAG_ONEWAY...).
+        public int type;
     }
 
 
@@ -110,9 +114,10 @@ public class BinderInternal {
         /**
          * Called when a binder call starts.
          *
+         * @param type the transaction flags (factory PICO OS 5.13.7).
          * @return a CallSession to pass to the callEnded method.
          */
-        CallSession callStarted(Binder binder, int code, int workSourceUid);
+        CallSession callStarted(Binder binder, int code, int workSourceUid, int type);
 
         /**
          * Called when a binder call stops.

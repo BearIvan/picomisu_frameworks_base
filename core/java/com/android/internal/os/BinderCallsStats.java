@@ -31,6 +31,8 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.os.BinderInternal.CallSession;
 
+import dalvik.system.VMDebug;
+
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -120,7 +122,7 @@ public class BinderCallsStats implements BinderInternal.Observer {
 
     @Override
     @Nullable
-    public CallSession callStarted(Binder binder, int code, int workSourceUid) {
+    public CallSession callStarted(Binder binder, int code, int workSourceUid, int type) {
         if (mDeviceState == null || mDeviceState.isCharging()) {
             return null;
         }
@@ -131,7 +133,10 @@ public class BinderCallsStats implements BinderInternal.Observer {
         s.exceptionThrown = false;
         s.cpuTimeStarted = -1;
         s.timeStarted = -1;
-        if (shouldRecordDetailedData()) {
+        // Factory PICO OS 5.13.7: system-time accounting; one-way calls are always detailed.
+        s.type = type;
+        s.sysMillis = VMDebug.getSysUptimeMillis();
+        if (shouldRecordDetailedData() || (type & Binder.FLAG_ONEWAY) == Binder.FLAG_ONEWAY) {
             s.cpuTimeStarted = getThreadTimeMicro();
             s.timeStarted = getElapsedRealtimeMicro();
         }
@@ -161,6 +166,8 @@ public class BinderCallsStats implements BinderInternal.Observer {
             int parcelRequestSize, int parcelReplySize, int workSourceUid) {
         // Non-negative time signals we need to record data for this call.
         final boolean recordCall = s.cpuTimeStarted >= 0;
+        // Factory PICO OS 5.13.7: system time of the call.
+        final long durExecTime = VMDebug.getSysUptimeMillis() - s.sysMillis;
         final long duration;
         final long latencyDuration;
         if (recordCall) {
@@ -186,12 +193,13 @@ public class BinderCallsStats implements BinderInternal.Observer {
             final UidEntry uidEntry = getUidEntry(workSourceUid);
             uidEntry.callCount++;
 
-            if (recordCall) {
+            // Factory PICO OS 5.13.7: also record calls that took more than 20 ms of system time.
+            if (recordCall || durExecTime > 20) {
                 uidEntry.cpuTimeMicros += duration;
                 uidEntry.recordedCallCount++;
 
                 final CallStat callStat = uidEntry.getOrCreate(
-                        callingUid, s.binderClass, s.transactionCode,
+                        callingUid, s.binderClass, s.transactionCode, s.type,
                         screenInteractive,
                         mCallStatsCount >= mMaxBinderCallStatsCount);
                 final boolean isNewCallStat = callStat.callCount == 0;
@@ -203,6 +211,8 @@ public class BinderCallsStats implements BinderInternal.Observer {
                 callStat.recordedCallCount++;
                 callStat.cpuTimeMicros += duration;
                 callStat.maxCpuTimeMicros = Math.max(callStat.maxCpuTimeMicros, duration);
+                callStat.sysTimeMillis += durExecTime;
+                callStat.maxSysTimeMillis = Math.max(callStat.maxSysTimeMillis, durExecTime);
                 callStat.latencyMicros += latencyDuration;
                 callStat.maxLatencyMicros =
                         Math.max(callStat.maxLatencyMicros, latencyDuration);
@@ -300,6 +310,9 @@ public class BinderCallsStats implements BinderInternal.Observer {
                     exported.className = stat.binderClass.getName();
                     exported.binderClass = stat.binderClass;
                     exported.transactionCode = stat.transactionCode;
+                    exported.transactionType = stat.transactionType;
+                    exported.sysTimeMillis = stat.sysTimeMillis;
+                    exported.maxSysTimeMillis = stat.maxSysTimeMillis;
                     exported.screenInteractive = stat.screenInteractive;
                     exported.cpuTimeMicros = stat.cpuTimeMicros;
                     exported.maxCpuTimeMicros = stat.maxCpuTimeMicros;
@@ -426,6 +439,9 @@ public class BinderCallsStats implements BinderInternal.Observer {
                     .append(packageMap.mapUid(e.workSourceUid))
                     .append(',').append(e.className)
                     .append('#').append(e.methodName)
+                    .append(',').append(e.transactionType)
+                    .append(',').append(e.sysTimeMillis)
+                    .append(',').append(e.maxSysTimeMillis)
                     .append(',').append(e.screenInteractive)
                     .append(',').append(e.cpuTimeMicros)
                     .append(',').append(e.maxCpuTimeMicros)
@@ -592,6 +608,10 @@ public class BinderCallsStats implements BinderInternal.Observer {
         public long maxRequestSizeBytes;
         public long maxReplySizeBytes;
         public long exceptionCount;
+        // Factory PICO OS 5.13.7 system-time accounting.
+        public int transactionType;
+        public long sysTimeMillis;
+        public long maxSysTimeMillis;
 
         // Used internally.
         Class<? extends Binder> binderClass;
@@ -626,6 +646,10 @@ public class BinderCallsStats implements BinderInternal.Observer {
         public long maxRequestSizeBytes;
         public long maxReplySizeBytes;
         public long exceptionCount;
+        // Factory PICO OS 5.13.7: transaction flags of the first call, system time (ms).
+        public int transactionType;
+        public long sysTimeMillis;
+        public long maxSysTimeMillis;
 
         CallStat(int callingUid, Class<? extends Binder> binderClass, int transactionCode,
                 boolean screenInteractive) {
@@ -702,7 +726,8 @@ public class BinderCallsStats implements BinderInternal.Observer {
         }
 
         CallStat getOrCreate(int callingUid, Class<? extends Binder> binderClass,
-                int transactionCode, boolean screenInteractive, boolean maxCallStatsReached) {
+                int transactionCode, int type, boolean screenInteractive,
+                boolean maxCallStatsReached) {
             CallStat mapCallStat = get(callingUid, binderClass, transactionCode, screenInteractive);
             // Only create CallStat if it's a new entry, otherwise update existing instance.
             if (mapCallStat == null) {
@@ -721,6 +746,7 @@ public class BinderCallsStats implements BinderInternal.Observer {
 
                 mapCallStat = new CallStat(callingUid, binderClass, transactionCode,
                         screenInteractive);
+                mapCallStat.transactionType = type;
                 CallStatKey key = new CallStatKey();
                 key.callingUid = callingUid;
                 key.binderClass = binderClass;

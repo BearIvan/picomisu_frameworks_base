@@ -1083,7 +1083,7 @@ public class Binder implements IBinder {
         // Make sure the observer won't change while processing a transaction.
         final BinderInternal.Observer observer = sObserver;
         final CallSession callSession =
-                observer != null ? observer.callStarted(this, code, UNSET_WORKSOURCE) : null;
+                observer != null ? observer.callStarted(this, code, UNSET_WORKSOURCE, flags) : null;
         Parcel data = Parcel.obtain(dataObj);
         Parcel reply = Parcel.obtain(replyObj);
         // theoretically, we should call transact, which will call onTransact,

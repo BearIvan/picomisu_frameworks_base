@@ -118,7 +118,7 @@ public class BinderCallsStatsPerfTest {
         Binder b = new Binder();
         while (state.keepRunning()) {
             for (int i = 0; i < 10000; i++) {
-                CallSession s = mBinderCallsStats.callStarted(b, i % maxBucketSize, WORKSOURCE_UID);
+                CallSession s = mBinderCallsStats.callStarted(b, i % maxBucketSize, WORKSOURCE_UID, 0);
                 mBinderCallsStats.callEnded(s, 0, 0, WORKSOURCE_UID);
             }
         }
