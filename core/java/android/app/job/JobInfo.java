@@ -325,6 +325,14 @@ public class JobInfo implements Parcelable {
     private final int priority;
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
     private final int flags;
+    // Smartisan extension (PICO OS 5.13.7). As on the factory it is only set by the Builder
+    // constructor; it is not parcelled.
+    private JobInfoSmtEx jobInfoSmtEx;
+
+    /** @hide */
+    public JobInfoSmtEx getJobInfoSmtEx() {
+        return jobInfoSmtEx;
+    }
 
     /**
      * Unique job id associated with this application (uid).  This is the same job ID
@@ -824,6 +832,7 @@ public class JobInfo implements Parcelable {
         hasLateConstraint = b.mHasLateConstraint;
         priority = b.mPriority;
         flags = b.mFlags;
+        jobInfoSmtEx = new JobInfoSmtEx(b.builderSmtEx);
     }
 
     @Override
@@ -1009,6 +1018,8 @@ public class JobInfo implements Parcelable {
         private int mBackoffPolicy = DEFAULT_BACKOFF_POLICY;
         /** Easy way to track whether the client has tried to set a back-off policy. */
         private boolean mBackoffPolicySet = false;
+        // Smartisan extension (PICO OS 5.13.7), created at the end of the constructor.
+        private JobInfoSmtEx.BuilderSmtEx builderSmtEx;
 
         /**
          * Initialize a new Builder to construct a {@link JobInfo}.
@@ -1024,6 +1035,7 @@ public class JobInfo implements Parcelable {
         public Builder(int jobId, @NonNull ComponentName jobService) {
             mJobService = jobService;
             mJobId = jobId;
+            builderSmtEx = new JobInfoSmtEx.BuilderSmtEx(this);
         }
 
         /** @hide */
