@@ -1051,6 +1051,14 @@ final class ActivityManagerShellCommand extends ShellCommand {
         } catch (NumberFormatException e) {
             packageName = arg;
         }
+        // PICO (factory): unless ro.pxr.externalfunc is 1, protected packages (device or profile
+        // owner, device provisioning package) cannot be crashed from the shell.
+        if (SystemProperties.getInt("ro.pxr.externalfunc", -1) != 1
+                && mPm.isPackageStateProtected(packageName, userId)) {
+            getErrPrintWriter().println(
+                    "Error: Cannot crashApplication for a protected package: " + packageName);
+            return -1;
+        }
         mInterface.crashApplication(-1, pid, packageName, userId, "shell-induced crash", false);
         return 0;
     }
