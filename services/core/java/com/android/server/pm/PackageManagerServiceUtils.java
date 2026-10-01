@@ -98,6 +98,7 @@ import java.util.zip.GZIPInputStream;
  */
 public class PackageManagerServiceUtils {
     private final static long SEVEN_DAYS_IN_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
+    private final static long FOURTEEN_DAYS_IN_MILLISECONDS = 14 * 24 * 60 * 60 * 1000;
 
     private static ArraySet<String> getPackageNamesForIntent(Intent intent, int userId) {
         List<ResolveInfo> ris = null;
@@ -195,6 +196,10 @@ public class PackageManagerServiceUtils {
                         .isAnyCodePathUsedByOtherApps(),
                 result, remainingPkgs, sortTemp, packageManagerService);
 
+        // Add all system apps and updated system apps.
+        applyPackageFilter((pkg) -> pkg.isSystem() || pkg.isUpdatedSystemApp(),
+                result, remainingPkgs, sortTemp, packageManagerService);
+
         // Filter out packages that aren't recently used, add all remaining apps.
         // TODO: add a property to control this?
         Predicate<PackageParser.Package> remainingPredicate;
@@ -213,7 +218,8 @@ public class PackageManagerServiceUtils {
                     lastUsed.getLatestForegroundPackageUseTimeInMills();
             // Be defensive if for some reason package usage has bogus data.
             if (estimatedPreviousSystemUseTime != 0) {
-                final long cutoffTime = estimatedPreviousSystemUseTime - SEVEN_DAYS_IN_MILLISECONDS;
+                final long cutoffTime =
+                        estimatedPreviousSystemUseTime - FOURTEEN_DAYS_IN_MILLISECONDS;
                 remainingPredicate =
                         (pkg) -> pkg.getLatestForegroundPackageUseTimeInMills() >= cutoffTime;
             } else {
