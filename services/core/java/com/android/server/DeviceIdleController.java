@@ -1968,6 +1968,9 @@ public class DeviceIdleController extends SystemService
     // Smartisan extension of the device idle controller (factory PICO OS 5.13.7).
     private DeviceIdleControllerSmtEx mSmtEx = new DeviceIdleControllerSmtEx(this);
 
+    // PICO: factory PICO OS 5.13.7 ToB doze switch (pico_tob_disable_doze).
+    private final IExtDeviceIdleController mExt;
+
     /** Smartisan extension of the device idle controller (factory PICO OS 5.13.7). */
     public DeviceIdleControllerSmtEx getSmtEx() {
         return mSmtEx;
@@ -1975,6 +1978,7 @@ public class DeviceIdleController extends SystemService
 
     @VisibleForTesting DeviceIdleController(Context context, Injector injector) {
         super(context);
+        mExt = new ExtDeviceIdleControllerImpl(this);
         mInjector = injector;
         mConfigFile = new AtomicFile(new File(getSystemDir(), "deviceidle.xml"));
         mHandler = mInjector.getHandler(this);
@@ -2009,7 +2013,10 @@ public class DeviceIdleController extends SystemService
 
         synchronized (this) {
             mLightEnabled = mDeepEnabled = getContext().getResources().getBoolean(
-                    com.android.internal.R.bool.config_enableAutoPowerModes);
+                    com.android.internal.R.bool.config_enableAutoPowerModes)
+                    && !mExt.isDisableIdle(getContext());
+            Slog.i(TAG, "onStart mLightEnabled = " + mLightEnabled
+                    + ", mDeepEnabled = " + mDeepEnabled);
             SystemConfig sysConfig = SystemConfig.getInstance();
             ArraySet<String> allowPowerExceptIdle = sysConfig.getAllowInPowerSaveExceptIdle();
             for (int i=0; i<allowPowerExceptIdle.size(); i++) {
@@ -2157,6 +2164,7 @@ public class DeviceIdleController extends SystemService
                 updateInteractivityLocked();
             }
             updateConnectivityState(null);
+            mExt.registerDisableIdle(getContext());
         }
     }
 
