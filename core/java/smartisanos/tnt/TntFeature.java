@@ -20,7 +20,7 @@ public class TntFeature {
     public static final boolean PARA_POSE = true;
 
     public static boolean TNT_PAD = SystemProperties.getInt("persist.debug.pad.tnt30", 0) == 1;
-    public static boolean TASK_DIVIDER_ENABLED = false;
+    public static boolean TASK_DIVIDER_ENABLED;
 
     public static void updatePadMode(boolean enablePad) {
         TNT_PAD = enablePad;
