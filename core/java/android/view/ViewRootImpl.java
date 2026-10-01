@@ -8076,6 +8076,10 @@ public final class ViewRootImpl implements ViewParent,
     }
 
     public void windowFocusChanged(boolean hasFocus, boolean inTouchMode) {
+        if (getDisplayId() == Display.DEFAULT_DISPLAY) {
+            Slog.i(TAG, "windowFocusChanged " + hasFocus + "," + getTitle() + ","
+                    + Debug.getCallers(6));
+        }
         synchronized (this) {
             mWindowFocusChanged = true;
             mUpcomingWindowFocus = hasFocus;
