@@ -3814,6 +3814,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             info.putString("shortMsg", "Process crashed.");
             finishInstrumentationLocked(app, Activity.RESULT_CANCELED, info);
         });
+        // PICO (factory).
+        mExt.handleAppDiedLocked(app);
         // Smartisan (factory).
         mOomAdjuster.getOptEx().appDiedLocked(app);
         SysOptBridge.getFactory().getActivityManager(this).appDiedLocked(app, pid, null, false);
@@ -7085,6 +7087,8 @@ public class ActivityManagerService extends IActivityManager.Stub
     // keepProcessAliveBackground().
     IMemoryProcessController memoryProcessController =
             SysOptBridge.getFactory().getMemoryProcessController();
+    // PICO extension (factory PICO OS 5.13.7).
+    private final IExtActivityManagerService mExt = new ExtActivityManagerServiceImpl(this);
     // Smartisan extensions returned by getMonitorEx() and getISmtEx() (factory PICO OS 5.13.7).
     private final ActivityManagerServiceSysMoEx mMonitorEx;
     private final ActivityManagerServiceSmtBase mSmtEx;
@@ -9626,6 +9630,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         // Smartisan (factory).
         SmartisanAm.SmartisanAmUtils.getInstance().initService(this);
         SysOptBridge.getFactory().getActivityManager(this).registerPeroptWhiteListReceiver();
+        // PICO (factory): bind the PICO persistent services.
+        mExt.onSystemReadyFinished();
     }
 
     private void watchDeviceProvisioning(Context context) {
@@ -14449,6 +14455,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             if (index < 0) {
                 ProcessList.remove(app.pid);
             }
+            // PICO (factory): pick up the application info of an updated persistent package.
+            mExt.updatePersistentApplicationInfo(app);
             mProcessList.addProcessNameLocked(app);
             app.pendingStart = false;
             mProcessList.startProcessLocked(app,
@@ -18338,6 +18346,11 @@ public class ActivityManagerService extends IActivityManager.Stub
     /** Smartisan extension of the activity manager (factory PICO OS 5.13.7). */
     public ActivityManagerServiceSmtBase getSmtEx() {
         return mSmtEx;
+    }
+
+    /** PICO extension of the activity manager (factory PICO OS 5.13.7). */
+    public IExtActivityManagerService getExt() {
+        return mExt;
     }
 
     @Override

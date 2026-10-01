@@ -83,7 +83,7 @@ public class ProcessRecord implements WindowProcessListener {
     private static final String TAG = TAG_WITH_CLASS_NAME ? "ProcessRecord" : TAG_AM;
 
     final ActivityManagerService mService; // where we came from
-    final ApplicationInfo info; // all about the first app in the process
+    ApplicationInfo info; // all about the first app in the process (PICO: not final)
     final boolean isolated;     // true if this is a special isolated process
     final boolean appZygote;    // true if this is forked from the app zygote
     final int uid;              // uid of process; may be different from 'info' if isolated
