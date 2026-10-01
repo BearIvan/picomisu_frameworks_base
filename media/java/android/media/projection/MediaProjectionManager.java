@@ -18,13 +18,16 @@ package android.media.projection;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.Manifest;
 import android.annotation.SystemService;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.media.projection.IMediaProjection;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -81,6 +84,32 @@ public final class MediaProjectionManager {
         return i;
     }
 
+    /** @hide */
+    public MediaProjection createMediaProjection() {
+        String packageName = mContext.getOpPackageName();
+        PackageManager packageManager = mContext.getPackageManager();
+        ApplicationInfo aInfo;
+        int uid;
+        try {
+            aInfo = packageManager.getApplicationInfo(packageName, 0);
+            uid = aInfo.uid;
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.e(TAG, "unable to look up package name", e);
+            return null;
+        }
+        try {
+            if (!mService.hasProjectionPermission(uid, packageName)) {
+                return null;
+            }
+            IMediaProjection projection = mService.createProjection(uid, packageName,
+                    TYPE_SCREEN_CAPTURE, false /* isPermanentGrant */);
+            return new MediaProjection(mContext, projection);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Error checking projection permissions", e);
+            return null;
+        }
+    }
+
     /**
      * Retrieve the MediaProjection obtained from a succesful screen
      * capture request. Will be null if the result from the
@@ -94,6 +123,11 @@ public final class MediaProjectionManager {
      * from the same {@code resultData} has not yet been stopped
      */
     public MediaProjection getMediaProjection(int resultCode, @NonNull Intent resultData) {
+        if (Binder.getCallingUid() <= android.os.Process.SYSTEM_UID
+                || mContext.checkCallingOrSelfPermission(Manifest.permission.MANAGE_MEDIA_PROJECTION)
+                        == PackageManager.PERMISSION_GRANTED) {
+            return createMediaProjection();
+        }
         if (resultCode != Activity.RESULT_OK || resultData == null) {
             return null;
         }

@@ -267,6 +267,9 @@ public final class MediaProjectionManagerService extends SystemService
             } finally {
                 Binder.restoreCallingIdentity(token);
             }
+            if (checkPermission(packageName, Manifest.permission.MANAGE_MEDIA_PROJECTION)) {
+                hasPermission = true;
+            }
             return hasPermission;
         }
 
