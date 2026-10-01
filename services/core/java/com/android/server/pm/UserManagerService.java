@@ -57,6 +57,7 @@ import android.os.IBinder;
 import android.os.IProgressListener;
 import android.os.IUserManager;
 import android.os.Message;
+import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.Parcelable;
 import android.os.PersistableBundle;
@@ -2093,6 +2094,24 @@ public class UserManagerService extends IUserManager.Stub {
         }
     }
 
+    /** Reports a restored file to the stab service (android.stab.IBStabService). */
+    private void notifyStabdFileRestoreStat(String name, int val) {
+        try {
+            IBinder stabdProxy = ServiceManager.getService("stabservice");
+            if (stabdProxy != null) {
+                Parcel data = Parcel.obtain();
+                data.writeInterfaceToken("android.stab.IBStabService");
+                data.writeLong(System.currentTimeMillis());
+                data.writeLong(SystemClock.uptimeMillis());
+                data.writeString(name);
+                data.writeInt(val);
+                stabdProxy.transact(11, data, null, IBinder.FLAG_ONEWAY);
+                data.recycle();
+            }
+        } catch (RemoteException e) {
+        }
+    }
+
     @GuardedBy({"mRestrictionsLock", "mPackagesLock"})
     private void readUserListLP() {
         if (!mUserListFile.exists()) {
@@ -2181,6 +2200,18 @@ public class UserManagerService extends IUserManager.Stub {
             updateUserIds();
             upgradeIfNecessaryLP(oldDevicePolicyGlobalUserRestrictions);
         } catch (IOException | XmlPullParserException e) {
+            if (e instanceof XmlPullParserException) {
+                // PICO: drop the broken user list; it is reported unless a broken user file
+                // (readUserLP) already did so.
+                userListFile.delete();
+                int crashCount = SystemProperties.getInt("debug.crash.0.xml", 0);
+                if (crashCount != 0) {
+                    SystemProperties.set("debug.crash.0.xml", "0");
+                } else {
+                    Slog.i(LOG_TAG, "parse userlist.xml error,delete it");
+                    notifyStabdFileRestoreStat(USER_LIST_FILENAME, 0);
+                }
+            }
             fallbackToSingleUserLP();
         } finally {
             IoUtils.closeQuietly(fis);
@@ -2505,17 +2536,27 @@ public class UserManagerService extends IUserManager.Stub {
         }
     }
 
-    private UserData readUserLP(int id) {
+    private UserData readUserLP(int id) throws XmlPullParserException {
         FileInputStream fis = null;
+        AtomicFile userFile = null;
         try {
-            AtomicFile userFile =
-                    new AtomicFile(new File(mUsersDir, Integer.toString(id) + XML_SUFFIX));
+            userFile = new AtomicFile(new File(mUsersDir, Integer.toString(id) + XML_SUFFIX));
             fis = userFile.openRead();
             return readUserLP(id, fis);
         } catch (IOException ioe) {
             Slog.e(LOG_TAG, "Error reading user list");
         } catch (XmlPullParserException pe) {
-            Slog.e(LOG_TAG, "Error reading user list");
+            // PICO: a broken user file also drops the user list so both are recreated
+            Slog.e(LOG_TAG, "Error reading user " + id + XML_SUFFIX);
+            Slog.e(LOG_TAG, "read 0.xml error: delete it");
+            if (userFile != null) {
+                userFile.delete();
+            }
+            AtomicFile userListFile = new AtomicFile(mUserListFile);
+            userListFile.delete();
+            SystemProperties.set("debug.crash.0.xml", "1");
+            notifyStabdFileRestoreStat("0.xml", 1);
+            throw pe;
         } finally {
             IoUtils.closeQuietly(fis);
         }
