@@ -257,6 +257,17 @@ class StorageManagerService extends IStorageManager.Stub
     private static final boolean WATCHDOG_ENABLE = true;
 
     /**
+     * The vold binder is pinged by monitor() from a dedicated watchdog-checked thread
+     * instead of the shared watchdog monitor thread.
+     */
+    private static final long WATCHDOG_MONITOR_INTERVAL = 30 * 1000;
+    private static final long WATCHDOG_MONITOR_TIMEOUT = 90 * 1000;
+
+    private HandlerThread mMonitorThread;
+    private Handler mMonitorHandler;
+    private Runnable mMonitorRunnable;
+
+    /**
      * Our goal is for all Android devices to be usable as development devices,
      * which includes the new Direct Boot mode added in N. For devices that
      * don't have native FBE support, we offer an emulation mode for developer
@@ -1553,7 +1564,18 @@ class StorageManagerService extends IStorageManager.Stub
 
         // Add ourself to the Watchdog monitors if enabled.
         if (WATCHDOG_ENABLE) {
-            Watchdog.getInstance().addMonitor(this);
+            mMonitorThread = new HandlerThread("monitor_vold");
+            mMonitorThread.start();
+            mMonitorHandler = new Handler(mMonitorThread.getLooper());
+            Watchdog.getInstance().addThread(mMonitorHandler, WATCHDOG_MONITOR_TIMEOUT);
+            mMonitorRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    sSelf.monitor();
+                    mMonitorHandler.postDelayed(mMonitorRunnable, WATCHDOG_MONITOR_INTERVAL);
+                }
+            };
+            mMonitorHandler.postDelayed(mMonitorRunnable, 0);
         }
     }
 
