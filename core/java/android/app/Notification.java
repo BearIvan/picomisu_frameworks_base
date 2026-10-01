@@ -205,7 +205,7 @@ public class Notification implements Parcelable
      * <p>
      * Avoids spamming the system with overly large strings such as full e-mails.
      */
-    private static final int MAX_CHARSEQUENCE_LENGTH = 5 * 1024;
+    private static final int MAX_CHARSEQUENCE_LENGTH = 1024;
 
     /**
      * Maximum entries of reply text that are accepted by Builder and friends.
@@ -2577,10 +2577,12 @@ public class Notification implements Parcelable
             PendingIntent.setOnMarshaledListener(
                     (PendingIntent intent, Parcel out, int outFlags) -> {
                 if (parcel == out) {
-                    if (allPendingIntents == null) {
-                        allPendingIntents = new ArraySet<>();
+                    synchronized (this) {
+                        if (allPendingIntents == null) {
+                            allPendingIntents = new ArraySet<>();
+                        }
+                        allPendingIntents.add(intent);
                     }
-                    allPendingIntents.add(intent);
                 }
             });
         }
@@ -2588,8 +2590,10 @@ public class Notification implements Parcelable
             // IMPORTANT: Add marshaling code in writeToParcelImpl as we
             // want to intercept all pending events written to the parcel.
             writeToParcelImpl(parcel, flags);
-            // Must be written last!
-            parcel.writeArraySet(allPendingIntents);
+            synchronized (this) {
+                // Must be written last!
+                parcel.writeArraySet(allPendingIntents);
+            }
         } finally {
             if (collectPendingIntents) {
                 PendingIntent.setOnMarshaledListener(null);
@@ -10436,7 +10440,8 @@ public class Notification implements Parcelable
         }
     }
 
-    private static class StandardTemplateParams {
+    /** @hide */
+    protected static class StandardTemplateParams {
         boolean hasProgress = true;
         CharSequence title;
         CharSequence text;
