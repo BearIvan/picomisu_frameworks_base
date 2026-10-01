@@ -1977,6 +1977,10 @@ public class PackageParser {
         }
         pkg.applicationInfo.compileSdkVersionCodename = pkg.mCompileSdkVersionCodename;
 
+        if (ApplicationInfoSmtBase.PACKAGE_NAME_RUNTIME.equals(pkgName)) {
+            pkg.applicationInfo.getSmtEx().compositeService = true;
+        }
+
         sa.recycle();
 
         return parseBaseApkCommon(pkg, null, res, parser, flags, outError);
