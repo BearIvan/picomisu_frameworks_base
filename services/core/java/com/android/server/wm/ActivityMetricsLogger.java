@@ -94,6 +94,7 @@ import com.android.internal.logging.MetricsLogger;
 import com.android.internal.os.BackgroundThread;
 import com.android.internal.os.SomeArgs;
 import com.android.server.LocalServices;
+import com.android.server.am.SysMonitorSvcBridge;
 
 /**
  * Listens to activity launches, transitions, visibility changes and window drawn callbacks to
@@ -194,6 +195,10 @@ class ActivityMetricsLogger {
         private boolean loggedWindowsDrawn;
         private boolean loggedStartingWindowDrawn;
         private boolean launchTraceActive;
+        // Smartisan (factory): launch-time statistics.
+        int mSysLaunchType;
+        long launchStartTime;
+        long launchDisplayedTime;
     }
 
     final class WindowingModeTransitionInfoSnapshot {
@@ -218,6 +223,10 @@ class ActivityMetricsLogger {
          */
         final int windowsFullyDrawnDelayMs;
         final int activityRecordIdHashCode;
+        // Smartisan (factory): launch-time statistics.
+        final int sysType;
+        final long launchStartTime;
+        final long launchDisplayedTime;
 
         private WindowingModeTransitionInfoSnapshot(WindowingModeTransitionInfo info) {
             this(info, info.launchedActivity);
@@ -249,6 +258,9 @@ class ActivityMetricsLogger {
             launchedActivityShortComponentName = launchedActivity.shortComponentName;
             activityRecordIdHashCode = System.identityHashCode(launchedActivity);
             this.windowsFullyDrawnDelayMs = windowsFullyDrawnDelayMs;
+            sysType = getSysType(info.mSysLaunchType, type);
+            launchStartTime = info.launchStartTime;
+            launchDisplayedTime = info.launchDisplayedTime;
         }
 
         @WaitResult.LaunchState int getLaunchState() {
@@ -261,6 +273,26 @@ class ActivityMetricsLogger {
                     return LAUNCH_STATE_COLD;
                 default:
                     return -1;
+            }
+        }
+
+        /**
+         * Smartisan (factory): the IActivityLaunchTimeStatistics launch type, from the transition
+         * type unless the activity reported its own.
+         */
+        int getSysType(int sysLaunchType, int transitionType) {
+            if (sysLaunchType != 0) {
+                return sysLaunchType;
+            }
+            switch (transitionType) {
+                case TYPE_TRANSITION_COLD_LAUNCH:
+                    return IActivityLaunchTimeStatistics.LAUNCH_TYPE_COLD_PROCESS;
+                case TYPE_TRANSITION_WARM_LAUNCH:
+                    return IActivityLaunchTimeStatistics.LAUNCH_TYPE_COLD_ACTIVITY;
+                case TYPE_TRANSITION_HOT_LAUNCH:
+                    return IActivityLaunchTimeStatistics.LAUNCH_TYPE_HOT;
+                default:
+                    return sysLaunchType;
             }
         }
     }
@@ -427,6 +459,9 @@ class ActivityMetricsLogger {
         newInfo.launchedActivity = launchedActivity;
         newInfo.currentTransitionProcessRunning = processRunning;
         newInfo.startResult = resultCode;
+        // Smartisan (factory): launch-time statistics.
+        newInfo.mSysLaunchType = 0;
+        newInfo.launchStartTime = System.currentTimeMillis();
         mWindowingModeTransitionInfo.put(windowingMode, newInfo);
         mLastWindowingModeTransitionInfo.put(windowingMode, newInfo);
         mCurrentTransitionDeviceUptime = (int) (SystemClock.uptimeMillis() / 1000);
@@ -455,6 +490,12 @@ class ActivityMetricsLogger {
         }
         info.windowsDrawnDelayMs = calculateDelay(timestamp);
         info.loggedWindowsDrawn = true;
+        // Smartisan (factory): launch-time statistics.
+        if (info.mSysLaunchType == 0) {
+            info.mSysLaunchType =
+                    info.launchedActivity.getActivityRecordSmtEx().mSysLaunchType;
+        }
+        info.launchDisplayedTime = System.currentTimeMillis();
         final WindowingModeTransitionInfoSnapshot infoSnapshot =
                 new WindowingModeTransitionInfoSnapshot(info);
         if (allWindowsDrawn() && mLoggedTransitionStarting) {
@@ -524,6 +565,11 @@ class ActivityMetricsLogger {
         if (info.launchedActivity != activityRecord) {
             return;
         }
+        // Smartisan (factory): launch-time statistics.
+        if (info.mSysLaunchType == 0) {
+            info.mSysLaunchType =
+                    info.launchedActivity.getActivityRecordSmtEx().mSysLaunchType;
+        }
         final TaskRecord t = activityRecord.getTaskRecord();
         final SomeArgs args = SomeArgs.obtain();
         args.arg1 = t;
@@ -589,6 +635,8 @@ class ActivityMetricsLogger {
             // App isn't attached to record yet, so match with info.
             if (info.launchedActivity.appInfo == appInfo) {
                 info.bindApplicationDelayMs = calculateCurrentDelay();
+                // Smartisan (factory): transition start time of the application.
+                appInfo.getSmtEx().mTransitionStartTimeNs = mLastTransitionStartTime;
             }
         }
     }
@@ -692,6 +740,13 @@ class ActivityMetricsLogger {
             BackgroundThread.getHandler().post(() -> logAppTransition(
                     currentTransitionDeviceUptime, currentTransitionDelayMs, infoSnapshot));
             BackgroundThread.getHandler().post(() -> logAppDisplayed(infoSnapshot));
+            // Smartisan (factory): the SysPerfMonitor learns the top app.
+            final WindowProcessController topApp =
+                    LocalServices.getService(ActivityTaskManagerInternal.class).getTopApp();
+            if (topApp != null) {
+                SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updateTopApp(
+                        topApp.mPid);
+            }
 
             info.launchedActivity.info.launchToken = null;
         }
@@ -771,9 +826,12 @@ class ActivityMetricsLogger {
     }
 
     private void logAppDisplayed(WindowingModeTransitionInfoSnapshot info) {
-        if (info.type != TYPE_TRANSITION_WARM_LAUNCH && info.type != TYPE_TRANSITION_COLD_LAUNCH) {
-            return;
-        }
+        // Smartisan (factory): every launch type is reported (no warm/cold-only filter here),
+        // with its launch-time statistics.
+        SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updateActivityLaunchTime(
+                info.applicationInfo.getSmtUid(), info.packageName,
+                info.launchedActivityShortComponentName, info.windowsDrawnDelayMs, info.sysType,
+                info.launchStartTime, info.launchDisplayedTime);
 
         EventLog.writeEvent(AM_ACTIVITY_LAUNCH_TIME,
                 info.userId, info.activityRecordIdHashCode, info.launchedActivityShortComponentName,
@@ -785,6 +843,9 @@ class ActivityMetricsLogger {
         sb.append(info.launchedActivityShortComponentName);
         sb.append(": ");
         TimeUtils.formatDuration(info.windowsDrawnDelayMs, sb);
+        sb.append("   systype : ");
+        sb.append(info.sysType);
+        SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().notifyWindowDisplayed();
 
         if (mUxPerf != null) {
             mUxPerf.perfUXEngine_events(BoostFramework.UXE_EVENT_DISPLAYED_ACT, 0, info.packageName, info.windowsDrawnDelayMs);

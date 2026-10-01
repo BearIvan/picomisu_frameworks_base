@@ -89,7 +89,8 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
     final String mName;
     final int mUid;
     // The process of this application; 0 if none
-    private volatile int mPid;
+    // Smartisan (factory): protected (ActivityMetricsLogger reads it for the SysPerfMonitor).
+    protected volatile int mPid;
     // user of process.
     final int mUserId;
     // The owner of this window process controller object. Mainly for identification when we
