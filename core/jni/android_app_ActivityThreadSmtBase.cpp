@@ -6,7 +6,6 @@
 #include "jni.h"
 #include <binder/SoundSettings.h>
 #include <nativehelper/JNIHelp.h>
-#include "core_jni_helpers.h"
 
 namespace android {
 
@@ -26,7 +25,7 @@ static const JNINativeMethod gActivityThreadSmtBaseMethods[] = {
 };
 
 int register_android_app_ActivityThreadSmtBase(JNIEnv* env) {
-    return RegisterMethodsOrDie(env, "android/app/ActivityThreadSmtBase",
+    return jniRegisterNativeMethods(env, "android/app/ActivityThreadSmtBase",
             gActivityThreadSmtBaseMethods, NELEM(gActivityThreadSmtBaseMethods));
 }
 
