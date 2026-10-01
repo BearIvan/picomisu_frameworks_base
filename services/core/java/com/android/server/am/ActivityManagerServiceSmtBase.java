@@ -80,7 +80,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.ToIntFunction;
 import org.xmlpull.v1.XmlPullParser;
 import smartisanos.api.ApplicationInfoSmt;
 import smartisanos.os.BinderCallCacheAgent;
@@ -116,43 +115,52 @@ public class ActivityManagerServiceSmtBase {
     private static ActivityManagerServiceSysMoEx.CpuStateProvider sCpuStateProvider = null;
     static final int sSystemMask = 129;
     protected static UidCpuUsageProvider sUidCpuUsageProvider;
-    private final int NOTIFY_DONE;
-    private final int NOTIFY_INVALID;
-    private final int NOTIFY_PARCEL_DATA;
-    private final int NOTIFY_STAT_BUFF;
-    private IKillingStats killStats;
+    long mCachedPss = 0;
+    long mTotalPss = 0;
+    long mTotalEGL = 0;
+    HashMap mProcessMems = new HashMap();
+    int mSetupWizardState = -1;
+    public int mStrictModeFlags = 0;
+    IBinderStat mBinderStat = null;
+    private final int NOTIFY_INVALID = -1;
+    private final int NOTIFY_STAT_BUFF = 1;
+    private final int NOTIFY_PARCEL_DATA = 2;
+    private final int NOTIFY_DONE = 3;
+    String mLaunchingProcessName = null;
+    private IKillingStats killStats = SysOptBridge.getFactory().getKillingStats();
+    ArrayMap<String, AppClearAndStatData> mMapAppDiedStatData = new ArrayMap<>();
+    private boolean mInitMonitorCriticalAppData = false;
+    protected long mNextUpdateOomTime = Long.MAX_VALUE;
+    public boolean mHardClean = false;
+    List<Integer> mPendingFreezePids = new ArrayList();
+    protected ActivityManagerServiceSysMoEx.CpuStateObserver mPrefetchCpuObServer = new ActivityManagerServiceSysMoEx.CpuStateObserver() {
+        ArrayList<String> apps_l = new ArrayList<>();
+
+        @Override
+        public void onCpuState(ActivityManagerServiceSysMoEx.CpuStateObserver.CPU_USAGE_STATE state, long timestamp) {
+            if (state == ActivityManagerServiceSysMoEx.CpuStateObserver.CPU_USAGE_STATE.CPU_NORMAL) {
+                SysOptBridge.getFactory().getSysPrefetchService().startPrefetchApp();
+            }
+        }
+
+        @Override
+        public ActivityManagerServiceSysMoEx.CpuStateObserver.NOTIFY_FREQUENCY getNotifyRequest() {
+            return ActivityManagerServiceSysMoEx.CpuStateObserver.NOTIFY_FREQUENCY.EVERY_TIME;
+        }
+    };
     protected ActivityManagerService mActivityManagerService;
     boolean mBDReceiverStatsEnabled;
-    IBinderStat mBinderStat;
-    long mCachedPss;
     protected final AtomicFile mChainBootBlackListFile;
-    private Runnable mCheckForceCpusetProcTask;
     protected boolean mCleaningProcesses;
     ProcessRecord mFocusedApp;
-    private HashMap<Integer, ForceCpusetProc> mForceCpusetProcs;
-    public boolean mHardClean;
     private int mHomeAppCrashCount;
     private long mHomeAppCrashedTime;
-    private IActivityManagerSmtEx mIActivityManagerSmtEx;
-    private boolean mInitMonitorCriticalAppData;
-    String mLaunchingProcessName;
-    ArrayMap<String, AppClearAndStatData> mMapAppDiedStatData;
     public IMemoryProcessController mMemProcessController;
     private Handler mMonitorAppRestoreHandler;
     private HandlerThread mMonitorAppRestoreThread;
-    protected long mNextUpdateOomTime;
-    List<Integer> mPendingFreezePids;
-    private boolean mPostedCheckCpusetTask;
-    public HashMap<Integer, String> mPrefetchApps;
-    protected ActivityManagerServiceSysMoEx.CpuStateObserver mPrefetchCpuObServer;
     ActivityManagerService.PidMap mPrefetchPidsSelf;
     IProcessIntercept mProcessIntercept;
-    HashMap mProcessMems;
-    int mSetupWizardState;
     public WindowProcessController mSmartisanHomeProcess;
-    public int mStrictModeFlags;
-    long mTotalEGL;
-    long mTotalPss;
     ITransferController mTransferService;
     public static final boolean IS_USER_BUILD = "user".equals(Build.TYPE);
     public static final String DEX_FILE_OPT = "persist.sys.dexfile.opt";
@@ -356,73 +364,6 @@ public class ActivityManagerServiceSmtBase {
     }
 
     protected ActivityManagerServiceSmtBase(ActivityManagerService ams) {
-        this.mCachedPss = 0L;
-        this.mTotalPss = 0L;
-        this.mTotalEGL = 0L;
-        this.mProcessMems = new HashMap();
-        this.mSetupWizardState = -1;
-        this.mStrictModeFlags = 0;
-        this.mBinderStat = null;
-        this.NOTIFY_INVALID = -1;
-        this.NOTIFY_STAT_BUFF = 1;
-        this.NOTIFY_PARCEL_DATA = 2;
-        this.NOTIFY_DONE = 3;
-        this.mLaunchingProcessName = null;
-        this.killStats = SysOptBridge.getFactory().getKillingStats();
-        this.mMapAppDiedStatData = new ArrayMap<>();
-        this.mInitMonitorCriticalAppData = false;
-        this.mNextUpdateOomTime = JobStatus.NO_LATEST_RUNTIME;
-        this.mHardClean = false;
-        this.mPendingFreezePids = new ArrayList();
-        this.mPrefetchCpuObServer = new ActivityManagerServiceSysMoEx.CpuStateObserver() {
-            ArrayList<String> apps_l = new ArrayList<>();
-
-            @Override
-            public void onCpuState(ActivityManagerServiceSysMoEx.CpuStateObserver.CPU_USAGE_STATE state, long timestamp) {
-                if (state == ActivityManagerServiceSysMoEx.CpuStateObserver.CPU_USAGE_STATE.CPU_NORMAL) {
-                    SysOptBridge.getFactory().getSysPrefetchService().startPrefetchApp();
-                }
-            }
-
-            @Override
-            public ActivityManagerServiceSysMoEx.CpuStateObserver.NOTIFY_FREQUENCY getNotifyRequest() {
-                return ActivityManagerServiceSysMoEx.CpuStateObserver.NOTIFY_FREQUENCY.EVERY_TIME;
-            }
-        };
-        this.mForceCpusetProcs = new HashMap<>();
-        this.mPostedCheckCpusetTask = false;
-        this.mCheckForceCpusetProcTask = new Runnable() {
-            @Override
-            public void run() {
-                synchronized (ActivityManagerServiceSmtBase.this.mForceCpusetProcs) {
-                    if (ActivityManagerServiceSmtBase.this.mForceCpusetProcs.size() > 0) {
-                        ActivityManagerServiceSmtBase.this.mPostedCheckCpusetTask = false;
-                        long messageDelay = ActivityManagerServiceSmtBase.CHECK_TASK_DEFAULT_TIME;
-                        List<Integer> needRemove = new ArrayList<>();
-                        for (Integer key : ActivityManagerServiceSmtBase.this.mForceCpusetProcs.keySet()) {
-                            ForceCpusetProc proc = (ForceCpusetProc) ActivityManagerServiceSmtBase.this.mForceCpusetProcs.get(key);
-                            long current = SystemClock.uptimeMillis();
-                            if (proc.resetForceCpusetProcIfTimeOut(current)) {
-                                needRemove.add(key);
-                            } else if (proc.timeOut > 0 && proc.timeOut < messageDelay) {
-                                messageDelay = proc.timeOut;
-                            }
-                        }
-                        for (Integer pid : needRemove) {
-                            ActivityManagerServiceSmtBase.this.mForceCpusetProcs.remove(pid);
-                            FeatLog.i("SmtResourceControl", "FEAT_PERF_RES_CONTROL", 40, "remove force cpuset proc :" + pid + " for timeout");
-                        }
-                        if (ActivityManagerServiceSmtBase.this.mForceCpusetProcs.size() > 0) {
-                            ActivityManagerServiceSmtBase.this.sendCheckForceCpusetProcTask(messageDelay);
-                            FeatLog.i("SmtResourceControl", "FEAT_PERF_RES_CONTROL", 50, "send check task for has more force cpuset process.");
-                        }
-                    }
-                }
-            }
-        };
-        Objects.requireNonNull(this);
-        this.mIActivityManagerSmtEx = new IActivityManagerSmtExBase();
-        this.mPrefetchApps = new HashMap<>();
         this.mActivityManagerService = ams;
         ActivityManagerService activityManagerService = this.mActivityManagerService;
         Objects.requireNonNull(activityManagerService);
@@ -440,73 +381,6 @@ public class ActivityManagerServiceSmtBase {
     }
 
     protected ActivityManagerServiceSmtBase(ActivityManagerService ams, ActivityManagerService.Injector injector, ServiceThread handlerThread) {
-        this.mCachedPss = 0L;
-        this.mTotalPss = 0L;
-        this.mTotalEGL = 0L;
-        this.mProcessMems = new HashMap();
-        this.mSetupWizardState = -1;
-        this.mStrictModeFlags = 0;
-        this.mBinderStat = null;
-        this.NOTIFY_INVALID = -1;
-        this.NOTIFY_STAT_BUFF = 1;
-        this.NOTIFY_PARCEL_DATA = 2;
-        this.NOTIFY_DONE = 3;
-        this.mLaunchingProcessName = null;
-        this.killStats = SysOptBridge.getFactory().getKillingStats();
-        this.mMapAppDiedStatData = new ArrayMap<>();
-        this.mInitMonitorCriticalAppData = false;
-        this.mNextUpdateOomTime = JobStatus.NO_LATEST_RUNTIME;
-        this.mHardClean = false;
-        this.mPendingFreezePids = new ArrayList();
-        this.mPrefetchCpuObServer = new ActivityManagerServiceSysMoEx.CpuStateObserver() {
-            ArrayList<String> apps_l = new ArrayList<>();
-
-            @Override
-            public void onCpuState(ActivityManagerServiceSysMoEx.CpuStateObserver.CPU_USAGE_STATE state, long timestamp) {
-                if (state == ActivityManagerServiceSysMoEx.CpuStateObserver.CPU_USAGE_STATE.CPU_NORMAL) {
-                    SysOptBridge.getFactory().getSysPrefetchService().startPrefetchApp();
-                }
-            }
-
-            @Override
-            public ActivityManagerServiceSysMoEx.CpuStateObserver.NOTIFY_FREQUENCY getNotifyRequest() {
-                return ActivityManagerServiceSysMoEx.CpuStateObserver.NOTIFY_FREQUENCY.EVERY_TIME;
-            }
-        };
-        this.mForceCpusetProcs = new HashMap<>();
-        this.mPostedCheckCpusetTask = false;
-        this.mCheckForceCpusetProcTask = new Runnable() {
-            @Override
-            public void run() {
-                synchronized (ActivityManagerServiceSmtBase.this.mForceCpusetProcs) {
-                    if (ActivityManagerServiceSmtBase.this.mForceCpusetProcs.size() > 0) {
-                        ActivityManagerServiceSmtBase.this.mPostedCheckCpusetTask = false;
-                        long messageDelay = ActivityManagerServiceSmtBase.CHECK_TASK_DEFAULT_TIME;
-                        List<Integer> needRemove = new ArrayList<>();
-                        for (Integer key : ActivityManagerServiceSmtBase.this.mForceCpusetProcs.keySet()) {
-                            ForceCpusetProc proc = (ForceCpusetProc) ActivityManagerServiceSmtBase.this.mForceCpusetProcs.get(key);
-                            long current = SystemClock.uptimeMillis();
-                            if (proc.resetForceCpusetProcIfTimeOut(current)) {
-                                needRemove.add(key);
-                            } else if (proc.timeOut > 0 && proc.timeOut < messageDelay) {
-                                messageDelay = proc.timeOut;
-                            }
-                        }
-                        for (Integer pid : needRemove) {
-                            ActivityManagerServiceSmtBase.this.mForceCpusetProcs.remove(pid);
-                            FeatLog.i("SmtResourceControl", "FEAT_PERF_RES_CONTROL", 40, "remove force cpuset proc :" + pid + " for timeout");
-                        }
-                        if (ActivityManagerServiceSmtBase.this.mForceCpusetProcs.size() > 0) {
-                            ActivityManagerServiceSmtBase.this.sendCheckForceCpusetProcTask(messageDelay);
-                            FeatLog.i("SmtResourceControl", "FEAT_PERF_RES_CONTROL", 50, "send check task for has more force cpuset process.");
-                        }
-                    }
-                }
-            }
-        };
-        Objects.requireNonNull(this);
-        this.mIActivityManagerSmtEx = new IActivityManagerSmtExBase();
-        this.mPrefetchApps = new HashMap<>();
         this.mActivityManagerService = ams;
         this.mChainBootBlackListFile = null;
         this.mMemProcessController = SysOptBridge.getFactory().getMemoryProcessController();
@@ -564,11 +438,11 @@ public class ActivityManagerServiceSmtBase {
                         }
                         processRecordTraverse = processRecord;
                     } else {
-                        processRecordTraverse = SysOptBridge.getFactory().getApplicationFreezer().traverse(new IApplicationFreezer.TraverseCallback() {
-                            @Override
-                            public final ProcessRecord onProcess(ProcessRecord processRecord2) {
-                                return ActivityManagerServiceSmtBase.lambda$onTransactSmtEx$0(i5, processRecord2);
+                        processRecordTraverse = SysOptBridge.getFactory().getApplicationFreezer().traverse(fapp -> {
+                            if (fapp.getSmtEx().pid == i5) {
+                                return fapp;
                             }
+                            return null;
                         });
                     }
                     if (processRecordTraverse != null) {
@@ -887,13 +761,6 @@ public class ActivityManagerServiceSmtBase {
         return true;
     }
 
-    static ProcessRecord lambda$onTransactSmtEx$0(int pid, ProcessRecord fapp) {
-        if (fapp.getSmtEx().pid == pid) {
-            return fapp;
-        }
-        return null;
-    }
-
     protected ProcessRecord getProcessRecordLock(int pid) {
         for (ProcessRecord r : this.mActivityManagerService.mProcessList.mLruProcesses) {
             if (pid == r.pid || pid == r.getSmtEx().pid) {
@@ -1080,9 +947,9 @@ public class ActivityManagerServiceSmtBase {
         String propName;
         ArrayList<String> secondClearDirList;
         boolean uninstallApp;
-        int crashCount = 0;
-        long lastCrashTime = 0;
-        int clearLevel = 1;
+        int crashCount;
+        long lastCrashTime;
+        int clearLevel;
 
         public AppClearAndStatData(ArrayList<String> firstClearDir, ArrayList<String> secondClearDir, boolean clearAppAllData, String pkgName, boolean uninstallApp, String propName) {
             this.firstClearDirList = firstClearDir;
@@ -1091,10 +958,13 @@ public class ActivityManagerServiceSmtBase {
             this.pkgName = pkgName;
             this.uninstallApp = uninstallApp;
             this.propName = propName;
+            this.crashCount = 0;
+            this.lastCrashTime = 0L;
             this.hasReboot = SystemProperties.getBoolean(propName, false);
+            this.clearLevel = 1;
         }
 
-                public void rebootSystem() {
+        private void rebootSystem() {
             Slog.i("ActivityManagerService", "reboot system from clear critical app data");
             SystemProperties.set(this.propName, "true");
             long token = Binder.clearCallingIdentity();
@@ -1277,7 +1147,7 @@ public class ActivityManagerServiceSmtBase {
         }
     }
 
-        public void notifyStabdAppRestoreStat(String pkgName, int clearLevel) {
+    private void notifyStabdAppRestoreStat(String pkgName, int clearLevel) {
         try {
             Slog.i("ActivityManagerService", "notifyStabdAppRestoreStat " + pkgName + " has restored, clearLevel=" + clearLevel);
             IBinder stabProxy = ServiceManager.getService("stabservice");
@@ -1546,6 +1416,40 @@ public class ActivityManagerServiceSmtBase {
         });
     }
 
+    private HashMap<Integer, ForceCpusetProc> mForceCpusetProcs = new HashMap<>();
+    private boolean mPostedCheckCpusetTask = false;
+    private Runnable mCheckForceCpusetProcTask = new Runnable() {
+        @Override
+        public void run() {
+            synchronized (ActivityManagerServiceSmtBase.this.mForceCpusetProcs) {
+                if (ActivityManagerServiceSmtBase.this.mForceCpusetProcs.size() > 0) {
+                    ActivityManagerServiceSmtBase.this.mPostedCheckCpusetTask = false;
+                    long messageDelay = ActivityManagerServiceSmtBase.CHECK_TASK_DEFAULT_TIME;
+                    List<Integer> needRemove = new ArrayList<>();
+                    for (Integer key : ActivityManagerServiceSmtBase.this.mForceCpusetProcs.keySet()) {
+                        ForceCpusetProc proc = (ForceCpusetProc) ActivityManagerServiceSmtBase.this.mForceCpusetProcs.get(key);
+                        long current = SystemClock.uptimeMillis();
+                        if (proc.resetForceCpusetProcIfTimeOut(current)) {
+                            needRemove.add(key);
+                        } else if (proc.timeOut > 0 && proc.timeOut < messageDelay) {
+                            messageDelay = proc.timeOut;
+                        }
+                    }
+                    for (Integer pid : needRemove) {
+                        ActivityManagerServiceSmtBase.this.mForceCpusetProcs.remove(pid);
+                        FeatLog.i("SmtResourceControl", "FEAT_PERF_RES_CONTROL", 40, "remove force cpuset proc :" + pid + " for timeout");
+                    }
+                    if (ActivityManagerServiceSmtBase.this.mForceCpusetProcs.size() > 0) {
+                        ActivityManagerServiceSmtBase.this.sendCheckForceCpusetProcTask(messageDelay);
+                        FeatLog.i("SmtResourceControl", "FEAT_PERF_RES_CONTROL", 50, "send check task for has more force cpuset process.");
+                    }
+                }
+            }
+        }
+    };
+    private IActivityManagerSmtEx mIActivityManagerSmtEx = this.new IActivityManagerSmtExBase();
+    public HashMap<Integer, String> mPrefetchApps = new HashMap<>();
+
     public void doFreezeForPendingApp() {
         synchronized (this.mPendingFreezePids) {
             if (this.mPendingFreezePids.size() > 0) {
@@ -1654,7 +1558,7 @@ public class ActivityManagerServiceSmtBase {
         }
     }
 
-        public void sendCheckForceCpusetProcTask(long delayTime) {
+    private void sendCheckForceCpusetProcTask(long delayTime) {
         synchronized (this.mForceCpusetProcs) {
             if (!this.mPostedCheckCpusetTask) {
                 BackgroundThread.getHandler().postDelayed(this.mCheckForceCpusetProcTask, delayTime);
@@ -2028,12 +1932,7 @@ public class ActivityManagerServiceSmtBase {
         synchronized (this.mPrefetchApps) {
             List<Integer> pids = new ArrayList<>();
             pids.addAll(this.mPrefetchApps.keySet());
-            array = pids.stream().mapToInt(new ToIntFunction() {
-                @Override
-                public final int applyAsInt(Object obj) {
-                    return Integer.valueOf(((Integer) obj).intValue()).intValue();
-                }
-            }).toArray();
+            array = pids.stream().mapToInt(Integer::valueOf).toArray();
         }
         return array;
     }
