@@ -522,6 +522,8 @@ public class Toast {
                     trySendAccessibilityEvent();
                 } catch (WindowManager.BadTokenException e) {
                     /* ignore */
+                } catch (WindowManager.InvalidDisplayException e) {
+                    Log.w(TAG, "Do not show a toast when screen is not valid : " + this);
                 }
             }
         }
