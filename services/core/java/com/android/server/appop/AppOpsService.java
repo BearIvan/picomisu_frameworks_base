@@ -136,6 +136,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import smartisanos.os.BinderCallCacheAgent;
+
 public class AppOpsService extends IAppOpsService.Stub {
     static final String TAG = "AppOps";
     static final boolean DEBUG = false;
@@ -881,6 +883,8 @@ public class AppOpsService extends IAppOpsService.Stub {
             // Remove any package state if such.
             if (uidState.pkgOps != null) {
                 ops = uidState.pkgOps.remove(packageName);
+                // Smartisan (factory)
+                BinderCallCacheAgent.removeCheckPackageBinderCache(uid);
             }
 
             // If we just nuked the last package state check if the UID is valid.
@@ -980,6 +984,8 @@ public class AppOpsService extends IAppOpsService.Stub {
                     mHandler.sendMessageDelayed(
                             PooledLambda.obtainMessage(AppOpsService::updatePendingState, this,
                                     commitTime + 1, uid), settleTime + 1);
+                    // Smartisan (factory)
+                    BinderCallCacheAgent.removeCheckPackageBinderCache(uid);
                 }
                 if (uidState.startNesting != 0) {
                     // There is some actively running operation...  need to find it
@@ -1232,6 +1238,8 @@ public class AppOpsService extends IAppOpsService.Stub {
                     ArrayMap<String, Ops> pkgOps = uidState.pkgOps;
                     if (pkgOps != null) {
                         pkgOps.remove(ops.packageName);
+                        // Smartisan (factory)
+                        BinderCallCacheAgent.removeCheckPackageBinderCache(uid);
                         if (pkgOps.isEmpty()) {
                             uidState.pkgOps = null;
                         }
@@ -1657,6 +1665,8 @@ public class AppOpsService extends IAppOpsService.Stub {
                                     mPackageModeWatchers.get(packageName));
                             if (!curOp.hasAnyTime()) {
                                 pkgOps.removeAt(j);
+                                // Smartisan (factory)
+                                BinderCallCacheAgent.removeCheckPackageBinderCache(uid);
                             }
                         }
                     }

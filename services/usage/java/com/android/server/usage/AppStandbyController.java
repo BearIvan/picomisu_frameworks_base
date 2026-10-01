@@ -105,6 +105,7 @@ import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.ConcurrentUtils;
 import com.android.internal.util.IndentingPrintWriter;
 import com.android.server.LocalServices;
+import com.android.server.am.SysMonitorSvcBridge;
 import com.android.server.usage.AppIdleHistory.AppUsageHistory;
 
 import java.io.File;
@@ -934,6 +935,9 @@ public class AppStandbyController {
 
                 // Smartisan: report the usage event to the power advisor.
                 mPowerAdvisorInternal.reportEvent(event.mEventType, event.mPackage, userId);
+                // Smartisan (factory)
+                SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance()
+                        .appFrontEvent(event.mEventType, event.mPackage, userId);
 
                 if (previouslyIdle) {
                     notifyBatteryStats(event.mPackage, userId, false);

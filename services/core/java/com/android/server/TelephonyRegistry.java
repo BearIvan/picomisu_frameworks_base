@@ -71,6 +71,7 @@ import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.DumpUtils;
 import com.android.internal.util.IndentingPrintWriter;
 import com.android.server.am.BatteryStatsService;
+import com.android.server.am.SysMonitorSvcBridge;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -1169,6 +1170,9 @@ public class TelephonyRegistry extends ITelephonyRegistry.Stub {
             if (validatePhoneId(phoneId)) {
                 if (VDBG) log("notifySignalStrengthForPhoneId: valid phoneId=" + phoneId);
                 mSignalStrength[phoneId] = signalStrength;
+                // Smartisan (factory)
+                SysMonitorSvcBridge.getFactory().getSysPerfMonitorService()
+                        .updatePhoneSignalStrength(subId, signalStrength.getLevel());
                 for (Record r : mRecords) {
                     if (VDBG) {
                         log("notifySignalStrengthForPhoneId: r=" + r + " subId=" + subId

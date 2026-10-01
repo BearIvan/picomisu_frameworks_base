@@ -98,6 +98,7 @@ import com.android.internal.util.ArrayUtils;
 import com.android.server.ConnectivityService;
 import com.android.server.DeviceIdleController;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.net.BaseNetworkObserver;
 
 import libcore.io.IoUtils;
@@ -263,6 +264,21 @@ public class Vpn {
     @VisibleForTesting
     protected void updateState(DetailedState detailedState, String reason) {
         if (LOGD) Log.d(TAG, "setting state=" + detailedState + ", reason=" + reason);
+        // Smartisan (factory): tell the sys-services which package owns the VPN.
+        if (detailedState == DetailedState.FAILED || detailedState == DetailedState.DISCONNECTED) {
+            SysOptBridge.getFactory().getSmartScenes().updateVpnPackage(null);
+            SysOptBridge.getFactory().getMemoryProcessController().updateVpnPackage(null);
+            SysOptBridge.getFactory().getTaskDeepClean().updateVpnPackage(null);
+        } else if (detailedState == DetailedState.CONNECTED) {
+            if (mConfig != null) {
+                SysOptBridge.getFactory().getSmartScenes().updateVpnPackage(mConfig.user);
+                SysOptBridge.getFactory().getMemoryProcessController()
+                        .updateVpnPackage(mConfig.user);
+                SysOptBridge.getFactory().getTaskDeepClean().updateVpnPackage(mConfig.user);
+            } else {
+                Log.wtf(TAG, "config is null when connected");
+            }
+        }
         mNetworkInfo.setDetailedState(detailedState, reason, null);
         if (mNetworkAgent != null) {
             mNetworkAgent.sendNetworkInfo(mNetworkInfo);

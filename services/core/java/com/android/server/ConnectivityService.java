@@ -60,6 +60,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IntentSmtBase;
 import android.content.res.Configuration;
 import android.database.ContentObserver;
 import android.telephony.SubscriptionInfo;
@@ -2151,6 +2152,9 @@ public class ConnectivityService extends IConnectivityManager.Stub
             Bundle options = null;
             final long ident = Binder.clearCallingIdentity();
             if (ConnectivityManager.CONNECTIVITY_ACTION.equals(intent.getAction())) {
+                // Smartisan (factory)
+                intent.getSmtEx().addSmFlags(
+                        IntentSmtBase.FLAG_SM_REMOVE_ACTIVE_NETWORKINFO_CACHE);
                 final NetworkInfo ni = intent.getParcelableExtra(
                         ConnectivityManager.EXTRA_NETWORK_INFO);
                 if (ni.getType() == ConnectivityManager.TYPE_MOBILE_SUPL) {

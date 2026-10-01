@@ -269,6 +269,9 @@ public class LocationManagerService extends ILocationManager.Stub {
     @GuardedBy("mLock")
     private boolean mGnssBatchingInProgress = false;
 
+    // Smartisan (factory)
+    LocationManagerServiceSmtEx mSmtEx = new LocationManagerServiceSmtEx();
+
     @GuardedBy("mLock")
     @PowerManager.LocationPowerSaveMode
     private int mBatterySaverMode;
@@ -2317,11 +2320,14 @@ public class LocationManagerService extends ILocationManager.Stub {
         private Location mLastFixBroadcast;
         private long mLastStatusBroadcast;
         private Throwable mStackTrace;  // for debugging only
+        // Smartisan (factory)
+        LocationManagerServiceSmtEx.UpdateRecordSmtEx mUpdateRecordSmtEx;
 
         /**
          * Note: must be constructed with lock held.
          */
         private UpdateRecord(String provider, LocationRequest request, Receiver receiver) {
+            mUpdateRecordSmtEx = mSmtEx.new UpdateRecordSmtEx();
             mProvider = provider;
             mRealRequest = request;
             mRequest = request;

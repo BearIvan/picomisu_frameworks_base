@@ -151,6 +151,7 @@ import com.android.internal.view.IInputSessionCallback;
 import com.android.internal.view.InputBindResult;
 import com.android.server.EventLogTags;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.inputmethod.InputMethodSubtypeSwitchingController.ImeSubtypeListItem;
 import com.android.server.inputmethod.InputMethodUtils.InputMethodSettings;
@@ -2754,6 +2755,8 @@ public class InputMethodManagerService extends IInputMethodManager.Stub
             // because mCurMethodId is stored as a history in
             // setSelectedInputMethodAndSubtypeLocked().
             mCurMethodId = id;
+            // Smartisan (factory)
+            SysOptBridge.getFactory().getSmartScenes().updateInputMethod(info.getPackageName());
 
             if (LocalServices.getService(ActivityManagerInternal.class).isSystemReady()) {
                 Intent intent = new Intent(Intent.ACTION_INPUT_METHOD_CHANGED);

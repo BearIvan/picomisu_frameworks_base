@@ -125,6 +125,8 @@ public final class JobStatus {
     public static final long MIN_TRIGGER_MAX_DELAY = 1000;
 
     final JobInfo job;
+    // Smartisan (factory): never assigned in the factory services.jar either.
+    private JobStatusOptEx jobStatusSmtEx;
     /**
      * Uid of the package requesting this job.  This can differ from the "source"
      * uid when the job was scheduled on the app's behalf, such as with the jobs
@@ -1834,5 +1836,10 @@ public final class JobStatus {
         proto.write(JobStatusDumpProto.LAST_FAILED_RUN_TIME, mLastFailedRunTime);
 
         proto.end(token);
+    }
+
+    // Smartisan (factory)
+    public JobStatusOptEx getSmtEx() {
+        return jobStatusSmtEx;
     }
 }

@@ -79,6 +79,7 @@ import com.android.internal.location.gnssmetrics.GnssMetrics;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.server.DeviceIdleController;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.location.GnssSatelliteBlacklistHelper.GnssSatelliteBlacklistCallback;
 import com.android.server.location.NtpTimeHelper.InjectNtpTimeCallback;
 
@@ -1165,6 +1166,9 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                 for (WorkChain newChain : newChains) {
                     mAppOps.startOpNoThrow(AppOpsManager.OP_GPS, newChain.getAttributionUid(),
                             newChain.getAttributionTag());
+                    // Smartisan (factory)
+                    SysOptBridge.getFactory().getSmartScenes()
+                            .noteStartGps(newChain.getAttributionUid());
                 }
             }
 
@@ -1172,6 +1176,9 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                 for (WorkChain goneChain : goneChains) {
                     mAppOps.finishOp(AppOpsManager.OP_GPS, goneChain.getAttributionUid(),
                             goneChain.getAttributionTag());
+                    // Smartisan (factory)
+                    SysOptBridge.getFactory().getSmartScenes()
+                            .noteStopGps(goneChain.getAttributionUid());
                 }
             }
 
@@ -1189,6 +1196,8 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                 for (int i = 0; i < newWork.size(); i++) {
                     mAppOps.startOpNoThrow(AppOpsManager.OP_GPS,
                             newWork.get(i), newWork.getName(i));
+                    // Smartisan (factory)
+                    SysOptBridge.getFactory().getSmartScenes().noteStartGps(newWork.get(i));
                 }
             }
 
@@ -1196,6 +1205,8 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
             if (goneWork != null) {
                 for (int i = 0; i < goneWork.size(); i++) {
                     mAppOps.finishOp(AppOpsManager.OP_GPS, goneWork.get(i), goneWork.getName(i));
+                    // Smartisan (factory)
+                    SysOptBridge.getFactory().getSmartScenes().noteStopGps(goneWork.get(i));
                 }
             }
         }

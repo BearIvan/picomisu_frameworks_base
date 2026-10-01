@@ -102,6 +102,7 @@ import com.android.internal.util.JournaledFile;
 import com.android.server.EventLogTags;
 import com.android.server.FgThread;
 import com.android.server.LocalServices;
+import com.android.server.SysOptBridge;
 import com.android.server.SystemService;
 import com.android.server.wm.WindowManagerInternal;
 
@@ -2742,6 +2743,9 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
             Slog.w(TAG, msg);
             return false;
         }
+        // Smartisan (factory)
+        SysOptBridge.getFactory().getSmartScenes().updateWallPaperPackage(
+                componentName.getPackageName());
         return true;
     }
 
