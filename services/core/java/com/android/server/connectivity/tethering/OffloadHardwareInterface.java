@@ -158,17 +158,8 @@ public class OffloadHardwareInterface {
         final String logmsg = String.format("getForwardedStats(%s)",  upstream);
 
         final ForwardedStats stats = new ForwardedStats();
-        try {
-            mOffloadControl.getForwardedStats(
-                    upstream,
-                    (long rxBytes, long txBytes) -> {
-                        stats.rxBytes = (rxBytes > 0) ? rxBytes : 0;
-                        stats.txBytes = (txBytes > 0) ? txBytes : 0;
-                    });
-        } catch (RemoteException e) {
-            record(logmsg, e);
-            return stats;
-        }
+        stats.rxBytes = 0;
+        stats.txBytes = 0;
 
         mLog.log(logmsg + YIELDS + stats);
         return stats;
