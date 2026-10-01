@@ -54,6 +54,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ApplicationInfoSmtBase;
 import android.content.pm.IPackageManager;
 import android.content.res.Resources;
 import android.graphics.Point;
@@ -96,6 +97,7 @@ import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.MemInfoReader;
 import com.android.server.LocalServices;
 import com.android.server.ServiceThread;
+import com.android.server.SysOptBridge;
 import com.android.server.Watchdog;
 import com.android.server.pm.dex.DexManager;
 import com.android.server.wm.ActivityServiceConnectionsHolder;
@@ -533,6 +535,7 @@ public final class ProcessList {
         public ProcessRecord remove(String name, int uid) {
             final ProcessRecord r = super.remove(name, uid);
             mService.mAtmInternal.onProcessRemoved(name, uid);
+            SysOptBridge.getFactory().getPrefetchManager().removePrefetch(r);
             return r;
         }
     }
@@ -1402,6 +1405,14 @@ public final class ProcessList {
     }
 
     ProcessRecord findAppProcessLocked(IBinder app, String reason) {
+        return findAppProcessLocked(app, reason, 0);
+    }
+
+    /**
+     * Smartisan (factory): with a non-zero includeSmtProcess the Smartisan process list
+     * extension may also find the process (e.g. a frozen one).
+     */
+    ProcessRecord findAppProcessLocked(IBinder app, String reason, int includeSmtProcess) {
         final int NP = mProcessNames.getMap().size();
         for (int ip = 0; ip < NP; ip++) {
             SparseArray<ProcessRecord> apps = mProcessNames.getMap().valueAt(ip);
@@ -1411,6 +1422,13 @@ public final class ProcessList {
                 if (p.thread != null && p.thread.asBinder() == app) {
                     return p;
                 }
+            }
+        }
+        if (includeSmtProcess != 0) {
+            ProcessRecord proc = SysOptBridge.getFactory().getProcessListOptEx()
+                    .findAppProcessSmtLocked(app, includeSmtProcess);
+            if (proc != null) {
+                return proc;
             }
         }
 
@@ -1442,10 +1460,23 @@ public final class ProcessList {
         if (app.pendingStart) {
             return true;
         }
+        // Smartisan (factory).
+        SysOptBridge.getFactory().getSmartScenes().updateProcessState(app.processName, app.info,
+                true, false);
+        if ((app.info.getSmtEx().peroptFlag
+                & ApplicationInfoSmtBase.PEROPT_FLAG_VRSHELL_AGAINST_BROWSER) != 0) {
+            if (app.info.packageName.equals(app.processName)) {
+                app.getSmtEx().mainProc = true;
+            }
+            if (app.processName.contains("privileged")) {
+                app.getSmtEx().browserGpuProc = true;
+            }
+        }
         long startTime = SystemClock.elapsedRealtime();
         if (app.pid > 0 && app.pid != ActivityManagerService.MY_PID) {
             checkSlow(startTime, "startProcess: removing from pids map");
             mService.mPidsSelfLocked.remove(app);
+            SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().removePid(app.pid);
             mService.mHandler.removeMessages(PROC_START_TIMEOUT_MSG, app);
             checkSlow(startTime, "startProcess: done removing from pids map");
             app.setPid(0);
@@ -1681,7 +1712,10 @@ public final class ProcessList {
                     final Process.ProcessStartResult startResult = startProcess(app.hostingRecord,
                             entryPoint, app, app.startUid, gids, runtimeFlags, mountExternal,
                             app.seInfo, requiredAbi, instructionSet, invokeWith, app.startTime,
-                            isActivity, isActivity);
+                            isActivity || (app.getSmtEx().browserGpuProc && app.uidRecord != null
+                                    && app.uidRecord.getSmtEx().curSchedGroup
+                                            == SCHED_GROUP_TOP_APP),
+                            isActivity);
                     synchronized (mService) {
                         handleProcessStartedLocked(app, startResult, startSeq);
                     }
@@ -1705,7 +1739,10 @@ public final class ProcessList {
                 final Process.ProcessStartResult startResult = startProcess(hostingRecord,
                         entryPoint, app,
                         uid, gids, runtimeFlags, mountExternal, seInfo, requiredAbi, instructionSet,
-                        invokeWith, startTime, isActivity, isActivity);
+                        invokeWith, startTime,
+                        isActivity || (app.getSmtEx().browserGpuProc && app.uidRecord != null
+                                && app.uidRecord.getSmtEx().curSchedGroup == SCHED_GROUP_TOP_APP),
+                        isActivity);
                 handleProcessStartedLocked(app, startResult.pid, startResult.usingWrapper,
                         startSeq, false);
             } catch (RuntimeException e) {
@@ -1845,6 +1882,7 @@ public final class ProcessList {
                                 "--uifirst=" + String.valueOf(uiFirst),
                                 PROC_START_SEQ_IDENT + app.startSeq});
             }
+            SysOptBridge.getFactory().getFreezeController().startProcessEvent(app, startResult.pid);
             if (mPerfServiceStartHint != null) {
                 if ((hostingRecord.getType() != null) && (hostingRecord.getType().equals("activity"))) {
                     if (startResult != null) {
@@ -1880,6 +1918,12 @@ public final class ProcessList {
         ProcessRecord app;
         if (!isolated) {
             app = getProcessRecordLocked(processName, info.uid, keepIfLarge);
+            if (app == null) {
+                // Smartisan (factory): take a frozen process of this name back.
+                app = SysOptBridge.getFactory().getApplicationFreezer().unfreezeAppIfNeededLocked(
+                        null, processName, info.uid,
+                        IApplicationFreezer.UnfreezeReason.NEED_START_PROCESS, null, null);
+            }
             checkSlow(startTime, "startProcess: after getProcessRecord");
 
             if ((intentFlags & Intent.FLAG_FROM_BACKGROUND) != 0) {
@@ -1938,6 +1982,9 @@ public final class ProcessList {
             // clean it up now.
             if (DEBUG_PROCESSES) Slog.v(TAG_PROCESSES, "App died: " + app);
             checkSlow(startTime, "startProcess: bad proc running, killing");
+            app.getSmtEx().killedReason = "bad-proc";
+            mService.getSmtEx().reportKillingEvent(KillingStatsUtils.buildOtherKillingEventItem(
+                    app.getSmtEx().getCanonicalName(), app.uid, "bad-proc"));
             ProcessList.killProcessGroup(app.uid, app.pid);
             mService.handleAppDiedLocked(app, true, true);
             checkSlow(startTime, "startProcess: done killing old proc");
@@ -2028,6 +2075,9 @@ public final class ProcessList {
                     pid
                     + ", " + reason);
             app.pendingStart = false;
+            app.getSmtEx().killedReason = "handleProcessStartedLocked";
+            mService.getSmtEx().reportKillingEvent(KillingStatsUtils.buildOtherKillingEventItem(
+                    app.getSmtEx().getCanonicalName(), app.uid, "handleProcessStartedLocked"));
             killProcessQuiet(pid);
             Process.killProcessGroup(app.uid, app.pid);
             return false;
@@ -2092,6 +2142,8 @@ public final class ProcessList {
                     true /*replacingPid*/);
         }
         mService.mPidsSelfLocked.put(app);
+        SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().updatePidUidInfo(app.pid,
+                app.getSmtEx().getSmtUid());
         synchronized (mService.mPidsSelfLocked) {
             if (!procAttached) {
                 Message msg = mService.mHandler.obtainMessage(PROC_START_TIMEOUT_MSG);
@@ -2113,6 +2165,11 @@ public final class ProcessList {
                 } else {
                     Slog.wtfStack(TAG, "Removing process that hasn't been killed: " + app);
                     if (app.pid > 0) {
+                        app.getSmtEx().killedReason = "removeLruProcessLocked";
+                        mService.getSmtEx().reportKillingEvent(
+                                KillingStatsUtils.buildAmKillingEventItem(
+                                        app.getSmtEx().getCanonicalName(), app.uid, app.setAdj,
+                                        app.setProcState, "removeLruProcessLocked"));
                         killProcessQuiet(app.pid);
                         ProcessList.killProcessGroup(app.uid, app.pid);
                     } else {
@@ -2143,13 +2200,18 @@ public final class ProcessList {
             int userId, int minOomAdj, boolean callerWillRestart, boolean allowRestart,
             boolean doit, boolean evenPersistent, boolean setRemoved, String reason) {
         ArrayList<ProcessRecord> procs = new ArrayList<>();
+        // Smartisan (factory): the frozen processes are killed too.
+        ArrayMap<String, SparseArray<ProcessRecord>> allProcs = new ArrayMap<>();
+        allProcs.putAll(mProcessNames.getMap());
+        allProcs.putAll(SysOptBridge.getFactory().getApplicationFreezer().getFrozenProcesses()
+                .getMap());
 
         // Remove all processes this package may have touched: all with the
         // same UID (except for the system or root user), and all whose name
         // matches the package name.
-        final int NP = mProcessNames.getMap().size();
+        final int NP = allProcs.size();
         for (int ip = 0; ip < NP; ip++) {
-            SparseArray<ProcessRecord> apps = mProcessNames.getMap().valueAt(ip);
+            SparseArray<ProcessRecord> apps = allProcs.valueAt(ip);
             final int NA = apps.size();
             for (int ia = 0; ia < NA; ia++) {
                 ProcessRecord app = apps.valueAt(ia);
@@ -2250,12 +2312,14 @@ public final class ProcessList {
         if (DEBUG_PROCESSES) Slog.d(TAG_PROCESSES,
                 "Force removing proc " + app.toShortString() + " (" + name + "/" + uid + ")");
 
+        SysOptBridge.getFactory().getApplicationFreezer().takeoutByProcessLocked(app);
         ProcessRecord old = mProcessNames.get(name, uid);
         if (old != app) {
             // This process is no longer active, so nothing to do.
             Slog.w(TAG, "Ignoring remove of inactive process: " + app);
             return false;
         }
+        app.getSmtEx().killedReason = reason;
         removeProcessNameLocked(name, uid);
         mService.mAtmInternal.clearHeavyWeightProcessIfEquals(app.getWindowProcessController());
 
@@ -2265,6 +2329,7 @@ public final class ProcessList {
             int pid = app.pid;
             if (pid > 0) {
                 mService.mPidsSelfLocked.remove(app);
+                SysMonitorSvcBridge.getFactory().getSysPerfMonitorService().removePid(app.pid);
                 mService.mHandler.removeMessages(PROC_START_TIMEOUT_MSG, app);
                 mService.mBatteryStatsService.noteProcessFinish(app.processName, app.info.uid);
                 if (app.isolated) {
@@ -2317,10 +2382,18 @@ public final class ProcessList {
             }
             uidRec.updateHasInternetPermission();
             mActiveUids.put(proc.uid, uidRec);
+            SysOptBridge.getFactory().getActivityManager(mService).getmUidCpuRunner()
+                    .onUidAdded(proc.uid);
             EventLogTags.writeAmUidRunning(uidRec.uid);
             mService.noteUidProcessState(uidRec.uid, uidRec.getCurProcState());
         }
         proc.uidRecord = uidRec;
+        // Smartisan (factory): processes of the uid, per Smartisan uid for the system uid.
+        uidRec.procRecords.add(proc);
+        if (proc.uid == Process.SYSTEM_UID) {
+            proc.uidRecord.getSmtEx().getSystemSmtUidRecord(proc.info.getSmtUid()).procRecords
+                    .add(proc);
+        }
 
         // Reset render thread tid if it was already set, so new process can set it again.
         proc.renderThreadTid = 0;
@@ -2404,15 +2477,26 @@ public final class ProcessList {
     @GuardedBy("mService")
     final ProcessRecord removeProcessNameLocked(final String name, final int uid,
             final ProcessRecord expecting) {
+        SysOptBridge.getFactory().getApplicationFreezer().takeoutByNameLocked(name, uid);
         ProcessRecord old = mProcessNames.get(name, uid);
+        if (old != null) {
+            SysOptBridge.getFactory().getSmartScenes().updateProcessState(name, old.info, false,
+                    false);
+        }
         // Only actually remove when the currently recorded value matches the
         // record that we expected; if it doesn't match then we raced with a
         // newly created process and we don't want to destroy the new one.
         if ((expecting == null) || (old == expecting)) {
             mProcessNames.remove(name, uid);
+            SysOptBridge.getFactory().getPrefetchManager().removePrefetch(old);
         }
         if (old != null && old.uidRecord != null) {
             old.uidRecord.numProcs--;
+            old.uidRecord.procRecords.remove(old);
+            if (old.uid == Process.SYSTEM_UID) {
+                old.uidRecord.getSmtEx().getSystemSmtUidRecord(old.info.getSmtUid()).procRecords
+                        .remove(old);
+            }
             if (old.uidRecord.numProcs == 0) {
                 // No more processes using this uid, tell clients it is gone.
                 if (DEBUG_UID_OBSERVERS) Slog.i(TAG_UID_OBSERVERS,
@@ -2420,6 +2504,8 @@ public final class ProcessList {
                 mService.enqueueUidChangeLocked(old.uidRecord, -1, UidRecord.CHANGE_GONE);
                 EventLogTags.writeAmUidStopped(uid);
                 mActiveUids.remove(uid);
+                SysOptBridge.getFactory().getActivityManager(mService).getmUidCpuRunner()
+                        .onUidRemoved(uid);
                 mService.noteUidProcessState(uid, ActivityManager.PROCESS_STATE_NONEXISTENT);
             }
             old.uidRecord = null;
@@ -2443,6 +2529,9 @@ public final class ProcessList {
             try {
                 if (processRecord.thread != null) {
                     processRecord.thread.setCoreSettings(settings);
+                } else if (processRecord.getSmtEx().inFreezeStat()) {
+                    // Smartisan (factory): delivered when the process is thawed.
+                    processRecord.getSmtEx().cacheData.putBundle("core_settings", settings);
                 }
             } catch (RemoteException re) {
                 /* ignore */
@@ -2984,11 +3073,27 @@ public final class ProcessList {
     }
 
     final ProcessRecord getLRURecordForAppLocked(IApplicationThread thread) {
+        return getLRURecordForAppLocked(thread, true);
+    }
+
+    /**
+     * Smartisan (factory): with includeFreezeStat also match a frozen process, whose thread is
+     * parked in ProcessRecordSmtBase.thread while it is frozen.
+     */
+    final ProcessRecord getLRURecordForAppLocked(IApplicationThread thread,
+            boolean includeFreezeStat) {
+        if (thread == null) {
+            return null;
+        }
         final IBinder threadBinder = thread.asBinder();
         // Find the application record.
         for (int i = mLruProcesses.size() - 1; i >= 0; i--) {
             final ProcessRecord rec = mLruProcesses.get(i);
             if (rec.thread != null && rec.thread.asBinder() == threadBinder) {
+                return rec;
+            }
+            if (includeFreezeStat && rec.getSmtEx().thread != null
+                    && rec.getSmtEx().thread.asBinder() == threadBinder) {
                 return rec;
             }
         }

@@ -3711,11 +3711,16 @@ public class ActivityManagerService extends IActivityManager.Stub
     }
 
     ProcessRecord getRecordForAppLocked(IApplicationThread thread) {
+        return getRecordForAppLocked(thread, false);
+    }
+
+    /** Smartisan (factory): includeFreezeStat also finds a frozen process by its thread. */
+    ProcessRecord getRecordForAppLocked(IApplicationThread thread, boolean includeFreezeStat) {
         if (thread == null) {
             return null;
         }
 
-        ProcessRecord record = mProcessList.getLRURecordForAppLocked(thread);
+        ProcessRecord record = mProcessList.getLRURecordForAppLocked(thread, includeFreezeStat);
         if (record != null) return record;
 
         // Validation: if it isn't in the LRU list, it shouldn't exist, but let's
