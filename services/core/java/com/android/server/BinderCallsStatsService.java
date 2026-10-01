@@ -42,6 +42,7 @@ import com.android.internal.os.BinderCallsStats;
 import com.android.internal.os.BinderInternal;
 import com.android.internal.os.CachedDeviceState;
 import com.android.internal.util.DumpUtils;
+import com.android.server.am.IBinderStat;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -271,6 +272,10 @@ public class BinderCallsStatsService extends Binder {
                 // initialized before installing it.
                 mWorkSourceProvider.systemReady(getContext());
                 mService.systemReady(getContext());
+            } else if (SystemService.PHASE_DEVICE_SPECIFIC_SERVICES_READY == phase) {
+                // Smartisan (factory): the binder statistics of sys-services set the sampling.
+                int sampling = mService.mBinderStat.initialBinderStat(getContext());
+                mBinderCallsStats.setSamplingInterval(sampling);
             }
         }
     }
@@ -278,11 +283,15 @@ public class BinderCallsStatsService extends Binder {
     private SettingsObserver mSettingsObserver;
     private final BinderCallsStats mBinderCallsStats;
     private final AuthorizedWorkSourceProvider mWorkSourceProvider;
+    // Smartisan (factory): binder statistics of sys-services.
+    IBinderStat mBinderStat;
 
     BinderCallsStatsService(BinderCallsStats binderCallsStats,
             AuthorizedWorkSourceProvider workSourceProvider) {
         mBinderCallsStats = binderCallsStats;
         mWorkSourceProvider = workSourceProvider;
+        // Smartisan (factory).
+        mBinderStat = SysOptBridge.getFactory().getBinderStat();
     }
 
     public void systemReady(Context context) {
@@ -345,7 +354,13 @@ public class BinderCallsStatsService extends Binder {
                     pw.println("Unknown option: " + arg);
                 }
             }
+            // Smartisan (factory): binder statistics dump options of sys-services.
+            if (mBinderStat.setDumpParams(args, mBinderCallsStats, pw)) {
+                return;
+            }
         }
         mBinderCallsStats.dump(pw, AppIdToPackageMap.getSnapshot(), verbose);
+        // Smartisan (factory).
+        mBinderStat.dumpBinderStatSaveFile(fd, pw);
     }
 }

@@ -81,6 +81,8 @@ public final class ProcessStatsService extends IProcessStats.Stub {
     final ReentrantLock mWriteLock = new ReentrantLock();
     final Object mPendingWriteLock = new Object();
     AtomicFile mPendingWriteFile;
+    // Smartisan (factory): the sysmonitor-services process stats extension.
+    IProcessStatsServiceOptEx mOptEx;
     Parcel mPendingWrite;
     boolean mPendingWriteCommitted;
     long mLastWriteTime;
@@ -106,6 +108,9 @@ public final class ProcessStatsService extends IProcessStats.Stub {
                 }
             }
         });
+        // Smartisan (factory).
+        mOptEx = SysMonitorSvcBridge.getFactory().getProcessStatsServiceOptEx();
+        mOptEx.init(this);
     }
 
     @Override
@@ -259,6 +264,8 @@ public final class ProcessStatsService extends IProcessStats.Stub {
                 mPendingWriteCommitted = commit;
             }
             if (commit) {
+                // Smartisan (factory).
+                mOptEx.pendingCommit();
                 mProcessStats.resetSafely();
                 updateFile();
                 mAm.requestPssAllProcsLocked(SystemClock.uptimeMillis(), true, false);
@@ -296,6 +303,8 @@ public final class ProcessStatsService extends IProcessStats.Stub {
             if (data == null) {
                 return;
             }
+            // Smartisan (factory).
+            mOptEx.saveData(data);
             mPendingWrite = null;
             mPendingWriteFile = null;
             mWriteLock.lock();

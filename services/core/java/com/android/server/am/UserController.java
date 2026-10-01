@@ -92,10 +92,12 @@ import com.android.internal.R;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.MetricsLogger;
+import com.android.internal.os.BackgroundThread;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.Preconditions;
 import com.android.internal.widget.LockPatternUtils;
 import com.android.server.FgThread;
+import com.android.server.SysOptBridge;
 import com.android.server.LocalServices;
 import com.android.server.SystemServiceManager;
 import com.android.server.am.UserState.KeyEvictedCallback;
@@ -578,7 +580,20 @@ class UserController implements Handler.Callback {
         // Spin up app widgets prior to boot-complete, so they can be ready promptly
         mInjector.startUserWidgets(userId);
 
-        Slog.i(TAG, "Posting BOOT_COMPLETED user #" + userId);
+        // Smartisan (factory): boot event statistics.
+        final long elapsedRealtime = SystemClock.elapsedRealtime();
+        Slog.i(TAG, "Posting BOOT_COMPLETED user #" + userId + ", elapsedRealtime: "
+                + elapsedRealtime);
+        if (userId == UserHandle.USER_SYSTEM) {
+            SysOptBridge.getFactory().getBootEventStat().writeEvent(
+                    "boot_event_sys_completed_posting", elapsedRealtime);
+            final boolean isKeyguardSecure = mLockPatternUtils.isSecure(userId);
+            if (isKeyguardSecure) {
+                Slog.i(TAG, "Keyguard is secure");
+            }
+            SysOptBridge.getFactory().getBootEventStat().writeEvent("isKeyguardSecure",
+                    isKeyguardSecure ? 1L : 0L);
+        }
         // Do not report secondary users, runtime restarts or first boot/upgrade
         if (userId == UserHandle.USER_SYSTEM
                 && !mInjector.isRuntimeRestarted() && !mInjector.isFirstBootOrUpgrade()) {
@@ -602,9 +617,19 @@ class UserController implements Handler.Callback {
                         public void performReceive(Intent intent, int resultCode, String data,
                                 Bundle extras, boolean ordered, boolean sticky, int sendingUser)
                                         throws RemoteException {
+                            // Smartisan (factory): boot event statistics.
+                            final long elapsedRealtime = SystemClock.elapsedRealtime();
                             Slog.i(UserController.TAG, "Finished processing BOOT_COMPLETED for u"
-                                    + userId);
+                                    + userId + ", elapsedRealtime: " + elapsedRealtime);
                             mBootCompleted = true;
+                            if (userId == UserHandle.USER_SYSTEM) {
+                                BackgroundThread.getHandler().post(() -> {
+                                    SysOptBridge.getFactory().getBootEventStat().writeEvent(
+                                            "boot_event_sys_completed_finish", elapsedRealtime);
+                                    SysOptBridge.getFactory().getBootEventStat().saveFile();
+                                    SysOptBridge.getFactory().getBootEventStat().release();
+                                });
+                            }
                         }
                     }, 0, null, null,
                     new String[]{android.Manifest.permission.RECEIVE_BOOT_COMPLETED},
