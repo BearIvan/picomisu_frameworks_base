@@ -2173,12 +2173,16 @@ public class RootActivityContainer extends ConfigurationContainer
                     for (int taskNdx = tasks.size() - 1; taskNdx >= 0; taskNdx--) {
                         final TaskRecord task = tasks.get(taskNdx);
 
-                        // Check the task for a top activity belonging to userId, or returning a
-                        // result to an activity belonging to userId. Example case: a document
-                        // picker for personal files, opened by a work app, should still get locked.
-                        if (taskTopActivityIsUser(task, userId)) {
-                            mService.getTaskChangeNotificationController().notifyTaskProfileLocked(
-                                    task.taskId, userId);
+                        // Lock the task if it contains any live activity of userId, not only
+                        // when its top activity belongs to userId.
+                        for (int activityNdx = task.mActivities.size() - 1; activityNdx >= 0;
+                                --activityNdx) {
+                            final ActivityRecord activity = task.mActivities.get(activityNdx);
+                            if (!activity.finishing && activity.mUserId == userId) {
+                                mService.getTaskChangeNotificationController()
+                                        .notifyTaskProfileLocked(task.taskId, userId);
+                                break;
+                            }
                         }
                     }
                 }
@@ -2188,25 +2192,6 @@ public class RootActivityContainer extends ConfigurationContainer
         }
     }
 
-    /**
-     * Detects whether we should show a lock screen in front of this task for a locked user.
-     * <p>
-     * We'll do this if either of the following holds:
-     * <ul>
-     *   <li>The top activity explicitly belongs to {@param userId}.</li>
-     *   <li>The top activity returns a result to an activity belonging to {@param userId}.</li>
-     * </ul>
-     *
-     * @return {@code true} if the top activity looks like it belongs to {@param userId}.
-     */
-    private boolean taskTopActivityIsUser(TaskRecord task, @UserIdInt int userId) {
-        // To handle the case that work app is in the task but just is not the top one.
-        final ActivityRecord activityRecord = task.getTopActivity();
-        final ActivityRecord resultTo = (activityRecord != null ? activityRecord.resultTo : null);
-
-        return (activityRecord != null && activityRecord.mUserId == userId)
-                || (resultTo != null && resultTo.mUserId == userId);
-    }
 
     void cancelInitializingActivities() {
         for (int displayNdx = mActivityDisplays.size() - 1; displayNdx >= 0; --displayNdx) {
