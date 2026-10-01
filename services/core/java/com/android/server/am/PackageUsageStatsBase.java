@@ -23,8 +23,8 @@ import smartisanos.util.SmtRingBuffer;
 public class PackageUsageStatsBase {
     static final int HistoryCount = 10;
     protected static final int UPDATE_PACKAGE_STATS_DURATION = 5000;
-    static long totalActive = 0;
-    static int totalCount = 0;
+    static long totalActive;
+    static int totalCount;
     static final int unit10m = 600000;
     static final int unit1h = 3600000;
     static final int unit1m = 60000;
