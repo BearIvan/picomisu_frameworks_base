@@ -939,6 +939,8 @@ public class Activity extends ContextThemeWrapper
     /** The last autofill id that was returned from {@link #getNextAutofillId()} */
     private int mLastAutofillId = View.LAST_APP_AUTOFILL_ID;
 
+    private final ActivitySmtBase mSmtEx = new ActivitySmtBase();
+
     // PICO (factory): resume report, VR permission requests, finish hooks.
     private IExtActivity mExt = new ExtActivityImpl(this);
 
@@ -6515,6 +6517,11 @@ public class Activity extends ContextThemeWrapper
      * {@link ActivityInfo#screenOrientation ActivityInfo.screenOrientation}.
      */
     public void setRequestedOrientation(@ActivityInfo.ScreenOrientation int requestedOrientation) {
+        if (mSmtEx.filterRequestedOrientation(requestedOrientation, mActivityInfo)) {
+            Log.d(TAG, "filter setRequestedOrientation " + requestedOrientation + " "
+                    + mComponent);
+            return;
+        }
         if (mParent == null) {
             try {
                 ActivityTaskManager.getService().setRequestedOrientation(
