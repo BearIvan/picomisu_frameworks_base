@@ -446,7 +446,8 @@ public class RecoverySystem {
                                       final ProgressListener listener,
                                       final Handler handler)
             throws IOException {
-        String filename = packageFile.getCanonicalPath();
+        String filename = IExtRecoverySystem.processFilePath(context,
+                packageFile.getCanonicalPath());
         if (!filename.startsWith("/data/")) {
             return;
         }
@@ -553,7 +554,8 @@ public class RecoverySystem {
             // Must delete the file in case it was created by system server.
             UNCRYPT_PACKAGE_FILE.delete();
 
-            String filename = packageFile.getCanonicalPath();
+            String filename = IExtRecoverySystem.processFilePath(context,
+                    packageFile.getCanonicalPath());
             Log.w(TAG, "!!! REBOOTING TO INSTALL " + filename + " !!!");
 
             // If the package name ends with "_s.zip", it's a security update.
@@ -640,7 +642,8 @@ public class RecoverySystem {
     @RequiresPermission(android.Manifest.permission.RECOVERY)
     public static void scheduleUpdateOnBoot(Context context, File packageFile)
             throws IOException {
-        String filename = packageFile.getCanonicalPath();
+        String filename = IExtRecoverySystem.processFilePath(context,
+                packageFile.getCanonicalPath());
         boolean securityUpdate = filename.endsWith("_s.zip");
 
         // If the package is on the /data partition, use the block map file as
