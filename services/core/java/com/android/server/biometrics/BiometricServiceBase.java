@@ -644,8 +644,14 @@ public abstract class BiometricServiceBase extends SystemService
         mContext = context;
         mStatusBarService = IStatusBarService.Stub.asInterface(
                 ServiceManager.getService(Context.STATUS_BAR_SERVICE));
-        mKeyguardPackage = ComponentName.unflattenFromString(context.getResources().getString(
-                com.android.internal.R.string.config_keyguardComponent)).getPackageName();
+        // PICO (factory PICO OS 5.13.7): the VR keyguard (com.picovr.keyguard) when enabled.
+        if (android.pico.utils.Features.isKeyguardEnabled()) {
+            mKeyguardPackage = ComponentName.unflattenFromString(
+                    android.pico.utils.Features.CONFIG_KEYGUARD_COMPONENT).getPackageName();
+        } else {
+            mKeyguardPackage = ComponentName.unflattenFromString(context.getResources().getString(
+                    com.android.internal.R.string.config_keyguardComponent)).getPackageName();
+        }
         mAppOps = context.getSystemService(AppOpsManager.class);
         mActivityTaskManager = ((ActivityTaskManager) context.getSystemService(
                 Context.ACTIVITY_TASK_SERVICE)).getService();
