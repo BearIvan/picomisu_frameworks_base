@@ -746,6 +746,9 @@ public class ConnectivityManager {
     private static final NetworkRequest ALREADY_UNREGISTERED =
             new NetworkRequest.Builder().clearCapabilities().build();
 
+    // Factory: log the requesting stack once the process holds more than this many callbacks.
+    private static int MAX_REQUEST_LOG_THRESHOLD = 60;
+
     /**
      * A NetID indicating no Network is selected.
      * Keep in sync with bionic/libc/dns/include/resolv_netid.h
@@ -796,6 +799,8 @@ public class ConnectivityManager {
 
     private INetworkManagementService mNMService;
     private INetworkPolicyManager mNPManager;
+
+    private int mLastPrintNetworkCallbackNum = -1;
 
     /**
      * Tests if a given integer represents a valid network type.
@@ -3547,6 +3552,13 @@ public class ConnectivityManager {
         final NetworkRequest request;
         try {
             synchronized(sCallbacks) {
+                final int callbackSize = sCallbacks.size();
+                if (callbackSize > MAX_REQUEST_LOG_THRESHOLD
+                        && callbackSize > mLastPrintNetworkCallbackNum) {
+                    mLastPrintNetworkCallbackNum = callbackSize;
+                    Log.i(TAG, "package " + mContext.getPackageName() + " request num "
+                            + callbackSize + ": " + Log.getStackTraceString(new Throwable()));
+                }
                 if (callback.networkRequest != null
                         && callback.networkRequest != ALREADY_UNREGISTERED) {
                     // TODO: throw exception instead and enforce 1:1 mapping of callbacks
