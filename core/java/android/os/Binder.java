@@ -273,6 +273,61 @@ public class Binder implements IBinder {
     public static final native int getLastFrozenPid();
 
     /**
+     * PICO OS 5.13.7: thread ID of the caller of the current transaction (PICO Binder driver
+     * query), -1 if the driver rejects the request.
+     *
+     * @hide
+     */
+    public static final native int getCallingTid();
+
+    /**
+     * PICO OS 5.13.7 (Smartisan freezer): pid of the process serving the transaction thread
+     * {@code tid} of process {@code pid}.
+     *
+     * @hide
+     */
+    public static final native int getTargetCalleePid(int pid, int tid);
+
+    /**
+     * PICO OS 5.13.7: processes serving Binder transactions of {@code pid} (at most ten), or
+     * null.
+     *
+     * @hide
+     */
+    public static final native int[] getBinderServerPids(int pid);
+
+    /**
+     * PICO OS 5.13.7: processes with Binder transactions served by {@code pid} (at most ten),
+     * or null.
+     *
+     * @hide
+     */
+    public static final native int[] getBinderClientPids(int pid);
+
+    /**
+     * PICO OS 5.13.7 (Smartisan): no-op in the factory runtime; hidden-API whitelisted like
+     * the factory.
+     *
+     * @hide
+     */
+    public static final native void setBinderCtlMask(int mask);
+
+    /**
+     * PICO OS 5.13.7 (Smartisan freezer): freezes or thaws the Binder transactions of
+     * {@code pid} in the PICO Binder driver.
+     *
+     * @hide
+     */
+    public static final native int setPidFreeze(int pid, boolean freeze);
+
+    /**
+     * PICO OS 5.13.7 (Smartisan freezer): {@link #setPidFreeze} with a freeze mode.
+     *
+     * @hide
+     */
+    public static final native int setPidFreezeWithMode(int pid, boolean freeze, int mode);
+
+    /**
      * Return the Linux uid assigned to the process that sent you the
      * current transaction that is being processed.  This uid can be used with
      * higher-level system services to determine its identity and check

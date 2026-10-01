@@ -37,6 +37,7 @@
 #include <binder/BpBinder.h>
 #include <binder/ProcessState.h>
 #include <cutils/atomic.h>
+#include <cutils/properties.h>
 #include <log/log.h>
 #include <utils/KeyedVector.h>
 #include <utils/List.h>
@@ -148,6 +149,22 @@ static struct thread_dispatch_offsets_t
     jmethodID mDispatchUncaughtException;
     jmethodID mCurrentThread;
 } gThreadDispatchOffsets;
+
+// PICO OS 5.13.7: android.os.FrozenObjectException, thrown when the target process of a
+// transaction is frozen (libbinder PICO_FROZEN_TRANSACTION, BR_FROZEN_REPLY).
+static struct frozen_object_offsets_t
+{
+    jclass mClass;
+    jmethodID mFrozenObjectFromNative;
+} gFrozenObjectOffsets;
+
+// PICO OS 5.13.7: libbinder status of a transaction to a frozen process
+// (PICO_FROZEN_TRANSACTION in libbinder's private/binder/PicoFreeze.h).
+static constexpr status_t kPicoFrozenTransaction = UNKNOWN_ERROR + 9;
+
+// PICO OS 5.13.7: read once when the library is loaded, as in the factory.
+static bool gFrozenExceptionEnabled =
+        property_get_bool("persist.sys.frozenexception.enable", true);
 
 // ****************************************************************************
 // ****************************************************************************
@@ -815,6 +832,18 @@ void signalExceptionForError(JNIEnv* env, jobject obj, status_t err,
             jniThrowException(env, "java/lang/RuntimeException",
                     "Not allowed to write file descriptors here");
             break;
+        case kPicoFrozenTransaction:
+            // PICO OS 5.13.7: report and throw only while persist.sys.frozenexception.enable
+            // (default true) was set at load time; otherwise the error is dropped.
+            if (gFrozenExceptionEnabled) {
+                env->CallStaticVoidMethod(gFrozenObjectOffsets.mClass,
+                        gFrozenObjectOffsets.mFrozenObjectFromNative);
+                // FrozenObjectException is a checked exception, only throw from certain methods.
+                jniThrowException(env, canThrowRemoteException
+                        ? "android/os/FrozenObjectException"
+                                : "java/lang/RuntimeException", NULL);
+            }
+            break;
         case UNEXPECTED_NULL:
             jniThrowNullPointerException(env, NULL);
             break;
@@ -962,13 +991,85 @@ static void android_os_Binder_blockUntilThreadAvailable(JNIEnv* env, jobject cla
     return IPCThreadState::self()->blockUntilThreadAvailable();
 }
 
+// PICO OS 5.13.7: PICO/Smartisan Binder freeze controls and queries of the factory
+// libandroid_runtime, on the PICO libbinder IPCThreadState.
+static void android_os_Binder_setBinderCtlMask(JNIEnv* env, jobject clazz, jint mask)
+{
+    // Empty in the factory.
+}
+
+static jint android_os_Binder_setPidFreeze(JNIEnv* env, jobject clazz, jint pid,
+        jboolean freeze)
+{
+    return IPCThreadState::self()->setPidFreeze(pid, freeze, 0);
+}
+
+static jint android_os_Binder_setPidFreezeWithMode(JNIEnv* env, jobject clazz, jint pid,
+        jboolean freeze, jint mode)
+{
+    return IPCThreadState::self()->setPidFreeze(pid, freeze, mode);
+}
+
+static jint android_os_Binder_getTargetCalleePid(JNIEnv* env, jobject clazz, jint pid,
+        jint tid)
+{
+    return IPCThreadState::self()->getTargetCalleePid(pid, tid);
+}
+
+static jint android_os_Binder_getCallingTid(JNIEnv* env, jobject clazz)
+{
+    return IPCThreadState::self()->getCallingTid();
+}
+
+jintArray getBinderServerPids(JNIEnv* env, jobject clazz, jint pid)
+{
+    binder_remote_pids pids = {};
+    pids.pid = pid;
+    status_t err = IPCThreadState::self()->getBinderServerPids(&pids);
+    if (err < 0) {
+        ALOGE("getBinderServerPids error:%d", err);
+        return nullptr;
+    }
+    if (pids.count < 1 || pids.count > 10) {
+        return nullptr;
+    }
+    jintArray result = env->NewIntArray(pids.count);
+    if (result != nullptr) {
+        env->SetIntArrayRegion(result, 0, pids.count, pids.pids);
+    }
+    return result;
+}
+
+jintArray getBinderClientPids(JNIEnv* env, jobject clazz, jint pid)
+{
+    binder_remote_pids pids = {};
+    pids.pid = pid;
+    status_t err = IPCThreadState::self()->getBinderClientPids(&pids);
+    if (err < 0) {
+        ALOGE("getBinderClientPids error:%d", err);
+        return nullptr;
+    }
+    if (pids.count < 1 || pids.count > 10) {
+        return nullptr;
+    }
+    jintArray result = env->NewIntArray(pids.count);
+    if (result != nullptr) {
+        env->SetIntArrayRegion(result, 0, pids.count, pids.pids);
+    }
+    return result;
+}
+
 // ----------------------------------------------------------------------------
 
 static const JNINativeMethod gBinderMethods[] = {
      /* name, signature, funcPtr */
+    // PICO OS 5.13.7: factory order
+    { "setBinderCtlMask", "(I)V", (void*)android_os_Binder_setBinderCtlMask },
+    { "setPidFreeze", "(IZ)I", (void*)android_os_Binder_setPidFreeze },
+    { "getLastFrozenPid", "()I", (void*)android_os_Binder_getLastFrozenPid },
+    { "setPidFreezeWithMode", "(IZI)I", (void*)android_os_Binder_setPidFreezeWithMode },
     // @CriticalNative
     { "getCallingPid", "()I", (void*)android_os_Binder_getCallingPid },
-    { "getLastFrozenPid", "()I", (void*)android_os_Binder_getLastFrozenPid },
     // @CriticalNative
     { "getCallingUid", "()I", (void*)android_os_Binder_getCallingUid },
     // @CriticalNative
@@ -990,7 +1091,11 @@ static const JNINativeMethod gBinderMethods[] = {
     { "flushPendingCommands", "()V", (void*)android_os_Binder_flushPendingCommands },
     { "getNativeBBinderHolder", "()J", (void*)android_os_Binder_getNativeBBinderHolder },
     { "getNativeFinalizer", "()J", (void*)android_os_Binder_getNativeFinalizer },
-    { "blockUntilThreadAvailable", "()V", (void*)android_os_Binder_blockUntilThreadAvailable }
+    { "blockUntilThreadAvailable", "()V", (void*)android_os_Binder_blockUntilThreadAvailable },
+    { "getTargetCalleePid", "(II)I", (void*)android_os_Binder_getTargetCalleePid },
+    { "getCallingTid", "()I", (void*)android_os_Binder_getCallingTid },
+    { "getBinderServerPids", "(I)[I", (void*)getBinderServerPids },
+    { "getBinderClientPids", "(I)[I", (void*)getBinderClientPids }
 };
 
 const char* const kBinderPathName = "android/os/Binder";
@@ -1500,6 +1605,11 @@ int register_android_os_Binder(JNIEnv* env)
             "dispatchUncaughtException", "(Ljava/lang/Throwable;)V");
     gThreadDispatchOffsets.mCurrentThread = GetStaticMethodIDOrDie(env, clazz, "currentThread",
             "()Ljava/lang/Thread;");
+
+    clazz = FindClassOrDie(env, "android/os/FrozenObjectException");
+    gFrozenObjectOffsets.mClass = MakeGlobalRefOrDie(env, clazz);
+    gFrozenObjectOffsets.mFrozenObjectFromNative = GetStaticMethodIDOrDie(env, clazz,
+            "frozenObjectFromNative", "()V");
 
     return 0;
 }

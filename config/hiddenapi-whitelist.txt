@@ -121,6 +121,7 @@ Landroid/media/Spatializer;->setGlobalTransform([F)V
 Landroid/media/Spatializer;->setHeadTrackerEnabled(ZLandroid/media/AudioDeviceAttributes;)V
 Landroid/media/Spatializer;->setOnHeadToSoundstagePoseUpdatedListener(Ljava/util/concurrent/Executor;Landroid/media/Spatializer$OnHeadToSoundstagePoseUpdatedListener;)V
 Landroid/media/Spatializer;->setOnSpatializerOutputChangedListener(Ljava/util/concurrent/Executor;Landroid/media/Spatializer$OnSpatializerOutputChangedListener;)V
+Landroid/os/Binder;->setBinderCtlMask(I)V
 Landroid/os/Debug;->getTimeByQtimer()J
 Landroid/os/Looper;->mSlowDispatchThresholdMs:J
 Lcom/pvr/IPvrCallback$Default;-><init>()V
