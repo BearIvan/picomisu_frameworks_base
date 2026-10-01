@@ -961,6 +961,10 @@ public final class SystemServer {
         boolean enableVrService = context.getPackageManager().hasSystemFeature(
                 PackageManager.FEATURE_VR_MODE_HIGH_PERFORMANCE);
 
+        // PICO (factory): the telephony registry is only published on GSM devices.
+        final boolean enableTeleService = context.getPackageManager().hasSystemFeature(
+                PackageManager.FEATURE_TELEPHONY_GSM);
+
         // For debugging RescueParty
         if (Build.IS_DEBUGGABLE && SystemProperties.getBoolean("debug.crash_system", false)) {
             throw new RuntimeException();
@@ -1006,7 +1010,11 @@ public final class SystemServer {
 
             traceBeginAndSlog("StartTelephonyRegistry");
             telephonyRegistry = new TelephonyRegistry(context);
-            ServiceManager.addService("telephony.registry", telephonyRegistry);
+            if (enableTeleService) {
+                ServiceManager.addService("telephony.registry", telephonyRegistry);
+            } else {
+                Slog.d(TAG, "telephony.registry switch is closed");
+            }
             traceEnd();
 
             traceBeginAndSlog("StartEntropyMixer");
@@ -2324,8 +2332,10 @@ public final class SystemServer {
             traceEnd();
             traceBeginAndSlog("MakeTelephonyRegistryReady");
             try {
-                if (telephonyRegistryF != null) {
+                if (telephonyRegistryF != null && enableTeleService) {
                     telephonyRegistryF.systemRunning();
+                } else {
+                    Slog.d(TAG, "telephony.registry switch is closed");
                 }
             } catch (Throwable e) {
                 reportWtf("Notifying TelephonyRegistry running", e);
