@@ -204,6 +204,9 @@ class ContextImpl extends Context {
     private final String mOpPackageName;
 
     private final @NonNull ResourcesManager mResourcesManager;
+
+    /** PICO context extension (factory IExtContextImpl). */
+    private IExtContextImpl mExt = new ExtContextImplImpl(this);
     @UnsupportedAppUsage
     private @NonNull Resources mResources;
     private @Nullable Display mDisplay; // may be null if default display
@@ -2301,6 +2304,11 @@ class ContextImpl extends Context {
     @TestApi
     @Override
     public Display getDisplay() {
+        // PICO (factory): a context of a 2D app process without its own display may report the
+        // 2D app display of the process.
+        if (mDisplay == null) {
+            mDisplay = mExt.redirectDisplayIfNeeded(mResourcesManager);
+        }
         if (mDisplay == null) {
             return mResourcesManager.getAdjustedDisplay(Display.DEFAULT_DISPLAY,
                     mResources);

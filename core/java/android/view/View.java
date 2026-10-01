@@ -4724,6 +4724,14 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     @UnsupportedAppUsage
     protected Context mContext;
 
+    /** PICO view extension (factory IExtView). */
+    private final IExtView mExt = new ExtViewImpl(this);
+
+    /** @hide */
+    public IExtView getExt() {
+        return mExt;
+    }
+
     @UnsupportedAppUsage
     private final Resources mResources;
 

@@ -59,6 +59,8 @@ public final class WindowManagerImpl implements WindowManager {
     private final WindowManagerGlobal mGlobal = WindowManagerGlobal.getInstance();
     private final Context mContext;
     private final Window mParentWindow;
+    /** PICO extension (factory IExtWindowManagerImpl). */
+    private final IExtWindowManagerImpl mExt;
 
     private IBinder mDefaultToken;
 
@@ -69,6 +71,7 @@ public final class WindowManagerImpl implements WindowManager {
     private WindowManagerImpl(Context context, Window parentWindow) {
         mContext = context;
         mParentWindow = parentWindow;
+        mExt = new ExtWindowManagerImplImpl(this);
     }
 
     public WindowManagerImpl createLocalWindowManager(Window parentWindow) {
@@ -91,6 +94,10 @@ public final class WindowManagerImpl implements WindowManager {
 
     @Override
     public void addView(@NonNull View view, @NonNull ViewGroup.LayoutParams params) {
+        // PICO (factory): no TYPE_TOAST floating windows from non-system 2D apps.
+        if (mExt.disableAddView(view, params)) {
+            return;
+        }
         android.util.SeempLog.record_vg_layout(383,params);
         applyDefaultToken(params);
         mGlobal.addView(view, params, mContext.getDisplay(), mParentWindow);

@@ -102,6 +102,8 @@ public class Dialog implements DialogInterface, Window.Callback,
 
     @UnsupportedAppUsage
     final Context mContext;
+    /** PICO dialog extension (factory IExtDialog). */
+    private final IExtDialog mExt;
     @UnsupportedAppUsage
     final Window mWindow;
 
@@ -182,6 +184,7 @@ public class Dialog implements DialogInterface, Window.Callback,
     }
 
     Dialog(@NonNull Context context, @StyleRes int themeResId, boolean createContextThemeWrapper) {
+        mExt = new ExtDialogImpl(this);
         if (createContextThemeWrapper) {
             if (themeResId == Resources.ID_NULL) {
                 final TypedValue outValue = new TypedValue();
@@ -195,14 +198,9 @@ public class Dialog implements DialogInterface, Window.Callback,
 
         mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 
-        // PICO (factory ExtDialogImpl.adjustDialogContext): system dialogs (package "android")
-        // appear on the display of the top resumed activity, which system_server publishes in
-        // pvr.focused.display.id, so they show on the focused 2D panel instead of display 0.
-        if (android.pico.utils.Features.isPvr2DEnabled()
-                && "android".equals(mContext.getPackageName())) {
-            mContext.updateDisplay(
-                    android.os.SystemProperties.getInt("pvr.focused.display.id", 0));
-        }
+        // PICO (factory): system dialogs (package "android") appear on the display of the top
+        // resumed activity (pvr.focused.display.id), the focused 2D panel instead of display 0.
+        mExt.adjustDialogContext();
 
         final Window w = new PhoneWindow(mContext);
         mWindow = w;

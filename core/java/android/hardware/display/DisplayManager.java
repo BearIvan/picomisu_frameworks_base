@@ -47,6 +47,8 @@ public final class DisplayManager {
 
     private final Context mContext;
     private final DisplayManagerGlobal mGlobal;
+    /** PICO extension (factory ExtDisplayManagerImpl). */
+    private final ExtDisplayManagerImpl mExt = new ExtDisplayManagerImpl(this);
 
     private final Object mLock = new Object();
     private final SparseArray<Display> mDisplays = new SparseArray<Display>();
@@ -410,6 +412,12 @@ public final class DisplayManager {
         } else if (!assumeValid && !display.isValid()) {
             display = null;
         }
+        // PICO (factory): at most 10 cached displays (2D app displays come and go).
+        final int size;
+        if (android.pico.utils.Features.limitTheNumberOfDisplayCaches()
+                && (size = mDisplays.size()) > 10) {
+            mDisplays.removeAtRange(0, size - 10);
+        }
         return display;
     }
 
@@ -424,6 +432,10 @@ public final class DisplayManager {
      * @see #unregisterDisplayListener
      */
     public void registerDisplayListener(DisplayListener listener, Handler handler) {
+        // PICO (factory): only registrations from the main thread outside binder calls count.
+        if (mExt.registerDisplayListener(mContext)) {
+            return;
+        }
         mGlobal.registerDisplayListener(listener, handler);
     }
 
