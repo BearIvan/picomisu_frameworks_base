@@ -343,7 +343,7 @@ public class WindowManagerService extends IWindowManager.Stub
      * If true, the window manager will do its own custom freezing and general
      * management of the screen during rotation.
      */
-    static final boolean CUSTOM_SCREEN_ROTATION = true;
+    static final boolean CUSTOM_SCREEN_ROTATION = false;
 
     // Maximum number of milliseconds to wait for input devices to be enumerated before
     // proceding with safe mode detection.
