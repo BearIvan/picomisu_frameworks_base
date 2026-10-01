@@ -949,7 +949,8 @@ public final class SurfaceControl implements Parcelable {
         }
     }
 
-    private void checkNotReleased() {
+    /** @hide */
+    protected void checkNotReleased() {
         if (mNativeObject == 0) throw new NullPointerException(
                 "mNativeObject is null. Have you called release() already?");
     }
