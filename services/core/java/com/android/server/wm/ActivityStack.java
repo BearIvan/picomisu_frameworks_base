@@ -4854,7 +4854,7 @@ public class ActivityStack extends ConfigurationContainer {
         }
     }
 
-    private boolean removeHistoryRecordsForAppLocked(WindowProcessController app) {
+    private boolean removeHistoryRecordsForAppLocked(final WindowProcessController app) {
         removeHistoryRecordsForAppLocked(mLRUActivities, app, "mLRUActivities");
         removeHistoryRecordsForAppLocked(mStackSupervisor.mStoppingActivities, app,
                 "mStoppingActivities");
@@ -4915,7 +4915,10 @@ public class ActivityStack extends ConfigurationContainer {
                         remove = true;
                     } else {
                         // The process may be gone, but the activity lives on!
-                        remove = false;
+                        // PICO (factory): except on a 2D app display, where it is removed.
+                        final ActivityDisplay activityDisplay = getDisplay();
+                        remove = activityDisplay != null
+                                && activityDisplay.mDisplay.getExt().isVr2dDisplay();
                     }
                     if (remove) {
                         if (DEBUG_ADD_REMOVE || DEBUG_CLEANUP) Slog.i(TAG_ADD_REMOVE,
@@ -4953,6 +4956,29 @@ public class ActivityStack extends ConfigurationContainer {
                     if (remove) {
                         removeActivityFromHistoryLocked(r, "appDied");
                     }
+                }
+                // Smartisan (factory): an activity of the died process that never got past
+                // INITIALIZING is cleaned up two seconds later unless a new process took it.
+                if (r.app == null && r.getState() == ActivityState.INITIALIZING
+                        && app.mName.equals(r.info.processName)) {
+                    if (mService.getSmtEx().mHandler != null) {
+                        Slog.i(TAG, "post delayClean r:" + r + " state:" + r.getState());
+                        mService.getSmtEx().mHandler.postDelayed(() -> {
+                            synchronized (mService.mGlobalLockWithoutBoost) {
+                                if (r != null) {
+                                    Slog.i(TAG, "run delayClean r:" + r + " state:"
+                                            + r.getState());
+                                    if (r.app == null
+                                            && r.getState() == ActivityState.INITIALIZING
+                                            && app.mName.equals(r.info.processName)) {
+                                        cleanUpActivityLocked(r, true, true);
+                                        removeActivityFromHistoryLocked(r, "appDied");
+                                    }
+                                }
+                            }
+                        }, 2000L);
+                    }
+                    hasVisibleActivities = true;
                 }
             }
         }
