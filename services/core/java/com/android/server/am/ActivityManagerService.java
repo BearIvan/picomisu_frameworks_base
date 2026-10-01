@@ -19357,11 +19357,12 @@ public class ActivityManagerService extends IActivityManager.Stub
         public void broadcastCloseSystemDialogs(String reason) {
             synchronized (ActivityManagerService.this) {
                 final Intent intent = new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
-                intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY
-                        | Intent.FLAG_RECEIVER_FOREGROUND);
+                // Factory: background broadcast queue, and log the request.
+                intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
                 if (reason != null) {
                     intent.putExtra("reason", reason);
                 }
+                Slog.w(TAG, "broadcastCloseSystemDialogs [" + reason + "]");
 
                 broadcastIntentLocked(null, null, intent, null, null, 0, null, null, null,
                         OP_NONE, null, false, false, -1, SYSTEM_UID, Binder.getCallingUid(),
