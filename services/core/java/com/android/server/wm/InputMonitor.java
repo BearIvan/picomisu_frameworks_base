@@ -459,8 +459,13 @@ final class InputMonitor {
             if (inputChannel == null || inputWindowHandle == null || w.mRemoved
                     || w.cantReceiveTouchInput()) {
                 if (w.mWinAnimator.hasSurface()) {
+                    // Factory: on secondary displays a window that cannot receive input keeps
+                    // its own input window handle instead of the invalid one.
+                    final InputWindowHandle handle =
+                            (!mDisplayContent.isDefaultDisplay && inputWindowHandle != null)
+                                    ? inputWindowHandle : mInvalidInputWindow;
                     mInputTransaction.setInputWindowInfo(
-                            w.mWinAnimator.mSurfaceController.mSurfaceControl, mInvalidInputWindow);
+                            w.mWinAnimator.mSurfaceController.mSurfaceControl, handle);
                 }
                 // Skip this window because it cannot possibly receive input.
                 return;
