@@ -207,7 +207,7 @@ static int read_memtrack_memory(struct memtrack_proc* p, int pid,
     }
     graphics_mem->graphics = pss / 1024;
 
-    pss = memtrack_proc_gl_pss(p);
+    pss = memtrack_proc_gl_total(p);
     if (pss < 0) {
         ALOGW("failed to get gl pss: %zd", pss);
         return pss;
@@ -412,9 +412,9 @@ static void android_os_Debug_getDirtyPagesPid(JNIEnv *env, jobject clazz,
         stats[HEAP_GRAPHICS].pss = graphics_mem.graphics;
         stats[HEAP_GRAPHICS].privateDirty = graphics_mem.graphics;
         stats[HEAP_GRAPHICS].rss = graphics_mem.graphics;
-        stats[HEAP_GL].pss = graphics_mem.gl;
-        stats[HEAP_GL].privateDirty = graphics_mem.gl;
-        stats[HEAP_GL].rss = graphics_mem.gl;
+        stats[HEAP_GL].pss = graphics_mem.gl - stats[HEAP_GL_DEV].pss;
+        stats[HEAP_GL].privateDirty = graphics_mem.gl - stats[HEAP_GL_DEV].privateDirty;
+        stats[HEAP_GL].rss = graphics_mem.gl - stats[HEAP_GL_DEV].rss;
         stats[HEAP_OTHER_MEMTRACK].pss = graphics_mem.other;
         stats[HEAP_OTHER_MEMTRACK].privateDirty = graphics_mem.other;
         stats[HEAP_OTHER_MEMTRACK].rss = graphics_mem.other;
