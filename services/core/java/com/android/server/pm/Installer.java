@@ -28,7 +28,6 @@ import android.os.IBinder.DeathRecipient;
 import android.os.IInstalld;
 import android.os.RemoteException;
 import android.os.ServiceManager;
-import android.text.format.DateUtils;
 import android.util.Slog;
 
 import com.android.internal.os.BackgroundThread;
@@ -84,6 +83,9 @@ public class Installer extends SystemService {
 
     public static final int FLAG_USE_QUOTA = IInstalld.FLAG_USE_QUOTA;
     public static final int FLAG_FORCE = IInstalld.FLAG_FORCE;
+
+    // PICO (factory): installd connect listeners.
+    private IExtInstaller mExt = new ExtInstallerImpl(this);
 
     private final boolean mIsolated;
 
@@ -141,14 +143,21 @@ public class Installer extends SystemService {
             mInstalld = IInstalld.Stub.asInterface(binder);
             try {
                 invalidateMounts();
+                // PICO (factory): tell the listeners that installd is reachable.
+                mExt.dispatchConnectSuccess();
             } catch (InstallerException ignored) {
             }
         } else {
             Slog.w(TAG, "installd not found; trying again");
+            // PICO (factory): retry after 100 ms instead of DateUtils.SECOND_IN_MILLIS.
             BackgroundThread.getHandler().postDelayed(() -> {
                 connect();
-            }, DateUtils.SECOND_IN_MILLIS);
+            }, 100);
         }
+    }
+
+    public IExtInstaller getExt() {
+        return mExt;
     }
 
     /**
