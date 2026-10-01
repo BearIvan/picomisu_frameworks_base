@@ -3435,6 +3435,9 @@ public class PackageManagerService extends IPackageManager.Stub
 
         mServiceStartWithDelay = SystemClock.uptimeMillis() + (60 * 1000L);
 
+        // PICO (factory): installd listener and app signature verity lists.
+        mExt.init();
+
         Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
     }
 
@@ -5224,6 +5227,10 @@ public class PackageManagerService extends IPackageManager.Stub
             if (mResolveComponentName.equals(component)) {
                 return PackageParser.generateActivityInfo(
                         mResolveActivity, flags, new PackageUserState(), userId);
+            }
+            // PICO (factory): PicoWebViewActivity resolves for every installed package.
+            if (component != null) {
+                return mExt.getActivityInfoInternal(component, flags, userId);
             }
         }
         return null;
@@ -11052,6 +11059,8 @@ public class PackageManagerService extends IPackageManager.Stub
         synchronized (mPackages) {
             applyPolicy(pkg, parseFlags, scanFlags, mPlatformPackage);
             assertPackageIsValid(pkg, parseFlags, scanFlags);
+            // PICO (factory): non-system apps may not provide a HOME activity.
+            mExt.removeHomeCategory(pkg);
 
             SharedUserSetting sharedUserSetting = null;
             if (pkg.mSharedUserId != null) {
@@ -12598,6 +12607,10 @@ public class PackageManagerService extends IPackageManager.Stub
             // user, even if it's compatible with other packages.
             if (scannedPackage == null || !scannedPackage.packageName.equals(ps.name)) {
                 if (ps.primaryCpuAbiString == null) {
+                    continue;
+                }
+                // PICO (factory): a 32-bit system-uid package does not set the shared ABI.
+                if (IExtPackageManagerService.skipSetCpuAbi(ps)) {
                     continue;
                 }
 
@@ -16431,7 +16444,8 @@ public class PackageManagerService extends IPackageManager.Stub
         Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
     }
 
-    private static class InstallRequest {
+    // PICO (factory): protected, used by IExtPackageManagerService.
+    protected static class InstallRequest {
         public final InstallArgs args;
         public final PackageInstalledInfo installResult;
 
@@ -16445,7 +16459,10 @@ public class PackageManagerService extends IPackageManager.Stub
     private void installPackagesTracedLI(List<InstallRequest> requests) {
         try {
             Trace.traceBegin(TRACE_TAG_PACKAGE_MANAGER, "installPackages");
+            // PICO (factory): install start/result logging.
+            mExt.notifyPackageInstallStart(requests);
             installPackagesLI(requests);
+            mExt.notifyPackageInstallEnd(requests);
         } finally {
             Trace.traceEnd(TRACE_TAG_PACKAGE_MANAGER);
         }
@@ -17337,7 +17354,8 @@ public class PackageManagerService extends IPackageManager.Stub
         }
     }
 
-    private static class PrepareFailure extends PackageManagerException {
+    // PICO (factory): package-private, thrown by ExtPackageManagerServiceImpl.
+    static class PrepareFailure extends PackageManagerException {
 
         public String conflictingPackage;
         public String conflictingPermission;
@@ -17576,7 +17594,10 @@ public class PackageManagerService extends IPackageManager.Stub
                                         + " target SDK " + oldTargetSdk + " does.");
                     }
                     // Prevent persistent apps from being updated
-                    if (((oldPackage.applicationInfo.flags & ApplicationInfo.FLAG_PERSISTENT) != 0)
+                    // PICO (factory): only when mExt.allowPersistentUpdate() (always false, so
+                    // persistent apps can be updated).
+                    if (mExt.allowPersistentUpdate()
+                            && ((oldPackage.applicationInfo.flags & ApplicationInfo.FLAG_PERSISTENT) != 0)
                             && ((installFlags & PackageManager.INSTALL_STAGED) == 0)) {
                         throw new PrepareFailure(PackageManager.INSTALL_FAILED_INVALID_APK,
                                 "Package " + oldPackage.packageName + " is a persistent app. "
@@ -17853,7 +17874,10 @@ public class PackageManagerService extends IPackageManager.Stub
                         }
                     } else {
                         // default to original signature matching
-                        if (!pkg.mSigningDetails.checkCapability(oldPackage.mSigningDetails,
+                        // PICO (factory): IExtPackageManagerService.skipSigningCheck lets the
+                        // listed store-signed packages replace a differently signed version.
+                        if (!IExtPackageManagerService.skipSigningCheck(pkg)
+                                && !pkg.mSigningDetails.checkCapability(oldPackage.mSigningDetails,
                                 SigningDetails.CertCapabilities.INSTALLED_DATA)
                                 && !oldPackage.mSigningDetails.checkCapability(
                                 pkg.mSigningDetails,
@@ -18059,6 +18083,8 @@ public class PackageManagerService extends IPackageManager.Stub
                     }
                 }
             }
+            // PICO (factory): app signature verity (/system/etc/pvr/appverity*.prop).
+            mExt.verityPxrPackage(pkg, res);
             // we're passing the freezer back to be closed in a later phase of install
             shouldCloseFreezerBeforeReturn = false;
 
@@ -21928,6 +21954,9 @@ public class PackageManagerService extends IPackageManager.Stub
         // installation on reboot. Make sure this is the last component to be call since the
         // installation might require other components to be ready.
         mInstallerService.restoreAndApplyStagedSessionIfNeeded();
+
+        // PICO (factory): white/black list observer, verity and cloud config receivers.
+        mExt.onSystemReady();
     }
 
     public void waitForAppDataPrepared() {
@@ -22759,6 +22788,9 @@ public class PackageManagerService extends IPackageManager.Stub
 
     private boolean mMediaMounted = false;
 
+    // PICO (factory): package manager extension; created after the other field initialisers.
+    private final IExtPackageManagerService mExt = new ExtPackageManagerServiceImpl(this);
+
     static String getEncryptKey() {
         try {
             String sdEncKey = SystemKeyStore.getInstance().retrieveKeyHexString(
@@ -23278,6 +23310,8 @@ public class PackageManagerService extends IPackageManager.Stub
                     logCriticalInfo(Log.DEBUG, "Recovery succeeded!");
                 } catch (InstallerException e2) {
                     logCriticalInfo(Log.DEBUG, "Recovery failed!");
+                    // PICO (factory): retry DE data creation once installd connects.
+                    mExt.setCreateAppDEDataStateIfNeed(flags);
                 }
             } else {
                 Slog.e(TAG, "Failed to create app data for " + packageName + ": " + e);

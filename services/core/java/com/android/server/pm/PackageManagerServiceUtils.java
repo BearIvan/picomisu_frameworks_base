@@ -585,7 +585,11 @@ public class PackageManagerServiceUtils {
         if (pkgSetting.signatures.mSigningDetails.signatures != null) {
 
             // Already existing package. Make sure signatures match
-            boolean match = parsedSignatures.checkCapability(
+            // PICO (factory): IExtPackageManagerService.skipSigningCheck lets the listed
+            // store-signed packages replace a differently signed version.
+            boolean match = IExtPackageManagerService.skipSigningCheck(parsedSignatures,
+                    packageName)
+                    || parsedSignatures.checkCapability(
                     pkgSetting.signatures.mSigningDetails,
                     PackageParser.SigningDetails.CertCapabilities.INSTALLED_DATA)
                             || pkgSetting.signatures.mSigningDetails.checkCapability(
