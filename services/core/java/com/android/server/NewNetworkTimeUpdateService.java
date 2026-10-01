@@ -166,8 +166,9 @@ public class NewNetworkTimeUpdateService extends Binder implements NetworkTimeUp
     private void onPollNetworkTimeUnderWakeLock(int event) {
         // Force an NTP fix when outdated
         if (mTime.getCacheAge() >= mPollingIntervalMs) {
-            if (DBG) Log.d(TAG, "Stale NTP fix; forcing refresh");
-            mTime.forceSync();
+            // PICO (factory PICO OS 5.13.7): logged, and refreshed from the PICO server list.
+            Log.i(TAG, "Stale NTP fix; forcing refresh");
+            mExt.syncTimeFromServer(mTime, mTryAgainCounter);
         }
 
         if (mTime.getCacheAge() < mPollingIntervalMs) {
@@ -206,16 +207,18 @@ public class NewNetworkTimeUpdateService extends Binder implements NetworkTimeUp
         final boolean forceUpdate = (event == EVENT_AUTO_TIME_CHANGED);
         if (!forceUpdate) {
             if (getNitzAge() < mPollingIntervalMs) {
-                if (DBG) Log.d(TAG, "Ignoring NTP update due to recent NITZ");
+                Log.i(TAG, "Ignoring NTP update due to recent NITZ");
                 return;
             }
 
             final long skew = Math.abs(mTime.currentTimeMillis() - System.currentTimeMillis());
             if (skew < mTimeErrorThresholdMs) {
-                if (DBG) Log.d(TAG, "Ignoring NTP update due to low skew");
+                Log.i(TAG, "Ignoring NTP update due to low skew");
                 return;
             }
         }
+        // PICO (factory PICO OS 5.13.7): the NTP service logs with Log.i unconditionally.
+        Log.i(TAG, "update system time.");
 
         SystemClock.setCurrentTimeMillis(mTime.currentTimeMillis());
     }
@@ -246,12 +249,16 @@ public class NewNetworkTimeUpdateService extends Binder implements NetworkTimeUp
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            if (DBG) Log.d(TAG, "Received " + action);
+            Log.i(TAG, "Received " + action);
             if (TelephonyIntents.ACTION_NETWORK_SET_TIME.equals(action)) {
                 mNitzTimeSetTime = SystemClock.elapsedRealtime();
             }
         }
     };
+
+    // PICO (factory PICO OS 5.13.7): NTP refresh from the PICO server list.
+    private final IExtNewNetworkTimeUpdateService mExt =
+            new ExtNewNetworkTimeUpdateServiceImpl(this);
 
     /** Handler to do the network accesses on */
     private class MyHandler extends Handler {
@@ -275,7 +282,7 @@ public class NewNetworkTimeUpdateService extends Binder implements NetworkTimeUp
     private class NetworkTimeUpdateCallback extends NetworkCallback {
         @Override
         public void onAvailable(Network network) {
-            Log.d(TAG, String.format("New default network %s; checking time.", network));
+            Log.i(TAG, String.format("New default network %s; checking time.", network));
             mDefaultNetwork = network;
             // Running on mHandler so invoke directly.
             onPollNetworkTime(EVENT_NETWORK_CHANGED);
