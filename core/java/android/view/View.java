@@ -4727,6 +4727,17 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     /** PICO view extension (factory IExtView). */
     private final IExtView mExt = new ExtViewImpl(this);
 
+    /** Smartisan view extension, created on first use (factory PICO OS 5.13.7). */
+    private ViewSmtBase mViewSmtEx;
+
+    /** @hide */
+    public ViewSmtBase getSmtEx() {
+        if (mViewSmtEx == null) {
+            mViewSmtEx = ViewSmtExFactory.createSmtEx(this);
+        }
+        return mViewSmtEx;
+    }
+
     /** @hide */
     public IExtView getExt() {
         return mExt;
