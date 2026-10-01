@@ -45,6 +45,9 @@ public class KernelCpuSpeedReader {
     // How long a CPU jiffy is in milliseconds.
     private final long mJiffyMillis;
 
+    // Smartisan extension (PICO OS 5.13.7).
+    private final KernelCpuSpeedReaderSmtEx mSmtEx = new KernelCpuSpeedReaderSmtEx(this);
+
     /**
      * @param cpuNumber The cpu (cpu0, cpu1, etc) whose state to read.
      */
@@ -118,5 +121,41 @@ public class KernelCpuSpeedReader {
             StrictMode.setThreadPolicy(policy);
         }
         return speedTimeMs;
+    }
+
+    /**
+     * Smartisan constructor (PICO OS 5.13.7): the number of speed steps is the number of
+     * scaling_available_frequencies entries (30 when they cannot be read). As on the factory,
+     * mNumSpeedSteps is set to 1.
+     * @hide
+     */
+    public KernelCpuSpeedReader(int cpuNumber) {
+        mProcFile = String.format("/sys/devices/system/cpu/cpu%d/cpufreq/stats/time_in_state",
+                cpuNumber);
+        String file = String.format(
+                "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_available_frequencies",
+                cpuNumber);
+        int numSpeedSteps = 0;
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] tmp = line.trim().split(" ");
+                numSpeedSteps += tmp.length;
+            }
+        } catch (IOException e) {
+            numSpeedSteps = 30;
+            Slog.e(TAG, "Failed to read scaling_available_frequencies: " + e.getMessage());
+        }
+        mNumSpeedSteps = 1;
+        mLastSpeedTimesMs = new long[numSpeedSteps];
+        mDeltaSpeedTimesMs = new long[numSpeedSteps];
+        long jiffyHz = Os.sysconf(OsConstants._SC_CLK_TCK);
+        mJiffyMillis = 1000 / jiffyHz;
+        getSmtEx().mSpeeds = new long[numSpeedSteps];
+    }
+
+    /** @hide */
+    public KernelCpuSpeedReaderSmtEx getSmtEx() {
+        return mSmtEx;
     }
 }
