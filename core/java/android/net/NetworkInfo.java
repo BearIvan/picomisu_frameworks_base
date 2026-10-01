@@ -20,6 +20,7 @@ import android.annotation.NonNull;
 import android.annotation.UnsupportedAppUsage;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 
@@ -475,7 +476,14 @@ public class NetworkInfo implements Parcelable {
     public void setDetailedState(DetailedState detailedState, String reason, String extraInfo) {
         synchronized (this) {
             this.mDetailedState = detailedState;
-            this.mState = stateMap.get(detailedState);
+            if (stateMap.get(detailedState) != null) {
+                this.mState = stateMap.get(detailedState);
+            } else {
+                // Factory: report a detailed state without a coarse state mapping.
+                Log.w("NetworkInfo", "setDetailedState mState null, detailedState="
+                        + detailedState + " reason=" + reason + " extraInfo=" + extraInfo);
+                Log.w("NetworkInfo", Log.getStackTraceString(new Throwable()));
+            }
             this.mReason = reason;
             this.mExtraInfo = extraInfo;
         }
