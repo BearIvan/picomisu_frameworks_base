@@ -21,6 +21,7 @@ import android.app.ActivityManager;
 import android.content.pm.PackageManager;
 import android.os.SystemClock;
 import android.os.UserHandle;
+import android.util.ArraySet;
 import android.util.TimeUtils;
 import android.util.proto.ProtoOutputStream;
 import android.util.proto.ProtoUtils;
@@ -80,6 +81,10 @@ public final class UidRecord {
      */
     final Object networkStateLock = new Object();
 
+    // Smartisan (factory): processes of this uid, used by the sys-services ApplicationFreezer
+    // (filled by ProcessList.addProcessNameLocked / removeProcessNameLocked).
+    ArraySet<ProcessRecord> procRecords = new ArraySet<>();
+
     // Smartisan extension state of this uid (factory PICO OS 5.13.7).
     private UidRecordSmtBase mSmtEx = new UidRecordSmtBase();
 
@@ -113,6 +118,8 @@ public final class UidRecord {
         int processState;
         boolean ephemeral;
         long procStateSeq;
+        // Smartisan (factory): freezer state of the change.
+        UidRecordSmtBase.ChangeItemSmtEx mSmtEx = new UidRecordSmtBase.ChangeItemSmtEx();
     }
 
     ChangeItem pendingChange;
@@ -122,6 +129,8 @@ public final class UidRecord {
         uid = _uid;
         idle = true;
         reset();
+        // Smartisan (factory).
+        mSmtEx.initSmtUidrecord(uid);
     }
 
     /** Smartisan extension state of this uid (factory PICO OS 5.13.7). */
@@ -140,6 +149,8 @@ public final class UidRecord {
     public void reset() {
         setCurProcState(ActivityManager.PROCESS_STATE_CACHED_EMPTY);
         foregroundServices = false;
+        // Smartisan (factory).
+        mSmtEx.reset();
     }
 
     public void updateHasInternetPermission() {
