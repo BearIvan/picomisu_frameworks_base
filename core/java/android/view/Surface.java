@@ -81,6 +81,9 @@ public class Surface implements Parcelable {
     private static native long nativeGetNextFrameNumber(long nativeObject);
     private static native void nativeSetPvrStatus(long nativeObject, int status);
     private static native void nativeFreezeSelfListening(long nativeObject);
+    // PICO: declared by the factory framework but not registered by its libandroid_runtime.
+    private native void nativeSetLastInputTime(long nativeObject, float x, float y, long time,
+            int keyCode, int action);
     private static native int nativeSetScalingMode(long nativeObject, int scalingMode);
     private static native int nativeForceScopedDisconnect(long nativeObject);
     private static native int nativeAttachAndQueueBufferWithColorSpace(long nativeObject,
@@ -958,6 +961,16 @@ public class Surface implements Parcelable {
             }
             mOrigMatrix.set(m);
         }
+    }
+
+    /**
+     * Smartisan: the last input event of the window (ViewRootImplSmtBase). The factory
+     * libandroid_runtime does not register the native method.
+     *
+     * @hide
+     */
+    public void setLastInputTime(float x, float y, long time, int keyCode, int action) {
+        nativeSetLastInputTime(mNativeObject, x, y, time, keyCode, action);
     }
 
     /**
