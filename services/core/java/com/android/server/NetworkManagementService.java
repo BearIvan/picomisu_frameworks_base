@@ -132,7 +132,7 @@ public class NetworkManagementService extends INetworkManagementService.Stub {
         }
     }
 
-    private static final String TAG = "NetworkManagement";
+    protected static final String TAG = "NetworkManagement";
     private static final boolean DBG = Log.isLoggable(TAG, Log.DEBUG);
 
     private static final int MAX_UID_RANGES_PER_COMMAND = 10;
@@ -157,7 +157,7 @@ public class NetworkManagementService extends INetworkManagementService.Stub {
 
     private final SystemServices mServices;
 
-    private INetd mNetdService;
+    protected INetd mNetdService;
 
     private final NetdUnsolicitedEventListener mNetdUnsolicitedEventListener;
 
