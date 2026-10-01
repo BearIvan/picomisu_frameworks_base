@@ -152,14 +152,6 @@ public abstract class ActivityTaskManagerInternal {
     /** PICO internal extension (factory IExtActivityTaskManagerInternal). */
     public abstract IExtActivityTaskManagerInternal getExt();
 
-    /**
-     * PICO: same as {@code getExt().getTopAppExt(displayId)} (factory
-     * IExtActivityTaskManagerInternal.getTopAppExt), kept for its existing callers.
-     */
-    public android.content.pm.ActivityInfo getPicoTopResumedActivityInfo(int displayId) {
-        return getExt().getTopAppExt(displayId);
-    }
-
     public abstract void onLocalVoiceInteractionStarted(IBinder callingActivity,
             IVoiceInteractionSession mSession,
             IVoiceInteractor mInteractor);

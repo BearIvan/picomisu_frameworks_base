@@ -36,6 +36,8 @@ import android.view.KeyEvent;
 import android.view.WindowManager;
 
 import com.android.server.api.ApiLayerService;
+import com.android.server.wm.IExtActivityTaskManagerInternal;
+import com.android.server.wm.SettingsObserverExt;
 import com.android.server.wm.SystemExt;
 import com.pvr.IPvrManagerService;
 import com.pvr.pxrnotification.aidl.IPxrNotificationService;
@@ -60,11 +62,8 @@ import java.util.Properties;
  * keys. The device owner has not approved enabling USB/ADB debugging from key presses.
  * Also not ported: the Smartisan quick boot on power long press (PhoneWindowManager side).
  *
- * Differences of form, not of behaviour: the factory SettingsObserverExt flags are read from
- * Settings.Global directly, pxr_notification is looked up through ServiceManager instead of the
- * statically linked PxrNotificationService.getInstance, and the factory
- * IExtActivityTaskManagerInternal.getTopAppExt is ActivityTaskManagerInternal
- * .getPicoTopResumedActivityInfo.
+ * Difference of form, not of behaviour: pxr_notification is looked up through ServiceManager
+ * instead of the statically linked factory PxrNotificationService.getInstance.
  *
  * @hide
  */
@@ -130,13 +129,6 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
      * every "not phoenix" branch below is dead code on this product, as on the factory.
      */
     private static final String BUILD_PROJECT = Features.PROJECT_PHOENIX;
-
-    // Factory SettingsObserverExt keys (Settings.Global).
-    private static final String PVR_SETUP_WIZARD_COMPLETE = "pvr.config.provision2.complete";
-    private static final String SETTINGS_DISABLE_CAMERA_KEY = "pvr.app.data.disable_camera_key";
-    private static final String SETTINGS_DOCK_SHOWING = "pvr.app.data.dock_visible_state";
-    private static final String SETTINGS_SCREENSHOT_TOAST_SHOWING =
-            "pvr.settings.screenshot_toast_showing";
 
     private String backKeyConfig;
     private boolean backKeyConfigDefined;
@@ -435,8 +427,8 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
 
     /** Opens PICO VR settings, directly over VRShell or wrapped in a VRSHELL intent. */
     private void launchVRSettings() {
-        ActivityInfo topActivityInfo = mBase.mActivityTaskManagerInternal
-                .getPicoTopResumedActivityInfo(Display.DEFAULT_DISPLAY);
+        IExtActivityTaskManagerInternal atmService = mBase.mActivityTaskManagerInternal.getExt();
+        ActivityInfo topActivityInfo = atmService.getTopAppExt(Display.DEFAULT_DISPLAY);
         if (topActivityInfo == null) {
             return;
         }
@@ -919,7 +911,7 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
                         return;
                     }
                 }
-            } else if (isSetupWizardComplete()) {
+            } else if (SettingsObserverExt.getInstance().isSetupWizardComplete()) {
                 launchScreenAction("pvr.intent.action.SCREEN_SHOT", "capture_key");
                 isConsumed = true;
                 return;
@@ -975,8 +967,9 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
         }
 
         private void launchShortcutCheck() {
-            ActivityInfo topActivityInfo = mBase.mActivityTaskManagerInternal
-                    .getPicoTopResumedActivityInfo(Display.DEFAULT_DISPLAY);
+            IExtActivityTaskManagerInternal atmService =
+                    mBase.mActivityTaskManagerInternal.getExt();
+            ActivityInfo topActivityInfo = atmService.getTopAppExt(Display.DEFAULT_DISPLAY);
             Slog.d(TAG, "launchShortcutCheck topActivity : " + topActivityInfo);
             if (topActivityInfo != null && !topIsVrPermissionActivity()) {
                 dispatchHomeToNS();
@@ -1009,15 +1002,18 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
                 mBase.mContext.startService(i);
                 return;
             }
-            if ("capture_key".equals(from) && getGlobalFlag(SETTINGS_DISABLE_CAMERA_KEY)
-                    && !getGlobalFlag(SETTINGS_DOCK_SHOWING)) {
+            if ("capture_key".equals(from)
+                    && SettingsObserverExt.getInstance().mDisableCaptureKeyAppShowing
+                    && !SettingsObserverExt.getInstance().mIsDockShowing) {
                 if ("pvr.intent.action.SCREEN_SHOT".equals(screenaction)
-                        && !getGlobalFlag(SETTINGS_SCREENSHOT_TOAST_SHOWING)) {
-                    Slog.d(TAG, "ignore screenshot, camera key disabled by the top app");
+                        && !SettingsObserverExt.getInstance().mIsScreenshotToastShowing) {
+                    Slog.d(TAG, "ignore screenshot of "
+                            + SettingsObserverExt.getInstance().mCurrentDefaultDisplayApp);
                     return;
                 }
                 if ("pvr.intent.action.SCREEN_RECORD".equals(screenaction)) {
-                    Slog.d(TAG, "ignore screen record, camera key disabled by the top app");
+                    Slog.d(TAG, "ignore screen record of "
+                            + SettingsObserverExt.getInstance().mCurrentDefaultDisplayApp);
                     return;
                 }
             }
@@ -1052,7 +1048,8 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
                 return true;
             }
             if (realaction == ACTION_PXR_SCREENCAP) {
-                if (keycode == KeyEvent.KEYCODE_CAMERA && !isSetupWizardComplete()) {
+                if (keycode == KeyEvent.KEYCODE_CAMERA
+                        && !SettingsObserverExt.getInstance().isSetupWizardComplete()) {
                     return false;
                 }
                 launchScreenAction("pvr.intent.action.SCREEN_SHOT",
@@ -1062,7 +1059,8 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
             if (realaction != ACTION_PXR_SCREENRECOARD) {
                 return false;
             }
-            if (keycode == KeyEvent.KEYCODE_CAMERA && !isSetupWizardComplete()) {
+            if (keycode == KeyEvent.KEYCODE_CAMERA
+                    && !SettingsObserverExt.getInstance().isSetupWizardComplete()) {
                 return false;
             }
             launchScreenAction("pvr.intent.action.SCREEN_RECORD",
@@ -1119,17 +1117,6 @@ public class ExtPhoneWindowManagerImpl implements IExtPhoneWindowManager {
                     break;
             }
         }
-    }
-
-    /** Factory SettingsObserverExt.isSetupWizardComplete (pvr.config.provision2.complete). */
-    private boolean isSetupWizardComplete() {
-        return Settings.Global.getInt(mBase.mContext.getContentResolver(),
-                PVR_SETUP_WIZARD_COMPLETE, 0) != 0;
-    }
-
-    /** Factory SettingsObserverExt flags (dock showing, screenshot toast, camera key off). */
-    private boolean getGlobalFlag(String name) {
-        return Settings.Global.getInt(mBase.mContext.getContentResolver(), name, 0) != 0;
     }
 
     private String getPropValue(Properties prop, String key) {
