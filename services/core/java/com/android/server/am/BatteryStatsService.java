@@ -199,6 +199,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         mStats.setRadioScanningTimeoutLocked(mContext.getResources().getInteger(
                 com.android.internal.R.integer.config_radioScanningTimeout) * 1000L);
         mStats.setPowerProfileLocked(new PowerProfile(context));
+        SysOptBridge.getFactory().getBatteryStatsServiceOptEx().init(mContext, this);
     }
 
     public void publish() {
@@ -457,6 +458,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteSyncStartLocked(name, uid);
             StatsLog.write_non_chained(StatsLog.SYNC_STATE_CHANGED, uid, null, name,
                     StatsLog.SYNC_STATE_CHANGED__STATE__ON);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteSyncStateChange(name, uid, true);
         }
     }
 
@@ -466,6 +468,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteSyncFinishLocked(name, uid);
             StatsLog.write_non_chained(StatsLog.SYNC_STATE_CHANGED, uid, null, name,
                     StatsLog.SYNC_STATE_CHANGED__STATE__OFF);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteSyncStateChange(name, uid, false);
         }
     }
 
@@ -477,6 +480,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             StatsLog.write_non_chained(StatsLog.SCHEDULED_JOB_STATE_CHANGED, uid, null,
                     name, StatsLog.SCHEDULED_JOB_STATE_CHANGED__STATE__STARTED,
                     JobProtoEnums.STOP_REASON_UNKNOWN, standbyBucket, jobid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteJobStateChange(name, uid, true);
         }
     }
 
@@ -488,6 +492,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             StatsLog.write_non_chained(StatsLog.SCHEDULED_JOB_STATE_CHANGED, uid, null,
                     name, StatsLog.SCHEDULED_JOB_STATE_CHANGED__STATE__FINISHED,
                     stopReason, standbyBucket, jobid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteJobStateChange(name, uid, false);
         }
     }
 
@@ -502,6 +507,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteWakupAlarmLocked(name, uid, workSource, tag);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWakupAlarm(name, uid, workSource, tag);
         }
     }
 
@@ -569,6 +575,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteLongPartialWakelockStart(name, historyName, uid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteLongPartialWakelock(name, historyName, uid);
         }
     }
 
@@ -578,6 +585,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteLongPartialWakelockStartFromSource(name, historyName, workSource);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteLongPartialWakelockStartFromSource(name, historyName, workSource);
         }
     }
 
@@ -586,6 +594,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteLongPartialWakelockFinish(name, historyName, uid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteLongPartialWakelockFinish(name, historyName, uid);
         }
     }
 
@@ -595,6 +604,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteLongPartialWakelockFinishFromSource(name, historyName, workSource);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteLongPartialWakelockFinishFromSource(name, historyName, workSource);
         }
     }
 
@@ -604,6 +614,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteStartSensorLocked(uid, sensor);
             StatsLog.write_non_chained(StatsLog.SENSOR_STATE_CHANGED, uid, null, sensor,
                     StatsLog.SENSOR_STATE_CHANGED__STATE__ON);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteSensorStateChange(uid, sensor, true);
         }
     }
 
@@ -613,6 +624,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteStopSensorLocked(uid, sensor);
             StatsLog.write_non_chained(StatsLog.SENSOR_STATE_CHANGED, uid, null,
                     sensor, StatsLog.SENSOR_STATE_CHANGED__STATE__OFF);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteSensorStateChange(uid, sensor, false);
         }
     }
 
@@ -660,6 +672,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         synchronized (mStats) {
             StatsLog.write(StatsLog.SCREEN_BRIGHTNESS_CHANGED, brightness);
             mStats.noteScreenBrightnessLocked(brightness);
+            SysOptBridge.getFactory().getSmartPowerDataInstance().setScreenBrightness(brightness);
         }
     }
 
@@ -763,6 +776,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteAudioOnLocked(uid);
             StatsLog.write_non_chained(StatsLog.AUDIO_STATE_CHANGED, uid, null,
                     StatsLog.AUDIO_STATE_CHANGED__STATE__ON);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("audio", 1, uid);
         }
     }
 
@@ -772,6 +786,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteAudioOffLocked(uid);
             StatsLog.write_non_chained(StatsLog.AUDIO_STATE_CHANGED, uid, null,
                     StatsLog.AUDIO_STATE_CHANGED__STATE__OFF);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("audio", 0, uid);
         }
     }
 
@@ -781,6 +796,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteVideoOnLocked(uid);
             StatsLog.write_non_chained(StatsLog.MEDIA_CODEC_STATE_CHANGED, uid, null,
                     StatsLog.MEDIA_CODEC_STATE_CHANGED__STATE__ON);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("video", 1, uid);
         }
     }
 
@@ -790,6 +806,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteVideoOffLocked(uid);
             StatsLog.write_non_chained(StatsLog.MEDIA_CODEC_STATE_CHANGED, uid,
                     null, StatsLog.MEDIA_CODEC_STATE_CHANGED__STATE__OFF);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("video", 0, uid);
         }
     }
 
@@ -799,6 +816,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteResetAudioLocked();
             StatsLog.write_non_chained(StatsLog.AUDIO_STATE_CHANGED, -1, null,
                     StatsLog.AUDIO_STATE_CHANGED__STATE__RESET);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("audio", -1, 0);
         }
     }
 
@@ -808,6 +826,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteResetVideoLocked();
             StatsLog.write_non_chained(StatsLog.MEDIA_CODEC_STATE_CHANGED, -1, null,
                     StatsLog.MEDIA_CODEC_STATE_CHANGED__STATE__RESET);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("video", -1, 0);
         }
     }
 
@@ -817,6 +836,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteFlashlightOnLocked(uid);
             StatsLog.write_non_chained(StatsLog.FLASHLIGHT_STATE_CHANGED, uid, null,
                     StatsLog.FLASHLIGHT_STATE_CHANGED__STATE__ON);
+            SysOptBridge.getFactory().getSmartPowerDataInstance().setFlashlightState(true);
         }
     }
 
@@ -826,6 +846,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteFlashlightOffLocked(uid);
             StatsLog.write_non_chained(StatsLog.FLASHLIGHT_STATE_CHANGED, uid, null,
                     StatsLog.FLASHLIGHT_STATE_CHANGED__STATE__OFF);
+            SysOptBridge.getFactory().getSmartPowerDataInstance().setFlashlightState(false);
         }
     }
 
@@ -836,6 +857,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteCameraOnLocked(uid);
             StatsLog.write_non_chained(StatsLog.CAMERA_STATE_CHANGED, uid, null,
                     StatsLog.CAMERA_STATE_CHANGED__STATE__ON);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("camera", 1, uid);
         }
         if (DBG) Slog.d(TAG, "end noteStartCamera");
     }
@@ -846,6 +868,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteCameraOffLocked(uid);
             StatsLog.write_non_chained(StatsLog.CAMERA_STATE_CHANGED, uid, null,
                     StatsLog.CAMERA_STATE_CHANGED__STATE__OFF);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("camera", 0, uid);
         }
     }
 
@@ -855,6 +878,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
             mStats.noteResetCameraLocked();
             StatsLog.write_non_chained(StatsLog.CAMERA_STATE_CHANGED, -1, null,
                     StatsLog.CAMERA_STATE_CHANGED__STATE__RESET);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteStateChanged("camera", -1, 0);
         }
     }
 
@@ -932,6 +956,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteWifiRssiChangedLocked(newRssi);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWifiRssiChangedLocked(newRssi);
         }
     }
 
@@ -939,6 +964,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteFullWifiLockAcquiredLocked(uid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteFullWifiLockStateChange(uid, true);
         }
     }
 
@@ -946,6 +972,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteFullWifiLockReleasedLocked(uid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteFullWifiLockStateChange(uid, false);
         }
     }
 
@@ -953,6 +980,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteWifiScanStartedLocked(uid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWifiScanStateChange(uid, true);
         }
     }
 
@@ -960,6 +988,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteWifiScanStoppedLocked(uid);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWifiScanStateChange(uid, false);
         }
     }
 
@@ -995,6 +1024,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteWifiScanStartedFromSourceLocked(ws);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWifiScanStateChange(ws, true);
         }
     }
 
@@ -1002,6 +1032,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteWifiScanStoppedFromSourceLocked(ws);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWifiScanStateChange(ws, false);
         }
     }
 
@@ -1064,6 +1095,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteBluetoothScanStartedFromSourceLocked(ws, isUnoptimized);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteBleScanStarted(ws, isUnoptimized);
         }
     }
 
@@ -1072,6 +1104,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteBluetoothScanStoppedFromSourceLocked(ws, isUnoptimized);
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteBleScanStopped(ws, isUnoptimized);
         }
     }
 
@@ -1080,6 +1113,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         enforceCallingPermission();
         synchronized (mStats) {
             mStats.noteResetBluetoothScanLocked();
+            SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteResetBleScan();
         }
     }
 
@@ -1213,6 +1247,7 @@ public final class BatteryStatsService extends IBatteryStats.Stub
                 while ((reason = waitWakeup()) != null) {
                     synchronized (mStats) {
                         mStats.noteWakeupReasonLocked(reason);
+                        SysMonitorSvcBridge.getFactory().getSmartPowerDataInstance().noteWakeupReason(reason);
                     }
                 }
             } catch (RuntimeException e) {
@@ -1692,17 +1727,10 @@ public final class BatteryStatsService extends IBatteryStats.Stub
         }
     }
 
-    /**
-     * Smartisan battery stats extension (factory PICO OS 5.13.7). The default ISysSvsFactory
-     * battery stats service extension (used when the sys services JAR is absent, as on the
-     * Source image) does not implement IBatteryStatsOptEx; the factory casts unconditionally,
-     * which throws from LightsService.onBootPhase(PHASE_SYSTEM_SERVICES_READY) and kills
-     * system_server. Return null then: LightsService checks mBatteryStatsOptEx for null.
-     */
+    /** Smartisan battery stats extension (factory PICO OS 5.13.7, sys services JAR). */
     @Override
     public IBatteryStatsOptEx getIBatteryStatsOptEx() {
-        Object optEx = SysOptBridge.getFactory().getBatteryStatsServiceOptEx();
-        return optEx instanceof IBatteryStatsOptEx ? (IBatteryStatsOptEx) optEx : null;
+        return (IBatteryStatsOptEx) SysOptBridge.getFactory().getBatteryStatsServiceOptEx();
     }
 
 }
