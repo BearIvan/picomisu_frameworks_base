@@ -99,6 +99,8 @@ public class Toast {
     final TN mTN;
     @UnsupportedAppUsage
     int mDuration;
+    // PICO extension (factory PICO OS 5.13.7).
+    private final IExtToast mExt;
     View mNextView;
 
     /**
@@ -117,6 +119,7 @@ public class Toast {
      * @hide
      */
     public Toast(@NonNull Context context, @Nullable Looper looper) {
+        mExt = new ExtToastImpl(this);
         mContext = context;
         mTN = new TN(context.getPackageName(), looper);
         mTN.mY = context.getResources().getDimensionPixelSize(
@@ -138,6 +141,10 @@ public class Toast {
         TN tn = mTN;
         tn.mNextView = mNextView;
         final int displayId = mContext.getDisplayId();
+        // PICO: no application toasts on the default (VR) display.
+        if (mExt.disableShow(displayId)) {
+            return;
+        }
 
         try {
             service.enqueueToast(pkg, tn, mDuration, displayId);
