@@ -3095,11 +3095,13 @@ public class NotificationManagerService extends SystemService {
                     // We could pass back a cloneLight() but clients might get confused and
                     // try to send this thing back to notify() again, which would not work
                     // very well.
+                    final Notification notification = sbn.getNotification().clone();
+                    notification.setAllowlistToken(null);
                     return new StatusBarNotification(
                             sbn.getPackageName(),
                             sbn.getOpPkg(),
                             sbn.getId(), sbn.getTag(), sbn.getUid(), sbn.getInitialPid(),
-                            sbn.getNotification().clone(),
+                            notification,
                             sbn.getUser(), sbn.getOverrideGroupKey(), sbn.getPostTime());
                 }
             }
